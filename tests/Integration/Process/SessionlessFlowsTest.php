@@ -24,18 +24,7 @@ use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
- * Every flow with no session (SSO-11.1): through the HTTP kernel, on routes in
- * no middleware group, with `session` and `session.store` bound to what fails
- * the flow when touched. A SAML start and assertion consumer service, an OIDC
- * start and callback, a discovery start, service provider metadata and JWKS, a
- * redemption of each purpose and an IdP-initiated re-initiation each run, and
- * the session is neither resolved nor started, no request holds one and no
- * response sets a cookie.
- *
- * The client holds only the reference, the verifier and what the provider gave
- * it. The state of the flow lives in its request row, which holds digests and
- * never the state or the nonce: take the row away and the same response is
- * refused.
+ * Integration tests that every flow runs without a session.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,8 +45,7 @@ final class SessionlessFlowsTest extends TestCase
     private int $sessionTouches = 0;
 
     /**
-     * Create the tables, the routes and the contracts, and bind what fails the
-     * flow when the session is touched.
+     * Create the routes and contracts, and make touching the session fail.
      *
      * @return void
      */
@@ -73,8 +61,7 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * Every route runs with no route middleware at all, and the HTTP kernel's
-     * own stack starts no session.
+     * Every route runs with no middleware and the kernel starts no session.
      *
      * @return void
      */
@@ -90,8 +77,7 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * A SAML start, assertion consumer service and redemption, for the tenant
-     * of the connection, with no session.
+     * A SAML start, assertion consumer service and redemption need no session.
      *
      * @return void
      */
@@ -113,8 +99,7 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * An OIDC start, callback and redemption, for the tenant of the connection,
-     * with no session.
+     * An OIDC start, callback and redemption need no session.
      *
      * @return void
      */
@@ -136,9 +121,7 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * A discovery start that matches leads to the identity provider and on to a
-     * redemption; one that misses leads to the application's fallback. Both
-     * with no session.
+     * A discovery start, matched or not, needs no session.
      *
      * @return void
      */
@@ -167,8 +150,7 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * Service provider metadata of each protocol, and a connection's public
-     * keys, are served with no session.
+     * Metadata and public keys are served without a session.
      *
      * @return void
      */
@@ -191,9 +173,7 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * A redemption of each purpose runs with no session: a `link` creates the
-     * link, a `sign_in` resolves through it, and a `reauthenticate` renews the
-     * session the application holds, through its contract alone.
+     * A redemption of each purpose needs no session.
      *
      * @return void
      */
@@ -214,8 +194,8 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * An IdP-initiated response at a connection that allows it sends the
-     * browser to the start URL, with no session and no request row.
+     * An IdP-initiated response redirects to the start without a session or
+     * row.
      *
      * @return void
      */
@@ -237,9 +217,7 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * What a flow needs later is in its request row, as digests and ciphertext:
-     * never the state, the nonce or the client's verifier, and nothing else
-     * holds them for the completion to find.
+     * The request row holds only digests and ciphertext of the flow's secrets.
      *
      * @return void
      */
@@ -265,8 +243,7 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * The row is all there is: the same answer from the provider, with the row
-     * gone, is refused for want of it, a `400` with no redirect target.
+     * With the request row gone, the same answer is a `400` with no redirect.
      *
      * @return void
      *
@@ -290,8 +267,9 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * Bind what fails the flow, and counts, when the session is touched. The
-     * earlier bindings go first, so that nothing is rebound through it.
+     * Bind a session that fails and counts when touched.
+     *
+     * Earlier bindings go first, so nothing is rebound through it.
      *
      * @return void
      */
@@ -314,8 +292,7 @@ final class SessionlessFlowsTest extends TestCase
     }
 
     /**
-     * Assert the session was neither resolved nor started, the last request
-     * holds none, and none of the responses sets a cookie.
+     * Assert no session was resolved, started, held or set as a cookie.
      *
      * @param  \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>  ...$responses
      * @return void

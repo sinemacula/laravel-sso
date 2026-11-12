@@ -20,20 +20,8 @@ use Tests\Concerns\UsesDomains;
 use Tests\Fixtures\Clients;
 
 /**
- * Query budgets for the domain recheck (SSO-3.3, SSO-11.12). A run reads the
- * verified claims one chunk at a time, then checks each claim with the same
- * cost, whatever the outcome:
- *
- * - the lease: 1 read (the connection, locked) and 1 write (the conditional
- *   update);
- * - the result: 2 reads (the connection, then the claim, both locked) and 1
- *   write (the claim's update, which releases the lease).
- *
- * So a confirmation, a suspension, a lapse (with no lookup) and a failed lookup
- * each cost 3 reads and 2 writes; a suspension that lapses at once with no
- * grace period one write more; a claim another server holds 1 read and the
- * update that leased nothing. A run adds one read per chunk: one for none to
- * `CHUNK_SIZE - 1` claims.
+ * Query budgets for the domain recheck: a lease (a locked read and an update)
+ * and a result (two locked reads and the claim's update).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,7 +63,7 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A confirmation is three reads and two writes.
+     * The lease and the result.
      *
      * @return void
      */
@@ -89,9 +77,8 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A suspension is three reads and three writes, the deletion of its open
-     * reservations among them; with no grace period, the lapse that follows
-     * adds another such deletion and its own write.
+     * The lease, the result and the reservations' deletion; with no grace
+     * period, the lapse that follows adds another deletion and a write.
      *
      * @return void
      */
@@ -109,8 +96,8 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A lapse at the end of the grace period is three reads and three writes,
-     * with nothing looked up.
+     * A lapse at the end of the grace period costs the same as a suspension,
+     * and looks nothing up.
      *
      * @return void
      */
@@ -127,8 +114,7 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A failed lookup is three reads and three writes: the lease taken and
-     * released.
+     * The lease taken and released.
      *
      * @return void
      */
@@ -158,8 +144,8 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A run reads its claims one chunk at a time: one read for none, and one
-     * read more than its check for a single claim.
+     * One read per chunk: one for no claim, and one beside the check for a
+     * single claim.
      *
      * @return void
      */
@@ -179,7 +165,7 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Check the claim, as it is stored, within the reads and writes given.
+     * Check the stored claim within the reads and writes given.
      *
      * @param  int  $reads
      * @param  int  $writes
@@ -195,9 +181,8 @@ final class DomainRecheckQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Make the connection's claim of the domain, verified and last checked a
-     * day before the clock's now, and move the clock on an hour so the claim is
-     * due.
+     * A verified claim last checked a day ago, with the clock moved on an hour
+     * so it is due.
      *
      * @param  string  $domain
      * @param  array<string, mixed>  $attributes

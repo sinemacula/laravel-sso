@@ -10,9 +10,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[metadata]`: checked while the package is in use, and the
- * queue a scheduled refresh is sent to checked only while the
- * `metadata_refresh` feature is on.
+ * Feature tests for the `[metadata]` boot check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

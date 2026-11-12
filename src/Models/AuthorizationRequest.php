@@ -8,31 +8,8 @@ use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 
 /**
- * One authorisation request (SSO-5.1, SSO-5.2): one attempt at a flow, started
- * by an application for a purpose through a connection, and consumed once,
- * whether the flow succeeds or fails.
- *
- * It holds its public reference, the only flow identifier the package shows;
- * the SHA-256 digest of its random protocol state (the OIDC `state`, the SAML
- * `RelayState`), never the state itself; what it is for, the application and
- * the connection; the issuer the response must come from and whether that
- * issuer must return `iss` (SSO-7.1); the digest of the OIDC nonce; the PKCE
- * verifier the package uses with the identity provider, encrypted through
- * `Contracts\SecretEncrypter`, never the client's verifier; the SAML
- * `AuthnRequest` id; the S256 challenge of the client's verifier; the identity
- * a `link` or `reauthenticate` flow was started for and the session a
- * `reauthenticate` flow was started on; its connection's trust version when it
- * started, which the completion compares with the connection's before it
- * validates the response and again under its lock; when it expires; and when it
- * was consumed by a completion, voided by a change to its connection, and
- * completed.
- *
- * Its key is a lower-case ULID and its timestamps come from the package's clock
- * (see `SsoModel`). The digests and the encrypted verifier are hidden from
- * serialisation and never put in an event (SSO-10.4). The table comes from
- * `sso.authorization_requests.table`, the connection from the storage
- * connection; every read that decides a flow is made on the write connection
- * (SSO-11.3).
+ * One attempt at a flow, consumed once whether it succeeds or fails; protocol
+ * state and nonce are held only as digests.
  *
  * @api
  *
@@ -65,13 +42,13 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  */
 final class AuthorizationRequest extends SsoModel
 {
-    /** @var string The key, under `sso.`, of the setting that names the model's table. */
+    /** @var string The `sso.` setting that names the table. */
     protected const string TABLE = 'authorization_requests.table';
 
     /** @var bool Indicates if the IDs are auto-incrementing. */
     public $incrementing = false;
 
-    /** @var bool Indicates if the model should be timestamped: the package stamps it from its clock instead. */
+    /** @var bool Stamped from the package's clock instead. */
     public $timestamps = false;
 
     /** @var string The "type" of the primary key ID. */
@@ -80,10 +57,10 @@ final class AuthorizationRequest extends SsoModel
     /** @var array<string> The attributes that aren't mass assignable. */
     protected $guarded = ['*'];
 
-    /** @var list<string> The attributes hidden from serialisation: the digests and the encrypted verifier. */
+    /** @var list<string> The attributes hidden from serialisation. */
     protected $hidden = ['state_digest', 'nonce_digest', 'code_verifier'];
 
-    /** @var array<string, mixed> The model's default attribute values: no issuer needs to return `iss`. */
+    /** @var array<string, mixed> The model's default attribute values. */
     protected $attributes = [
         'issuer_required' => false,
     ];

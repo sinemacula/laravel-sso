@@ -5,33 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
 
 /**
- * A JWS in compact serialisation as the package reads it (RFC 7515 §7.1,
- * SSO-7.3), before its signature is checked: an ID token, or anything else that
- * claims to be one.
- *
- * `parse()` answers `null` for anything the package never verifies:
- *
- * - more bytes than the cap given, or none;
- * - anything but exactly three segments, so a JWE (five) or a JSON
- *   serialisation is never read;
- * - a segment that is not canonical unpadded base64url, an empty header or
- *   payload, or an empty signature;
- * - a header or payload that is not one JSON object read by `StrictJson`
- *   (duplicate members refused, nested ones too);
- * - a header without `alg` as a non-empty string, or with `crit` or `b64`
- *   (whose meaning the package would have to apply), or with `enc` or `zip`
- *   (which only a JWE carries);
- * - a header `kid` that is present but not a non-empty string, or a `typ` that
- *   is present but not a string, a number too large for an integer being
- *   neither (`StrictJson::decodeMembers()`).
- *
- * `jku`, `x5u`, `jwk` and `x5c` are never read: a key comes only from the JWKS
- * stored with the connection.
- *
- * The token, its header, its claims and its signature are a provider's token
- * (SSO-7.6), so they are held in `\SensitiveParameterValue`: a dump and JSON
- * encoding show the algorithm, only once it is one the package knows, and
- * whether a `kid` is present, never a value, and it refuses to be serialised.
+ * A compact JWS read strictly before its signature is checked. `jku`, `x5u`,
+ * `jwk` and `x5c` are never read; keys come only from the stored JWKS.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -40,10 +15,10 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
  */
 final readonly class CompactToken implements \JsonSerializable
 {
-    /** @var list<string> Header parameters whose presence refuses the token. */
+    /** @var list<string> Header parameters that refuse the token: unsupported or JWE-only. */
     public const array REFUSED_HEADERS = ['crit', 'b64', 'enc', 'zip'];
 
-    /** @var string What a dump shows for an algorithm the package does not know. */
+    /** @var string What a dump shows for an unknown algorithm. */
     private const string UNKNOWN_ALGORITHM = '[unknown]';
 
     /** @var \SensitiveParameterValue The token as given. */
@@ -64,15 +39,15 @@ final readonly class CompactToken implements \JsonSerializable
      */
     private function __construct(
 
-        // The token as given; held wrapped
+        // Not promoted: held wrapped
         #[\SensitiveParameter]
         string $token,
 
-        // The protected header's members; held wrapped
+        // Not promoted: held wrapped
         #[\SensitiveParameter]
         array $header,
 
-        // The payload's members; held wrapped
+        // Not promoted: held wrapped
         #[\SensitiveParameter]
         array $claims,
     ) {
@@ -82,8 +57,7 @@ final readonly class CompactToken implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: a known algorithm and whether the header names a key,
-     * never the token, another header value or a claim.
+     * Show a known algorithm and whether a `kid` is present, never a value.
      *
      * @return array<string, mixed>
      */
@@ -96,8 +70,8 @@ final readonly class CompactToken implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: a provider's token is used only during the
-     * completion that received it (SSO-7.6).
+     * Refuse to be serialised; a provider's token lives only for its
+     * completion.
      *
      * @return array<string, mixed>
      *
@@ -127,7 +101,7 @@ final readonly class CompactToken implements \JsonSerializable
     }
 
     /**
-     * What JSON encoding shows: the same as a dump, never a value.
+     * Encode the same redacted view as a dump.
      *
      * @return array<string, mixed>
      */
@@ -138,8 +112,8 @@ final readonly class CompactToken implements \JsonSerializable
     }
 
     /**
-     * The token the text holds, or `null` when it is not a compact JWS the
-     * package reads, within the cap given in bytes.
+     * Parse the token, or return `null` when it is over the cap, not exactly
+     * three canonical segments, or has a refused header.
      *
      * @param  string  $token
      * @param  int  $maxBytes
@@ -189,7 +163,7 @@ final readonly class CompactToken implements \JsonSerializable
     }
 
     /**
-     * The protected header's members, for the signature check and nothing else.
+     * The protected header's members, for the signature check only.
      *
      * @return array<array-key, mixed>
      */
@@ -200,8 +174,8 @@ final readonly class CompactToken implements \JsonSerializable
     }
 
     /**
-     * The payload's members as `StrictJson::decodeObject()` reads them, so a
-     * time claim too large for an integer is its digits and is refused.
+     * The payload's members, with an oversized integer kept as digits so a time
+     * claim refuses it.
      *
      * @return array<array-key, mixed>
      */
@@ -212,8 +186,7 @@ final readonly class CompactToken implements \JsonSerializable
     }
 
     /**
-     * The payload's members with every number a number, never its digits: what
-     * a token that passed its checks hands on.
+     * The payload's members with every number a number, for a validated token.
      *
      * @return array<array-key, mixed>
      */
@@ -233,7 +206,7 @@ final readonly class CompactToken implements \JsonSerializable
     }
 
     /**
-     * The token as given, for the signature check and nothing else.
+     * The token as given, for the signature check only.
      *
      * @return string
      */
@@ -270,9 +243,8 @@ final readonly class CompactToken implements \JsonSerializable
     }
 
     /**
-     * Whether the header segment names an algorithm, carries nothing that
-     * refuses it, and has a well-typed `kid` and `typ` when it has them, as
-     * JSON wrote them.
+     * Whether the header names an algorithm, has no refused parameter, and has
+     * a well-typed `kid` and `typ` as written.
      *
      * @param  string  $segment
      * @return bool

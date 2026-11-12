@@ -19,13 +19,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races the default attempt limiter against itself across processes, each with
- * its own database connection, on PostgreSQL and MySQL: however the attempts
- * interleave, no more than the limit are allowed, and an attempt refused by one
- * limit counts nothing against another.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Races the default attempt limiter across processes on PostgreSQL and MySQL.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -58,9 +52,8 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock so
-     * every process counts in the same window, and give the test the package's
-     * tables.
+     * Skip where processes cannot share the database, bind a fixed clock and
+     * create the tables.
      *
      * @return void
      *
@@ -106,9 +99,7 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Redemptions racing for one IP address's first window are allowed exactly
-     * up to the limit, the counter's creation race included, and the counter
-     * ends at the limit.
+     * Racing redemptions are allowed exactly up to the limit.
      *
      * @return void
      */
@@ -122,9 +113,7 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Redemptions racing for a counter whose window has ended, and was full,
-     * restart its window once between them: exactly up to the limit are
-     * allowed, and the counter ends at the limit of the new window.
+     * Racing redemptions restart an ended full window once.
      *
      * @return void
      */
@@ -144,8 +133,7 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Authorisation requests racing against a full IP address limit are all
-     * refused, and never count against the email domain's free limit.
+     * Requests racing against a full IP limit never count against the domain.
      *
      * @return void
      */
@@ -165,15 +153,8 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Authorisation requests racing against a full email domain limit are all
-     * refused, and every slot they took from their IP address's limit is given
-     * back.
-     *
-     * The IP address's limit has room for every process and a two-minute
-     * window, so every process takes an IP slot before it reaches the full
-     * domain counter, and each refusal reports the domain window's wait (45
-     * seconds to 12:01:00) rather than the IP window's (105 seconds to
-     * 12:02:00): every refusal came from the domain, after a slot was taken.
+     * Requests racing a full domain limit give every IP slot back. Each refusal
+     * waits the domain's 45 seconds, not the IP's 105.
      *
      * @return void
      */
@@ -194,8 +175,7 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Limit every scope the tests race to `MAX` attempts a minute. The test of
-     * the domain's give-back widens the IP address's limit for itself.
+     * Limit every raced scope to `MAX` attempts a minute.
      *
      * @param  mixed  $app
      * @return void
@@ -211,8 +191,8 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Fork the processes, have each reconnect and make the attempt at the same
-     * moment on a connection of its own, and collect what each reported.
+     * Fork the processes, attempt at the same moment on their own connections,
+     * and collect the outcomes.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Contracts\AttemptLimiter): string  $attempt
      * @return list<string>
@@ -249,14 +229,8 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own and resolve the
-     * limiter, so only the attempt's own statements run after the start, wait
-     * for the start, make the attempt, report its outcome, and end without
-     * running the parent's shutdown.
-     *
-     * A process that reaches the start late, on a loaded machine, attempts at
-     * once rather than failing: the race is then less close, but every
-     * assertion still holds.
+     * Connect, wait for the start, attempt and report. A late process attempts
+     * at once; the assertions still hold.
      *
      * @param  int  $process
      * @param  float  $start
@@ -289,8 +263,7 @@ final class ConcurrentDatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Make the attempt and name its outcome, with the wait a refusal reports
-     * when asked.
+     * Make the attempt and name its outcome, with the wait when asked.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\AttemptLimiter  $limiter
      * @param  \SineMacula\Laravel\Sso\RateLimiting\AttemptSubject  $subject

@@ -4,9 +4,9 @@
 
 This note records how the `oidc` driver reads a callback, correlates it, judges it against the request consumed for it,
 and exchanges its code at the token endpoint (SSO-5.4, SSO-5.5, SSO-5.7, SSO-7.1, SSO-7.2, SSO-7.6, RFC 9207, RFC 9700
-§4.4.2, RFC 7523). The driver as a whole is `oidc-driver.md`; the request's consumption and the completion's locks are
-`completion.md` and `authorization-requests.md`; the ID token is `oidc-id-tokens.md`; UserInfo and the claims are
-`oidc-claims.md`.
+section 4.4.2, RFC 7523). The driver as a whole is `oidc-driver.md`; the request's consumption and the completion's
+locks are `completion.md` and `authorization-requests.md`; the ID token is `oidc-id-tokens.md`; UserInfo and the claims
+are `oidc-claims.md`.
 
 ## Invariants
 
@@ -35,7 +35,7 @@ and exchanges its code at the token endpoint (SSO-5.4, SSO-5.5, SSO-5.7, SSO-7.1
 - The state is only ever looked up by its digest, by the consumption (`authorization-requests.md`), which refuses a
   request started through another connection with `connection_mismatch`, redirected to that request's application. So a
   response without `iss` is accepted only at the callback of the request's own connection: the mix-up defence of RFC
-  9700 §4.4.2.
+  9700 section 4.4.2.
 - A second callback of the same `state` finds the request consumed: `request_unknown`, and no token request.
 
 ### The callback, in order

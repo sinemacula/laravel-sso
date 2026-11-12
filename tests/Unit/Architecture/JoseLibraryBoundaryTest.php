@@ -10,25 +10,8 @@ use PHPUnit\Framework\TestCase;
 use Tests\Concerns\ScansLibraryNames;
 
 /**
- * Holds the package to the conditions its JOSE library was chosen under
- * (`docs/design/jose-library.md`, "Decision"):
- *
- * - only the JOSE adapter's namespace (`Protocols\Oidc\Jose`) names
- *   `web-token/jwt-library` (its `Jose\` namespace), so every library call goes
- *   through the adapter;
- * - nothing names the library's key set (`JWKSet`, whose `get()` and `has()`
- *   reach a key without a `kid` by its position, and which `verifyWithKeySet()`
- *   tries key by key whatever the `kid`), calls `verifyWithKeySet()`, or names
- *   `None`, an HMAC algorithm (`HS256`, `HS384`, `HS512`, `HMAC`,
- *   `MacAlgorithm`), the library's claim and header checkers, its loaders, its
- *   encryption, its nested tokens or its key management (which
- *   fetches keys from `jku` and `x5u` outside the package's fetcher);
- * - the one class that calls the library is `JoseAdapter`, and it registers
- *   only the asymmetric algorithms.
- *
- * Names are read as `ScansLibraryNames` reads them, and a `use` of a namespace
- * that holds a forbidden part is itself forbidden, since the part could then be
- * named relative to it.
+ * Architecture tests for the JOSE library conditions in
+ * `docs/design/jose-library.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,10 +29,10 @@ final class JoseLibraryBoundaryTest extends TestCase
     /** @var string The one class that calls the library. */
     private const string LIBRARY_CALLER = 'src/Protocols/Oidc/Jose/JoseAdapter.php';
 
-    /** @var string A name in the library's namespace: `Jose\` at its start, never inside another namespace. */
+    /** @var string A name in the library's namespace, never inside another one. */
     private const string LIBRARY = '/^\\\?Jose\\\/';
 
-    /** @var list<string> The parts of the library the package never names, as a namespace prefix of each. */
+    /** @var list<string> Namespace prefixes of the library the package never names. */
     private const array FORBIDDEN = [
         'Jose\Component\Core\JWKSet',
         'Jose\Component\Signature\Algorithm\None',
@@ -163,8 +146,8 @@ final class JoseLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * The adapter registers exactly the nine asymmetric algorithms, and names
-     * the classes it calls, so the rules above hold over something.
+     * The adapter registers exactly the nine asymmetric algorithms, so the
+     * rules above hold over something.
      *
      * @return void
      */
@@ -193,9 +176,8 @@ final class JoseLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * The scans find what they look for: a library name however it is written,
-     * never the package's own `Jose` namespace, a forbidden part however it is
-     * reached, and a forbidden call.
+     * The scans find library names however written, never the package's own
+     * `Jose` namespace, forbidden parts and forbidden calls.
      *
      * @return void
      */
@@ -239,8 +221,7 @@ final class JoseLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * Every library name in the source that names a forbidden part, or that a
-     * `use` imports as a namespace holding one.
+     * Every library name that is a forbidden part or a namespace holding one.
      *
      * @param  string  $source
      * @return list<string>
@@ -253,8 +234,8 @@ final class JoseLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * Whether the name is a forbidden part, or, imported by a `use`, a
-     * namespace holding one.
+     * Whether the name is a forbidden part or an imported namespace holding
+     * one, through which the part could be named relatively.
      *
      * @param  string  $name
      * @param  bool  $imported

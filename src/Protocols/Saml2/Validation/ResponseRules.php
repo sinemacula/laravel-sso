@@ -10,26 +10,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
 
 /**
- * The rules of a SAML response's envelope and its assertion's provenance
- * (SSO-6.2, SSO-6.4, SSO-6.8), in this order, the first broken answering:
- *
- * 1. the response's `Issuer` and the assertion's `Issuer` are each present and
- *    equal the connection's identity provider entity id, compared exactly, or
- *    `issuer_mismatch`: a response that names no issuer is refused
- *    whether or not it is signed or encrypted;
- * 2. the response's `Destination` is present and equals the connection's
- *    assertion consumer service URL exactly, whether or not the response is
- *    signed, or `recipient_mismatch`;
- * 3. a connection that requires encrypted assertions refuses a plain one with
- *    `encryption_required`, so a response cannot downgrade;
- * 4. a connection that wants assertions signed (the default) refuses an
- *    assertion that carries no signature of its own with `signature_invalid`,
- *    even when the response's signature covers it.
- *
- * The adapter has already verified every signature present and refused an
- * assertion no verified signature covers; these rules judge only what was
- * verified. An unsuccessful response is held to the first two, of its own
- * envelope (`envelopeRefusal()`). Nothing here keeps anything.
+ * The envelope and assertion provenance rules, checked in order with the first
+ * broken one answering.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,8 +26,7 @@ final class ResponseRules
     private function __construct() {}
 
     /**
-     * Why a successful response and its assertion are refused, or `null` when
-     * every rule holds.
+     * Why a successful response and its assertion are refused, or `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
@@ -65,8 +46,7 @@ final class ResponseRules
     }
 
     /**
-     * Why a response's envelope alone is refused, as an unsuccessful response
-     * is judged: its `Issuer` and `Destination`.
+     * Why an unsuccessful response's `Issuer` or `Destination` is refused.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -82,7 +62,8 @@ final class ResponseRules
     }
 
     /**
-     * Whether the response names an `Issuer` and it is the identity provider's.
+     * Whether the response names the identity provider as `Issuer`, signed or
+     * not.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -109,8 +90,8 @@ final class ResponseRules
     }
 
     /**
-     * Whether the connection requires encrypted assertions and the assertion
-     * arrived plain.
+     * Whether a plain assertion arrived where encryption is required, which
+     * would be a downgrade.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -122,8 +103,8 @@ final class ResponseRules
     }
 
     /**
-     * Whether the connection wants assertions signed and the assertion carries
-     * no signature of its own.
+     * Whether signed assertions are wanted and this one has no signature of its
+     * own, even if the response's covers it.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context

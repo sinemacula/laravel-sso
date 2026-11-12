@@ -43,32 +43,9 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Races the provisioning helper across processes, each with its own database
- * connection, on PostgreSQL and MySQL (SSO-8.4, SSO-8.6, SSO-11.3): against a
- * second racer provisioning the same subject, for the same identity or another;
- * against a connection's disable and a trust change, each ordered both ways;
- * and against an explicit link's creation. And two first sign-ins through two
- * connections, each provisioning a new identity in a listener transaction that
- * retries: on MySQL their empty-range locking reads take gap locks, so their
- * inserts deadlock and the one rolled back retries; both provision.
- *
- * The order is forced with signal files, never with timing, and a barrier that
- * times out fails loudly. Every race runs with each racer plain and inside a
- * transaction of its own at `REPEATABLE READ` that read the connection, its
- * requests and its links first: a helper in the listener's transaction, opened
- * once the result is offered; a changer in one opened before the flow runs. So
- * each locking read must see what another committed rather than its snapshot on
- * MySQL. On PostgreSQL such a racer whose snapshot predates what it waits on
- * fails to serialise instead (SQLSTATE `40001`): that is a safe end, accepted
- * there alone, and nothing it did stands. A changer in such a transaction
- * always
- * ends so against a helper, since the flow it would void ran after its snapshot;
- * the changes race one racer in a transaction at a time as well, so that a
- * helper's own stale transaction meets what a change committed on PostgreSQL
- * too.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Races the provisioning helper across processes; skipped on SQLite and without
+ * `pcntl`. A stale snapshot may fail to serialise (`40001`), accepted on
+ * PostgreSQL only.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -94,9 +71,8 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, make the result unmatched
-     * by any verified domain, bind fresh authentication and a limiter that
-     * allows every attempt, and make the directory the processes report in.
+     * Make the result unmatched by any domain, and bind fresh authentication
+     * and an allow-all limiter.
      *
      * @return void
      *
@@ -169,9 +145,7 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Two racers provisioning one subject for two identities make one link: the
-     * other is `subject_already_linked`, and its final continuation resolves to
-     * the winner's identity.
+     * Two racers provisioning one subject for two identities make one link.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -325,10 +299,8 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Two first sign-ins through two connections, each listener provisioning a
-     * new identity in a transaction at `REPEATABLE READ` it retries, both
-     * provision once both have read the identity's links: on MySQL the gap
-     * locks of those reads deadlock the inserts, and exactly one retries.
+     * Two first sign-ins whose inserts deadlock on MySQL gap locks both
+     * provision, one on retry.
      *
      * @return void
      */
@@ -474,12 +446,8 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Race a change that commits before the helper asks, and assert exactly how
-     * each ends. On PostgreSQL a changer in a transaction fails to serialise on
-     * the request the flow changed after its snapshot, and the helper then
-     * stands alone. Otherwise the change commits: a helper in a transaction on
-     * PostgreSQL fails to serialise on the connection's row, with nothing made,
-     * and any other helper is refused, and the final continuation in its turn.
+     * Race a change that commits before the helper asks, and assert how each
+     * ends.
      *
      * @param  bool  $helperInTransaction
      * @param  bool  $changerInTransaction
@@ -583,12 +551,8 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: complete the flow, with a listener that opens its
-     * transaction and reads first when asked; runs what comes before the
-     * helper; asks the helper; runs what holds the transaction open; commits a
-     * link or rolls a refusal back; and runs what comes before the final
-     * continuation. Report what the helper answered, how the completion ended
-     * and its code.
+     * In a forked process, complete the flow with a provisioning listener and
+     * report how it ended.
      *
      * @param  string  $state
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -641,12 +605,8 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: complete the flow on the connection, its listener
-     * provisioning the identity in a transaction at `REPEATABLE READ` that it
-     * retries up to three times, and the link limit, asked once the identity's
-     * links are read, waiting the first time for the peer to have read too.
-     * Report what the helper last answered, how often the listener tried, and
-     * how the completion ended.
+     * In a forked process, complete the flow with a listener that retries
+     * provisioning up to three times.
      *
      * @param  string  $state
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -729,9 +689,8 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: open a transaction and read first when asked, signal
-     * it has read, make the change and commit; roll back whatever went wrong,
-     * and signal the change ended, whatever came of it.
+     * In a forked process, make the change, in a transaction that read first
+     * when asked.
      *
      * @param  bool  $inTransaction
      * @param  string  $read
@@ -802,9 +761,8 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Set this session's transactions to `REPEATABLE READ`, open one, and read
-     * the connection, its requests and its links, which on PostgreSQL pins the
-     * snapshot.
+     * Open a `REPEATABLE READ` transaction and read, which pins the snapshot on
+     * PostgreSQL.
      *
      * @param  \Illuminate\Database\Connection  $database
      * @return void
@@ -927,9 +885,8 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, run the body, report
-     * what it answered, whether it failed to serialise, or the error it threw,
-     * and end without running the parent's shutdown.
+     * Run the body in a forked process on its own connection and report how it
+     * ended.
      *
      * @param  int  $process
      * @param  \Closure(): array<string, mixed>  $body
@@ -1017,9 +974,8 @@ final class ConcurrentProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error, so a race whose
-     * racers ran one after the other never passes as one that overlapped.
+     * Wait for the signal for at most `SIGNAL_SECONDS`, failing loudly so a
+     * serial run never passes as a race.
      *
      * @param  string  $signal
      * @return void

@@ -13,19 +13,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Shared base for the deterministic query-budget tests of the package's
- * database-backed defaults.
- *
- * It binds a fixed clock, gives the test the package's tables, and records
- * every statement sent on the storage connection, a failing one included, so a
- * test asserts the exact reads and writes a call costs rather than a wall-clock
- * time. Every statement recorded must also be data manipulation only: the
- * package needs nothing but SELECT, INSERT, UPDATE and DELETE at runtime
- * (SSO-11.7), so one that changes the schema fails the budget.
- *
- * A test of what the counters cost asks for them on a connection of their own
- * (`useSeparateCounters()`): the same database engine under another connection
- * name, recorded apart, so a budget says which statement went to which.
+ * Base for the query-budget tests: records every statement a call sends.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +50,7 @@ abstract class PerformanceContractTestCase extends TestCase
     private bool $recording = false;
 
     /**
-     * Bind the fixed clock, give the test the package's tables, and listen for
-     * every statement before it is sent.
+     * Bind the fixed clock, create the tables and record each statement.
      *
      * @return void
      */
@@ -90,10 +77,8 @@ abstract class PerformanceContractTestCase extends TestCase
     }
 
     /**
-     * Move the counters to a connection of their own, on the same engine as the
-     * storage connection and recorded apart. SQLite's is another database in
-     * memory; a server's is the same database, so the table moves rather than
-     * being copied. Call it from `setUp()`, before a counter is written.
+     * Move the counters to their own connection on the same engine, recorded
+     * apart. Call it from `setUp()`, before a counter is written.
      *
      * @return void
      */
@@ -116,10 +101,8 @@ abstract class PerformanceContractTestCase extends TestCase
     }
 
     /**
-     * Run the callback and assert it sent exactly the reads and writes given,
-     * and nothing but data manipulation; answer what it returned. Reads and
-     * writes are the storage connection's; those of the counters' own
-     * connection, when `useSeparateCounters()` moved them, are the last two.
+     * Assert the callback sends exactly these reads and writes, all data
+     * manipulation; the last two are the separate counters connection's.
      *
      * @template TResult
      *
@@ -169,8 +152,7 @@ abstract class PerformanceContractTestCase extends TestCase
     }
 
     /**
-     * Assert the statements of one connection are exactly the reads and writes
-     * given, and nothing but data manipulation.
+     * Assert one connection's statements against its budget.
      *
      * @param  string  $readName
      * @param  string  $writeName

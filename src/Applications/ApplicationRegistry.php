@@ -7,16 +7,8 @@ namespace SineMacula\Laravel\Sso\Applications;
 use Illuminate\Contracts\Config\Repository;
 
 /**
- * The applications registered in `sso.applications` (SSO-5.5, decision D7),
- * read from the configuration on each call, so nothing of one request is kept
- * for the next (SSO-11.2).
- *
- * An application is found only under exactly its name: a name that is not an
- * application's name, or that names none, is answered with `null`, never with
- * another application, and a key is never read as a path (`web.x` is no
- * application, not `web`'s `x`). A registered application whose settings are
- * malformed fails closed with the `InvalidArgumentException` of
- * `Application::fromSettings()`; the boot check reports it first.
+ * The applications in `sso.applications`, read from the configuration on each
+ * call.
  *
  * @api
  *
@@ -37,8 +29,7 @@ final readonly class ApplicationRegistry
     ) {}
 
     /**
-     * The application registered under exactly the name, or `null` when none
-     * is.
+     * The application under exactly the name, never read as a dotted path.
      *
      * @param  string  $name
      * @return ?\SineMacula\Laravel\Sso\Applications\Application

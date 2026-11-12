@@ -7,30 +7,8 @@ namespace SineMacula\Laravel\Sso\Testing\Oidc;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * The hostile ID tokens of the JOSE library spike
- * (`docs/design/jose-library.md`), built by hand for the adversarial suite
- * (SSO-7.3, SSO-7.4, SSO-12.4), each a `HostileIdToken` with the JWKS beside
- * it, the allow-list, the stage the JOSE adapter must refuse it at and the
- * reason a completion must end with: `none` and HMAC confusion, an `oct` key
- * planted in the JWKS, `kid` injection (a path, a SQL-like string, `"0"`
- * against a key with no `kid`, an array, a number, one too large for an
- * integer, an empty string), a token with no `kid` among two keys, an `alg` the
- * key's own `alg` refuses, ES512 with a P-256 key, a key of the wrong type, a
- * 1024-bit key, a private key published, one key published twice under its
- * `kid`, `crit` and `b64`, a JWE, repeated JSON members, a header the library
- * reads differently, keys offered in the header (`jwk`, `jku`, `x5u`, `x5c`,
- * each the attacker's real key, so honouring it would verify), a signature by
- * another key, a tampered payload, a token over the size cap, and the `exp`,
- * `iat` and type boundaries of the time claims.
- *
- * The honest JWKS (`jwks()`) holds `k1` (RSA, no `alg`), `k2` (RSA, `alg`
- * RS256) and `e1` (P-256, `alg` ES256), each `use` `sig`; a case that needs
- * another JWKS carries its own. The claims given are each token's own, so a
- * test gives the claims of an otherwise valid token (its issuer, audience,
- * nonce and times).
- *
- * Generating the keys takes some tens of milliseconds, so a test class may keep
- * one set for all its tests.
+ * The hand-built hostile ID token suite from `docs/design/jose-library.md`. Key
+ * generation takes tens of milliseconds, so a test class may share one set.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,16 +21,16 @@ final readonly class HostileIdTokens
     /** @var int The size cap the oversized case passes, in bytes. */
     public const int MAX_TOKEN_BYTES = 16384;
 
-    /** @var string A refused stage's name: the token is not read. */
+    /** @var string The stage where the token is not read. */
     private const string MALFORMED = 'malformed';
 
-    /** @var string A refused stage's name: the key selection refuses it. */
+    /** @var string The stage where key selection refuses it. */
     private const string REFUSED = 'refused';
 
-    /** @var string A refused stage's name: no stored key is its key. */
+    /** @var string The stage where no stored key matches, even after a refetch. */
     private const string UNKNOWN = 'unknown';
 
-    /** @var string A refused stage's name: its signature does not verify. */
+    /** @var string The stage where the signature does not verify. */
     private const string UNVERIFIED = 'unverified';
 
     /** @var \SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey `k1`: RSA, published with no `alg`. */
@@ -90,7 +68,7 @@ final readonly class HostileIdTokens
     }
 
     /**
-     * The honest JWKS.
+     * The honest JWKS of `k1`, `k2` and `e1`.
      *
      * @return array{keys: list<array<string, mixed>>}
      */
@@ -100,8 +78,8 @@ final readonly class HostileIdTokens
     }
 
     /**
-     * Every hostile case, by name, for an otherwise valid token of the claims
-     * given, whose `iat` is now and the clock skew the seconds given.
+     * Every hostile case by name, built from the claims of an otherwise valid
+     * token whose `iat` is now.
      *
      * @param  array<string, mixed>  $claims
      * @param  int  $skewSeconds
@@ -193,10 +171,8 @@ final readonly class HostileIdTokens
     }
 
     /**
-     * The attacker's own key offered in the header, signed with that key, so a
-     * reader that honoured it would verify the token: known `kid`s, where it
-     * would be preferred to the stored key, and unknown ones, where it would be
-     * read when the stored keys hold none.
+     * The attacker's own signing key offered in the header, so a reader that
+     * honoured it would verify the token.
      *
      * @param  array<string, mixed>  $claims
      * @return array<string, \SineMacula\Laravel\Sso\Testing\Oidc\HostileIdToken>
@@ -282,9 +258,8 @@ final readonly class HostileIdTokens
     }
 
     /**
-     * A case refused at the stage given, with the JWKS and allow-list given or
-     * the honest ones; a token not read ends `id_token_invalid`, any other
-     * `signature_invalid`.
+     * A case refused at the stage, with the honest JWKS and allow-list unless
+     * given.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken  $token
      * @param  string  $stage
@@ -300,8 +275,7 @@ final readonly class HostileIdTokens
     }
 
     /**
-     * A token of the claims under the algorithm and `kid` (none when `null`),
-     * signed with the key given or `k1`.
+     * A token signed with the key, or `k1`; a `null` `kid` is left out.
      *
      * @param  array<string, mixed>  $claims
      * @param  string  $algorithm

@@ -33,11 +33,8 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * The provider's tokens and what it said are used only during the completion
- * and never kept (SSO-7.6, SSO-5.7): for verified and refused assemblies alike,
- * no log, no dump and no serialised result holds the access token, the ID
- * token, the UserInfo body or an error description, and no JSON form of the
- * claims holds the email.
+ * Feature tests that the provider's tokens and what it said are used during the
+ * completion and never kept.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -104,9 +101,8 @@ final class ClaimsTokensNeverKeptTest extends TestCase
     }
 
     /**
-     * A verified assembly, whose UserInfo answer echoes the tokens as claims,
-     * logs nothing, and neither its completion, its result nor what it was
-     * given shows a token or the body.
+     * A verified assembly logs nothing, and nothing it returns or was given
+     * shows a token or the body.
      *
      * @return void
      */
@@ -225,9 +221,8 @@ final class ClaimsTokensNeverKeptTest extends TestCase
     }
 
     /**
-     * A refused assembly logs an error's code at most, and neither its logs,
-     * its completion, what it was given nor its serialised form shows a token,
-     * the body, the description or the email.
+     * A refused assembly logs an error's code at most, and shows no token,
+     * body, description or email.
      *
      * @param  int  $status
      * @param  array<string, string>  $headers

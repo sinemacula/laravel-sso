@@ -9,10 +9,7 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[keys]`: the settings of the keys the package generates and rotates, while
- * the package is in use (SSO-2.7), each read as `KeySettings` reads it, so the
- * check and the key operations judge it the same way. The table's name is
- * checked under `[storage]`.
+ * `[keys]`: checks the `sso.keys` settings as `KeySettings` reads them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,8 +39,7 @@ final readonly class KeysCheck implements ConfigurationCheck
     }
 
     /**
-     * The RSA modulus, the certificate validity, the overlap, the expiry
-     * thresholds and how long a reporter holds a key.
+     * One check per key setting.
      *
      * @return list<\Closure(): mixed>
      */

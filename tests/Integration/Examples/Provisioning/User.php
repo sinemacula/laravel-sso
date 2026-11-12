@@ -8,12 +8,8 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
- * The example application's user, an Eloquent model of its own `users` table
- * (SSO-8.6): the person its provisioning listener creates for a sign-in that
- * resolved to nobody, named to the package by its morph class and key. Its
- * table lives on the default connection, which is also the package's storage
- * connection here, so the user, their membership and the link commit or roll
- * back as one.
+ * The example application's user, on the package's storage connection so it
+ * commits or rolls back with the link.
  *
  * @method int|string getKey() The key, an integer here.
  *
@@ -30,7 +26,7 @@ final class User extends Model
     /** @var string The application's table. */
     public const string TABLE = 'users';
 
-    /** @var bool Whether the model is timestamped: the example needs no times. */
+    /** @var bool The example needs no timestamps. */
     public $timestamps = false;
 
     /** @var ?string The table the model is stored in. */

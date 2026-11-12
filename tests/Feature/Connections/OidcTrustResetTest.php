@@ -34,12 +34,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for what an update of an OIDC connection's issuer or JWKS URI
- * clears, in the same locked transaction as the rest of the change (SSO-2.13):
- * the stored keys, their cooldown and a refetch's token, raising their version;
- * for an issuer, the discovery document's refresh dates too. Keys fetched for
- * another issuer or URL are never used. Any other change, one that changes
- * nothing and a refused one clear nothing.
+ * Feature tests for what changing an OIDC issuer or JWKS URI clears.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -77,8 +72,8 @@ final class OidcTrustResetTest extends TestCase
     private static ?FakeSigningKey $key = null;
 
     /**
-     * Bind a fixed clock and a fresh freshness contract, switch OIDC and the
-     * refresh on, and create the tables.
+     * Bind a fixed clock and freshness, enable OIDC and the refresh, and create
+     * the tables.
      *
      * @return void
      */
@@ -114,10 +109,8 @@ final class OidcTrustResetTest extends TestCase
     }
 
     /**
-     * An update of the issuer or the JWKS URI clears the keys and raises their
-     * version, an issuer's also the discovery document's refresh dates, and
-     * sets nothing else; any other change clears nothing. The trust version
-     * rises once and what is in flight is voided by each trust change alone.
+     * An issuer or JWKS URI change clears the keys and bumps their version; an
+     * issuer also clears discovery dates.
      *
      * @param  array<string, mixed>  $settings
      * @param  bool  $keys
@@ -150,9 +143,8 @@ final class OidcTrustResetTest extends TestCase
     }
 
     /**
-     * With the refresh off, an endpoint saved by hand makes the connection
-     * follow no document: when one was last validated is cleared, and its keys
-     * are left alone. Turning the refresh off alone clears nothing.
+     * With the refresh off, an endpoint saved by hand clears the document's
+     * validation date only.
      *
      * @return void
      */
@@ -229,8 +221,8 @@ final class OidcTrustResetTest extends TestCase
     }
 
     /**
-     * An issuer change refused for the connection's links clears nothing, and
-     * one made through a subject migration clears as an update does.
+     * An issuer change refused for links clears nothing; one made by a
+     * migration clears as an update does.
      *
      * @return void
      */
@@ -264,8 +256,8 @@ final class OidcTrustResetTest extends TestCase
     }
 
     /**
-     * A key fetched for the URL before is never used: the next unknown `kid`
-     * refetches at once, the cooldown cleared, from the new URL alone.
+     * Keys fetched for the old URL are never used; the next unknown `kid`
+     * refetches at once.
      *
      * @return void
      */
@@ -291,8 +283,8 @@ final class OidcTrustResetTest extends TestCase
     }
 
     /**
-     * An OIDC connection with keys and refresh state to clear, and a trust
-     * version of two, the attributes given laid over them.
+     * An OIDC connection with keys and refresh state to clear, at trust version
+     * two.
      *
      * @param  array<string, mixed>  $attributes
      * @return \SineMacula\Laravel\Sso\Models\Connection

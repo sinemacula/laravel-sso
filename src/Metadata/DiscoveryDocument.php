@@ -11,39 +11,10 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\StrictJson;
 
 /**
- * An OpenID provider's discovery document as the package reads it (SSO-2.8,
- * OpenID Connect Discovery §3 and §4.3), for one issuer, whether an import or a
- * refresh fetched it.
+ * An OpenID provider's discovery document for one issuer, read strictly.
  *
- * `read()` takes the body within the cap given and answers typed values, or a
- * refusal with its reason:
- *
- * - a body over the cap, not one JSON object, or holding a member twice at any
- *   depth, its names read after unescaping (`StrictJson`): `discovery_invalid`.
- *   The rest is judged as JSON wrote it, so a JSON object is never read as a
- *   list and a number never as a string of its digits;
- * - `issuer` not a string exactly equal to the one expected, byte for byte, so
- *   case, a trailing slash and the path all matter: `issuer_mismatch`;
- * - `authorization_endpoint`, `token_endpoint` and `jwks_uri` required, and
- *   `userinfo_endpoint` when present, each a valid setting
- *   (`SettingRules::url()`: `https`, a host, no userinfo or fragment, at most
- *   2048 bytes);
- * - `response_types_supported` a list of strings holding `code`;
- * - `subject_types_supported`, when present, a list of strings;
- * - `code_challenge_methods_supported`, when present, a list of strings holding
- *   `S256`;
- * - `id_token_signing_alg_values_supported` a list of strings holding at least
- *   one algorithm of `AlgorithmAllowList::ALGORITHMS`;
- * - `token_endpoint_auth_methods_supported`, when present, a list of strings;
- * - `authorization_response_iss_parameter_supported`, when present, a boolean.
- *
- * Any of these otherwise is `discovery_invalid`; a member it does not name is
- * ignored.
- *
- * Everything in it came from whoever serves the issuer's URL, so its values are
- * held in a `\SensitiveParameterValue`: a dump and `json_encode()` show the
- * names alone, and it refuses to be serialised or unserialised. It holds
- * nothing between calls (SSO-11.2).
+ * Its values are untrusted, so a dump shows names alone and it refuses to be
+ * serialised.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -114,8 +85,8 @@ final readonly class DiscoveryDocument implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: whether it was read, why not, and the names of the
-     * settings it holds, never a value.
+     * What a dump shows: whether it was read, why not, and the names of its
+     * settings, never a value.
      *
      * @return array<string, mixed>
      */
@@ -194,11 +165,7 @@ final readonly class DiscoveryDocument implements \JsonSerializable
 
     /**
      * The settings the document gives, by the names a connection holds them
-     * under, in the order `OidcSetting` names them: the issuer, the endpoints
-     * (`userinfo_endpoint` only when it names one), `returns_iss` (true exactly
-     * when it advertises the RFC 9207 parameter) and `id_token_algorithms` (the
-     * algorithms it supports that are on the package's list, in the package's
-     * order).
+     * under, in the order `OidcSetting` names them.
      *
      * @return DiscoverySettings
      *
@@ -235,8 +202,7 @@ final readonly class DiscoveryDocument implements \JsonSerializable
     }
 
     /**
-     * The client authentication methods the document lists, as it lists them;
-     * none when it lists none.
+     * The client authentication methods the document lists, as it lists them.
      *
      * @return list<string>
      *
@@ -312,9 +278,8 @@ final readonly class DiscoveryDocument implements \JsonSerializable
     }
 
     /**
-     * Whether every list named is a list of strings, the required ones given,
-     * and each holds what it must: `code`, `S256` and an algorithm of the
-     * package's.
+     * Whether every list is a list of strings, the required ones given, holding
+     * `code`, `S256` and an algorithm of the package's.
      *
      * @param  array<array-key, mixed>  $document
      * @return bool

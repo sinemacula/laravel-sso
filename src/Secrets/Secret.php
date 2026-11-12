@@ -5,18 +5,10 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Secrets;
 
 /**
- * One plaintext secret, held for the code that must send or use it (SSO-2.5,
- * SSO-11.9): a client secret on its way to the identity provider, a private key
- * on its way to a signature.
+ * A plaintext secret that leaves the object only through `reveal()`.
  *
- * The secret is held in a `\SensitiveParameterValue` and leaves the object only
- * through `reveal()`. A dump, by PHP's own functions, a debugger or Laravel's
- * helpers (which also list private properties), shows `[redacted]`, as does
- * `json_encode()`; the object refuses to be serialised or unserialised, so it
- * cannot reach a queue, a cache or a session; and it has no `__toString()`, so
- * a cast to a string, or interpolation into a message, fails loudly rather than
- * writing the secret into a log or an exception. A comparison with it is in
- * constant time.
+ * Redacted in dumps and JSON, unserialisable, and deliberately without
+ * `__toString()`, so it cannot leak into a log by interpolation.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,8 +45,7 @@ final readonly class Secret implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: a secret is decrypted for the call that uses it
-     * and lives no longer.
+     * Refuse to be serialised, so it never reaches a queue, cache or session.
      *
      * @return array<string, mixed>
      *
@@ -84,8 +75,7 @@ final readonly class Secret implements \JsonSerializable
     }
 
     /**
-     * The plaintext secret, for the code that must send or use it and for
-     * nothing else.
+     * The plaintext, for the code that must send or use it.
      *
      * @return string
      */

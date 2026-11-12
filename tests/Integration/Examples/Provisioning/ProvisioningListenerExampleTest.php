@@ -23,15 +23,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/provisioning.md` (SSO-8.6, SSO-12.5), on the
- * shared example harness, with the application's users and memberships in its
- * own tables on the package's storage connection and its listener registered by
- * its service provider: a `sign_in` of a subject nobody is linked to is offered
- * to the listener, which creates a new user and their membership and links the
- * result to them, and the same sign-in completes for that user, as does their
- * next one, through the link; a listener whose helper refuses, here because a
- * slower listener before it let the verified response's deadline pass, rolls
- * the user and membership back, and the sign-in fails.
+ * Integration tests for the provisioning guide's listener.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,21 +34,20 @@ use Tests\Integration\Examples\ExampleTestCase;
 #[CoversClass(ResultUnlinked::class)]
 final class ProvisioningListenerExampleTest extends ExampleTestCase
 {
-    /** @var int How long a verified response stays valid, in seconds, by default. */
+    /** @var int The default verified result lifetime, in seconds. */
     private const int VERIFIED_RESULT_MAX_AGE = 120;
 
     /** @var \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider The tenant's identity provider. */
     private FakeOpenIdProvider $provider;
 
-    /** @var string The connection that trusts it. */
+    /** @var string The connection that trusts the provider. */
     private string $connectionId;
 
-    /** @var list<\SineMacula\Laravel\Sso\Links\Enums\LinkOrigin> The origin of every link created, in order. */
+    /** @var list<\SineMacula\Laravel\Sso\Links\Enums\LinkOrigin> The origin of each link created, in order. */
     private array $origins = [];
 
     /**
-     * Create the application's tables, make the tenant's OIDC connection, and
-     * record the origin of every link created.
+     * Create the application's tables and the tenant's OIDC connection.
      *
      * @return void
      */
@@ -103,10 +94,8 @@ final class ProvisioningListenerExampleTest extends ExampleTestCase
     }
 
     /**
-     * The listener creates a new user named by the mapped display name, their
-     * membership of the connection's tenant and an active link made by
-     * provisioning, and the sign-in completes for that user; their next sign-in
-     * resolves through the link, and provisions nobody.
+     * The listener provisions a new person, and their next sign-in uses the
+     * link.
      *
      * @return void
      *
@@ -145,10 +134,7 @@ final class ProvisioningListenerExampleTest extends ExampleTestCase
     }
 
     /**
-     * A listener before the provisioning one takes until the verified
-     * response's deadline, so the helper refuses it as expired: the listener
-     * rolls its user and membership back, no link is made, and the sign-in
-     * fails with `request_expired`, never with a handoff.
+     * A refusal past the verified result's deadline rolls the new person back.
      *
      * @return void
      *
@@ -173,8 +159,7 @@ final class ProvisioningListenerExampleTest extends ExampleTestCase
     }
 
     /**
-     * A tailor that gives the ID token the person's name, which the connection
-     * maps to `display_name` by default.
+     * A tailor giving the ID token a name, mapped to `display_name` by default.
      *
      * @param  string  $name
      * @return \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken

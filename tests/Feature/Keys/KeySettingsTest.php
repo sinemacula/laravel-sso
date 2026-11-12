@@ -10,11 +10,7 @@ use SineMacula\Laravel\Sso\Keys\KeySettings;
 use Tests\TestCase;
 
 /**
- * Feature tests for the settings of the keys the package generates and rotates
- * (SSO-2.7): the shipped defaults, the digit strings `env()` gives, an RSA
- * modulus of 3072 or 4096 bits only, each range accepted to its bounds and
- * refused past them with a message naming the key, and every value read on each
- * call.
+ * Feature tests for the key generation and rotation settings.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,8 +38,7 @@ final class KeySettingsTest extends TestCase
     }
 
     /**
-     * A configuration published before the settings existed takes the same
-     * defaults.
+     * A configuration published before the settings existed takes the defaults.
      *
      * @return void
      */
@@ -61,8 +56,8 @@ final class KeySettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[key, value, expected]`: each setting at its bounds, and as the
-     * digit string `env()` gives.
+     * Rows of `[key, value, expected]`: each setting at its bounds and as an
+     * `env()` digit string.
      *
      * @return iterable<string, array{0: string, 1: int|string, 2: int}>
      */
@@ -102,7 +97,7 @@ final class KeySettingsTest extends TestCase
 
     /**
      * Rows of `[key, value, message]`: each setting past its bounds or
-     * malformed, and the exact message it fails with.
+     * malformed, and its message.
      *
      * @return iterable<string, array{0: string, 1: mixed, 2: string}>
      */

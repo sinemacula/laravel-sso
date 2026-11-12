@@ -22,33 +22,8 @@ use Symfony\Component\HttpFoundation\Response;
 use Tests\Fixtures\Octane\BootedApplicationFactory;
 
 /**
- * Keeps one application alive across consecutive requests and jobs, A then B
- * then A, as a server worker and a queue worker do (SSO-11.2), through their
- * real lifecycles and never by rebuilding the application or clearing the
- * package's state to help a test pass.
- *
- * A request goes through the real Octane `Worker`, as Octane's own suite does:
- * the test's booted application, warmed with Octane's default services, is the
- * root application, and each request is served in a clone of it, around which
- * Octane dispatches its listeners, with the flush of the scoped instances among
- * them. Only the server is fake. `serve()` asserts the worker caught no error
- * of its own: a route that throws is the HTTP kernel's to answer, with the 500
- * its exception handler renders, and the next request runs in the same worker.
- *
- * A job goes through the real queue `Worker`, over the database queue, in its
- * real loop, which resets the scope before each job; a job that throws is
- * recorded and the worker goes on, as it does in production.
- *
- * `retainedBy()` is the question behind the harness: it walks every object the
- * root application still holds, and answers each package object or string
- * reached that carries a value of the request or job just finished, and
- * `retainedByStatics()` asks the same of the package's static properties, which
- * neither a sandbox nor a reset of the scope clears. Checking only what a
- * response says would miss what a later request could reach.
- *
- * A test calls `bootLongLivedWorker()` once its routes are registered,
- * `createWorkerQueue()` if it runs jobs, and `dropWorkerQueue()` from its
- * `tearDown()`.
+ * Runs requests and jobs through the real Octane and queue workers on one
+ * application, so a test can find what one leaves behind for the next.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -67,8 +42,7 @@ trait RunsLongLivedApplication
     private ?FakeClient $octaneClient = null;
 
     /**
-     * Register Octane on the test's application, warm it as a worker does at
-     * boot, and boot a worker on it.
+     * Register and warm Octane on the test's application and boot a worker.
      *
      * @return void
      */
@@ -85,8 +59,8 @@ trait RunsLongLivedApplication
     }
 
     /**
-     * Serve the request through the worker and return its response, failing the
-     * test when the worker itself caught an error.
+     * Serve the request through the worker, failing when the worker caught an
+     * error itself.
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>
@@ -161,11 +135,8 @@ trait RunsLongLivedApplication
     }
 
     /**
-     * Run the next queued job in the one queue worker through the loop
-     * `queue:work` runs, stopping after that job or on an empty queue: the loop
-     * resets the scope before it takes a job. What the loop leaves on the
-     * process's signals is put back, so that the suite can still be interrupted
-     * and a later fork inherits nothing of it.
+     * Run the next queued job through the `queue:work` loop, then restore the
+     * signal handlers the loop takes over.
      *
      * @return void
      */
@@ -200,10 +171,8 @@ trait RunsLongLivedApplication
     }
 
     /**
-     * Every string the root application still holds, reached from each bound
-     * instance through package objects, their properties and arrays, that
-     * contains one of the values given: what a later request or job could reach
-     * of an earlier one. Each answer names the path it was reached by.
+     * Every string reachable from the root application through package objects
+     * that contains one of the values, keyed by path.
      *
      * @param  list<string>  $values
      * @return list<string>
@@ -223,8 +192,7 @@ trait RunsLongLivedApplication
     }
 
     /**
-     * Each static property of a package class that holds one of the values, by
-     * the path to it.
+     * Each package static property that holds one of the values, by path.
      *
      * @param  list<string>  $values
      * @return list<string>
@@ -249,8 +217,7 @@ trait RunsLongLivedApplication
     }
 
     /**
-     * The handler of each signal the worker's loop takes over, by the signal:
-     * none where the process has no signals to take over.
+     * The handler of each signal the worker's loop takes over, by signal.
      *
      * @return array<int, callable|int>
      */
@@ -291,9 +258,8 @@ trait RunsLongLivedApplication
     }
 
     /**
-     * Follow the value, recording each string that carries one of the values:
-     * through arrays and package objects only, since the framework's own
-     * objects hold the application's configuration and the like.
+     * Record each string that carries one of the values, following arrays and
+     * package objects only, since framework objects hold the configuration.
      *
      * @param  mixed  $value
      * @param  string  $path
@@ -322,9 +288,8 @@ trait RunsLongLivedApplication
     }
 
     /**
-     * What the walk follows from the value: an array's items, what a
-     * `\SensitiveParameterValue` hides, or the properties of a package object
-     * not yet seen.
+     * What the walk follows from the value, including what a
+     * `\SensitiveParameterValue` hides.
      *
      * @param  mixed  $value
      * @param  array<int, true>  $seen
@@ -372,11 +337,8 @@ trait RunsLongLivedApplication
     }
 
     /**
-     * Hand the services Octane gave the request's sandbox back to the root
-     * application: the sandbox they hold has been flushed once the worker is
-     * done with it. Only the application they hold is replaced, as the next
-     * request's own listeners replace it again; nothing is reset, so whatever
-     * the next request does not see is down to Octane's lifecycle alone.
+     * Point the services Octane gave the flushed sandbox back at the root
+     * application, as the next request's listeners do; nothing is reset.
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  \Symfony\Component\HttpFoundation\Response  $response

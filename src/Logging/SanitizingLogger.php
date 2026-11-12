@@ -11,17 +11,8 @@ use Psr\Log\LoggerTrait;
 use Psr\Log\LogLevel;
 
 /**
- * The one logger the package writes through (SSO-5.7, SSO-9.8, SSO-11.9): a
- * PSR-3 logger that sanitises every message as a diagnostic, redacts every
- * context, and writes to the channel `sso.logging.channel` names, or to
- * Laravel's default channel when it names none.
- *
- * The channel is resolved on each call, so a change to the setting is seen by
- * the next call and nothing of one request or job is kept for the next
- * (SSO-11.2). A level that is not one of PSR-3's is refused with PSR-3's
- * `InvalidArgumentException`. Laravel's own processing of the record (shared
- * context, placeholders a channel replaces) happens after redaction, on what
- * this logger passes on.
+ * The package's only logger: sanitises every message and redacts every context
+ * before Laravel's own processing sees them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,8 +57,7 @@ final readonly class SanitizingLogger implements LoggerInterface
     ) {}
 
     /**
-     * Sanitise the message, redact the context and write both to the configured
-     * channel at the level given.
+     * Write to the channel, resolved on each call.
      *
      * @param  mixed  $level
      * @param  string|\Stringable  $message
@@ -88,7 +78,7 @@ final readonly class SanitizingLogger implements LoggerInterface
     }
 
     /**
-     * The level, when it is one PSR-3 defines.
+     * The level, refused unless PSR-3 defines it.
      *
      * @param  mixed  $level
      * @return string

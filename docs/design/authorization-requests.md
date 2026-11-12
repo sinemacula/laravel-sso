@@ -38,21 +38,21 @@ the race. The tables, the value types and the completion they feed are in `flows
   6. a `link` asks `Freshness\FreshnessGate` with `sso.link.create` (SSO-2.12) for its caller, with the session it gave,
      else `freshness_required`;
   7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing()` with the caller's identity and session,
-     the application the flow is started for and the connection, else `session_ineligible` for anything but
-     `signed_in` (SSO-5.10); the default answers `not_signed_in` (steps 6 and 7 are `Flows\StartEligibility::refusal()`);
+     the application the flow is started for and the connection, else `session_ineligible` for anything but `signed_in`
+     (SSO-5.10); the default answers `not_signed_in` (steps 6 and 7 are `Flows\StartEligibility::refusal()`);
   8. the connection's `trust_version`, as step 5 read it, is captured; `Flows\ProtocolState::generate()`, then the
      driver's `start()` with a `Protocols\StartRequest` (purpose, application, reference, state, nonce, PKCE verifier),
      outside any transaction the start opens; a refused `Start` is refused with the driver's reason;
-  9. in a transaction on the storage connection: the connection's row is read again locked for update, the first lock
-     of every flow, and when it is gone, its switch, settings or secrets changed since step 5, or its `trust_version` is
-     no longer the one captured (a certificate removed meanwhile voided only the requests already stored, so this one
-     must not be stored against the old trust), the start answers as step 5 does (`connection_unavailable`), writing
-     nothing; otherwise the request is inserted through its
-     model, and the connection's `flows_version` raised by one under the lock, so the insert also writes the
-     connection's row: a PostgreSQL `REPEATABLE READ` change whose snapshot predates the request fails to serialise
-     when it locks the connection, rather than void the connection's requests without it (`Connections\InFlightVoider`).
-     The values are compared as cast, the settings' maps whatever their key order (a JSON column need not keep it, and
-     a connection just created holds its values as given), a list's order still counting;
+  9. in a transaction on the storage connection: the connection's row is read again locked for update, the first lock of
+     every flow, and when it is gone, its switch, settings or secrets changed since step 5, or its `trust_version` is no
+     longer the one captured (a certificate removed meanwhile voided only the requests already stored, so this one must
+     not be stored against the old trust), the start answers as step 5 does (`connection_unavailable`), writing nothing;
+     otherwise the request is inserted through its model, and the connection's `flows_version` raised by one under the
+     lock, so the insert also writes the connection's row: a PostgreSQL `REPEATABLE READ` change whose snapshot predates
+     the request fails to serialise when it locks the connection, rather than void the connection's requests without it
+     (`Connections\InFlightVoider`). The values are compared as cast, the settings' maps whatever their key order (a
+     JSON column need not keep it, and a connection just created holds its values as given), a list's order still
+     counting;
   10. `Events\AuthorizationRequestStarted`, dispatched after that transaction commits (`Events\AfterCommitDispatcher`);
   11. `StartResult::started($reference, $navigation, $verifier)`, the verifier only when the package generated it.
 - The stored request holds `reference`; `state_digest` and `nonce_digest`, the lower-case hex SHA-256 of the state and
@@ -73,8 +73,8 @@ the race. The tables, the value types and the completion they feed are in `flows
 
 - `Flows\ProtocolState` holds three `Secrets\Secret` values, each 43 base64url characters from 32 bytes of the system's
   CSPRNG: the state (OIDC `state`, SAML `RelayState`), the nonce and the PKCE verifier. It answers `stateDigest()`,
-  `nonceDigest()` and `codeChallenge()` (S256, RFC 7636 §4.2); a dump and `json_encode()` show `[redacted]` for each,
-  and it refuses to be serialised or unserialised.
+  `nonceDigest()` and `codeChallenge()` (S256, RFC 7636 section 4.2); a dump and `json_encode()` show `[redacted]` for
+  each, and it refuses to be serialised or unserialised.
 - The public reference, the state, the nonce, the PKCE verifier and the client's verifier are five independent random
   values (SSO-5.2, SSO-5.12). The PKCE verifier never leaves the API; the client's verifier is returned once, in the
   start response's body, when the package generated it, and only its challenge is stored.
@@ -83,8 +83,9 @@ the race. The tables, the value types and the completion they feed are in `flows
 ### Consuming a request
 
 - `Flows\RequestConsumption::consume(Connection $routeConnection, Correlation $correlation)` is the only place a request
-  is consumed (BL-34 calls it, after `correlate()` and before `complete()`). It runs in a transaction of its own on the
-  storage connection, a savepoint inside the caller's; the completion that calls it runs outside any.
+  is consumed (the completion's `ConsumeRequest` stage calls it, after `correlate()` and before `complete()`). It runs
+  in a transaction of its own on the storage connection, a savepoint inside the caller's; the completion that calls it
+  runs outside any.
 - The request is read with `lockForUpdate()` on the write connection: by `state_digest` when the correlation carries a
   state, otherwise by (`connection_id` = the route connection, `saml_request_id`), compared again in PHP exactly. A
   correlation that carries neither finds nothing, with no statement.
@@ -139,7 +140,7 @@ the race. The tables, the value types and the completion they feed are in `flows
   `FlowFailed(connection_unavailable)` and answers `started`, with a reference that names no request.
 - A connection disabled, re-trusted or deleted while the driver started: the start's locked re-read sees the change and
   answers `connection_unavailable`, so a change that voided the connection's requests can never miss one stored after
-  it. A change committed after the insert voids the request itself (BL-37).
+  it. A change committed after the insert voids the request itself (`connection-lifecycle.md`).
 - A start called inside a transaction open on the storage connection is a `LogicException`; nothing is counted,
   asked, written or reported.
 - A driver that answers a SAML request id the connection already holds is a driver's bug: the unique violation

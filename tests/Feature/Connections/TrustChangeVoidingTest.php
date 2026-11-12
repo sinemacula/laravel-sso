@@ -32,19 +32,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for the voiding a trust change makes (SSO-2.13): the requests
- * and handoff codes of the connection before and after each change. Every
- * change that asks `sso.connection.trust` (an update of a trust setting or
- * secret, trusting or distrusting a certificate) voids the connection's
- * unfinished requests, consumed ones included, and unredeemed codes, keeps the
- * first `voided_at` of one voided before, and leaves finished requests,
- * redeemed codes and every other connection's rows as they are. A change that
- * asks another operation or none (the display name, the scopes, the mapping,
- * IdP-initiated sign-in), a refused change, and the rotation of a key of the
- * service provider's own void nothing. Rotating a credential (a client secret,
- * a trusted certificate, a key of the service provider's own) is allowed on a
- * connection with an active link, which only a change to what subjects mean
- * refuses.
+ * Feature tests for what a trust change voids.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -90,8 +78,8 @@ final class TrustChangeVoidingTest extends TestCase
     private RecordingFreshness $freshness;
 
     /**
-     * Bind a fixed clock and a fresh freshness contract, turn both protocols
-     * and IdP-initiated sign-in on, and create the tables.
+     * Bind a fixed clock and freshness, enable both protocols and IdP-initiated
+     * sign-in, and create the tables.
      *
      * @return void
      */
@@ -115,10 +103,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * A trust change voids the connection's pending and consumed but unfinished
-     * requests and its unredeemed codes, stamped with the clock's now; a
-     * finished request, a redeemed code, one voided before (which keeps its
-     * first stamp) and another connection's rows are left as they are.
+     * A trust change voids only unfinished requests and unredeemed codes,
+     * keeping earlier stamps.
      *
      * @return void
      */
@@ -195,8 +181,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * Rows of `[protocol, changes]`: each update that asks something else than
-     * `sso.connection.trust`, or nothing.
+     * Rows of `[protocol, changes]`: an update that asks something other than
+     * trust, or nothing.
      *
      * @return iterable<string, array{0: string, 1: array<string, mixed>}>
      */
@@ -213,8 +199,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * An update that asks another operation than `sso.connection.trust`, or
-     * none, voids nothing.
+     * An update asking anything other than `sso.connection.trust` voids
+     * nothing.
      *
      * @param  string  $protocol
      * @param  array<string, mixed>  $changes
@@ -265,8 +251,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * Rotating a key of the service provider's own keeps what subjects mean:
-     * adding, making current and retiring one void nothing.
+     * Adding, promoting and retiring the service provider's own key void
+     * nothing.
      *
      * @return void
      */
@@ -287,9 +273,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * Trusting a signing certificate is additive and voids nothing; trusting a
-     * metadata signing anchor, and distrusting a certificate, each void what is
-     * in flight.
+     * Trusting a signing certificate voids nothing; trusting an anchor or
+     * distrusting a certificate voids.
      *
      * @return void
      */
@@ -322,11 +307,7 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * Rotating a credential alters no subject, so a connection with an active
-     * link allows it: a client secret, a trusted certificate trusted and then
-     * distrusted, and a key of the service provider's own added, made current
-     * and retired, each succeed and keep the link; changing the issuer of the
-     * same connection is refused with `connection_has_links`.
+     * Rotating a credential is allowed with links; changing the issuer is not.
      *
      * @return void
      */
@@ -377,9 +358,7 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * The voider calls the seam that voids open link reservations once, with
-     * the locked connection, inside the transaction, after the requests and
-     * codes are voided.
+     * Open link reservations are voided last, once, inside the transaction.
      *
      * @return void
      */
@@ -397,8 +376,7 @@ final class TrustChangeVoidingTest extends TestCase
              */
             public function __construct(
 
-                // The clock the voids are stamped from, handed to the parent,
-                // which holds it
+                // Handed to the parent, which holds it
                 Clock $clock,
 
                 /** What each call to the seam saw. */
@@ -436,8 +414,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * Voiding outside a transaction on the storage connection is the caller's
-     * mistake, and voids nothing.
+     * Voiding outside a storage transaction is the caller's mistake, and voids
+     * nothing.
      *
      * @return void
      */
@@ -457,8 +435,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * Assert the pending and consumed requests and the unredeemed code were
-     * voided by the change, and the rest left as they were.
+     * Assert the change voided the pending and consumed requests and the
+     * unredeemed code only.
      *
      * @param  array<string, string>  $rows
      * @return void
@@ -494,9 +472,7 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * Give the connection a request pending, consumed but unfinished, finished,
-     * and voided earlier; and a code unredeemed, redeemed, and voided earlier.
-     * Answers the ids by what each is.
+     * Seed the connection with requests and codes in each state, by name.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return array<string, string>
@@ -518,8 +494,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * A complete OIDC connection of the tenant, created through the helpers so
-     * its settings are stored as an update compares them.
+     * A complete OIDC connection, created through the helpers so its settings
+     * compare as stored.
      *
      * @return \SineMacula\Laravel\Sso\Models\Connection
      */
@@ -539,8 +515,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * Create a connection of the protocol with the settings through the
-     * helpers, and forget the freshness it asked.
+     * Create a connection through the helpers and forget the freshness it
+     * asked.
      *
      * @param  string  $protocol
      * @param  array<string, string>  $settings
@@ -595,8 +571,8 @@ final class TrustChangeVoidingTest extends TestCase
     }
 
     /**
-     * When each row of the model with the ids was voided, in the order given,
-     * `null` for one never voided.
+     * When each row was voided, in the order given, `null` for one never
+     * voided.
      *
      * @param  class-string<\SineMacula\Laravel\Sso\Models\AuthorizationRequest>|class-string<\SineMacula\Laravel\Sso\Models\HandoffCode>  $model
      * @param  list<string>  $ids

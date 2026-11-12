@@ -9,8 +9,7 @@ use SineMacula\Laravel\Sso\Database\MigrationCollisionGuard;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * Create the enforcement table: each tenant's rule that sessions active in it
- * are established only through its own connections.
+ * Create the per-tenant enforcement table.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,27 +35,19 @@ return new class extends Migration {
         $schema->create($table, static function (Blueprint $blueprint) use ($table): void {
             $blueprint->char('id', 26)->primary();
 
-            // The tenant is an opaque string id the application gives, fixed at
-            // creation. One row per tenant is kept by the lower-case hex
-            // SHA-256 of its id rather than by the id itself, so a collation
-            // that counts `acme` and `Acme` as equal cannot merge two tenants.
+            // Unique on a SHA-256 hash of the id, so a case-insensitive
+            // collation cannot merge `acme` and `Acme`.
             $blueprint->string('tenant_id');
             $blueprint->char('tenant_hash', 64);
 
-            // Whether the rule is on, and the ids of the tenant's connections
-            // that satisfy it, as a JSON list.
             $blueprint->boolean('enabled')->default(false);
             $blueprint->json('connection_ids');
 
-            // A fresh lower-case ULID on every change, which an adapter records
-            // against a session to recheck it once it is stale, and when the
-            // rule last changed. Both are null on an unconfigured row: one a
-            // redemption, a completion or a first change created only to lock
-            // the tenant's rule, which reads exactly as no row.
+            // Null on a row created only to lock the tenant's rule, which reads
+            // as no row.
             $blueprint->char('version', 26)->nullable();
             $blueprint->dateTime('changed_at', 0)->nullable();
 
-            // Whole seconds in UTC, from the package's clock.
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);
 
@@ -78,8 +69,7 @@ return new class extends Migration {
     }
 
     /**
-     * The connection the table lives on, the one the model reads and writes it
-     * on: the storage connection (see `StorageConnection::connectionFor()`).
+     * The storage connection, which the model uses too.
      *
      * @return ?string
      *
@@ -106,8 +96,7 @@ return new class extends Migration {
     }
 
     /**
-     * An index name built from the table's, as Laravel builds one: lower case,
-     * with a schema's dot as an underscore.
+     * An index name built from the table's the way Laravel builds one.
      *
      * @param  string  $table
      * @param  string  $suffix

@@ -7,11 +7,8 @@ namespace SineMacula\Laravel\Sso\Keys;
 use SineMacula\Laravel\Sso\Keys\Enums\ExpiryNotice;
 
 /**
- * One key or certificate a run of `Keys\ExpiryReport` lists: what it is,
- * whether its validity has ended by the run's instant, the most urgent
- * threshold it has reached, and what the run did about warning of it.
- * Everything currently expiring or expired is listed, whatever was notified
- * before.
+ * One key or certificate a run of `Keys\ExpiryReport` lists, and what the run
+ * did about warning of it.
  *
  * @api
  *
@@ -36,7 +33,7 @@ final readonly class ExpiringKey implements \JsonSerializable
         /** Whether its validity has ended. */
         public bool $expired,
 
-        /** The most urgent threshold reached, in days; none when it has reached none. */
+        /** The most urgent threshold reached, in days, or null for none. */
         public ?int $thresholdDays,
 
         /** What the run did about warning of it. */

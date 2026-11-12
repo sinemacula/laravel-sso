@@ -21,10 +21,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the judgement of a transition receipt at the final locks
- * (SSO-2.13, SSO-7.3): every one of its conditions refuses alone, so the
- * request goes on across exactly the transition named and nothing else, and a
- * receipt refuses to be kept or shown.
+ * Feature tests for judging a transition receipt at the final locks.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -80,8 +77,8 @@ final class TransitionReceiptsTest extends TestCase
     }
 
     /**
-     * Rows of `[request attributes, connection attributes]`: a row no longer as
-     * the receipt named it.
+     * Rows of `[request attributes, connection attributes]` no longer as the
+     * receipt named.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: array<string, mixed>}>
      */
@@ -103,8 +100,7 @@ final class TransitionReceiptsTest extends TestCase
     }
 
     /**
-     * A request or connection no longer exactly as the receipt named it
-     * refuses, each on its own.
+     * A request or connection no longer exactly as named refuses, each alone.
      *
      * @param  array<string, mixed>  $requestAttributes
      * @param  array<string, mixed>  $connectionAttributes
@@ -138,9 +134,8 @@ final class TransitionReceiptsTest extends TestCase
     }
 
     /**
-     * A key no longer admitted, under the allow-list as locked, for the
-     * algorithm it verified under, refuses, as does another key or an
-     * allow-list that cannot be built.
+     * A key no longer admitted for its algorithm under the locked allow-list
+     * refuses, as do another key and an unbuildable allow-list.
      *
      * @return void
      */
@@ -173,8 +168,7 @@ final class TransitionReceiptsTest extends TestCase
     }
 
     /**
-     * A receipt is never kept: it refuses to be serialised or unserialised, and
-     * a dump shows the versions alone, never the key.
+     * A receipt refuses serialisation and its dump shows only the versions.
      *
      * @return void
      */
@@ -206,8 +200,8 @@ final class TransitionReceiptsTest extends TestCase
     }
 
     /**
-     * A connection at trust 5 and JWKS 7 storing the key, a consumed request at
-     * trust 4, and the receipt naming that transition.
+     * A connection at trust 5 and JWKS 7, a consumed request at trust 4, and a
+     * receipt for that transition.
      *
      * @return array{0: \SineMacula\Laravel\Sso\Models\Connection, 1: \SineMacula\Laravel\Sso\Models\AuthorizationRequest, 2: \SineMacula\Laravel\Sso\Protocols\TransitionReceipt}
      *

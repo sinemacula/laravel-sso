@@ -17,9 +17,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffCode;
 use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 
 /**
- * Unit tests for how a completion ended: each outcome with only its own
- * payload, the code never shown or serialised; and the steps of a completion,
- * in their fixed order, with the locked ones from link resolution on.
+ * Unit tests for completion results and steps.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -32,8 +30,7 @@ use SineMacula\Laravel\Sso\Handoffs\IssuedHandoff;
 final class CompletionResultTest extends TestCase
 {
     /**
-     * A completed one carries the redirect, the delivery, the reference and the
-     * handoff.
+     * A completed result carries the redirect, delivery, reference and handoff.
      *
      * @return void
      */
@@ -143,8 +140,7 @@ final class CompletionResultTest extends TestCase
     }
 
     /**
-     * The steps run in this order, the locked transaction from the replay
-     * recording on.
+     * The steps run in order, locked from the replay recording on.
      *
      * @return void
      */
@@ -167,8 +163,7 @@ final class CompletionResultTest extends TestCase
     }
 
     /**
-     * The final continuation repeats neither the replay recording, nor the
-     * domain selection, nor the provisioning boundary: exactly these steps.
+     * The final continuation skips the replay, domain and provisioning steps.
      *
      * @return void
      */

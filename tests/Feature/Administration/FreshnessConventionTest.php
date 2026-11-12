@@ -34,18 +34,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests of the convention every change to a connection, a key or a
- * certificate follows (SSO-2.12), disabling, deleting and migrating a
- * connection's subjects included: it asks the freshness contract, with the
- * operation's stable name and its configured maximum age, before it writes.
- * Under the default contract, which refuses everything, each is refused with
- * `freshness_required`, writing and reporting nothing; under one that answers
- * `fresh`, each asks exactly its operations. A change to the display name, the
- * mapping or the scopes asks nothing, and enabling asks even when the
- * connection is enabled already.
- *
- * Each operation's maximum age is set to a value of its own, none the default,
- * so a test shows the age asked with was read for that operation.
+ * Feature tests for the freshness check every connection, key and certificate
+ * change makes before it writes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -113,10 +103,8 @@ final class FreshnessConventionTest extends TestCase
     private string $trustedCertificate;
 
     /**
-     * Bind a fixed clock, turn the protocols and IdP-initiated sign-in on, give
-     * each operation a maximum age of its own, create the tables, and prepare
-     * an OIDC connection and a SAML connection with a current and a next key
-     * and a trusted certificate, under a contract that answers `fresh`.
+     * Bind a fixed clock, enable the protocols, give each operation its own
+     * maximum age and prepare the connections.
      *
      * @return void
      */
@@ -168,9 +156,8 @@ final class FreshnessConventionTest extends TestCase
     }
 
     /**
-     * Under the default contract, which refuses every operation, the mutation
-     * is refused with `freshness_required`: no row is written or changed, and
-     * nothing is reported.
+     * Under the default contract each change is refused with nothing written or
+     * reported.
      *
      * @param  string  $mutation
      * @param  list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation>  $operations
@@ -195,9 +182,8 @@ final class FreshnessConventionTest extends TestCase
     }
 
     /**
-     * Under a contract that answers `fresh`, the mutation asks exactly its
-     * operations, in order, each with the maximum age configured for it, and
-     * goes ahead.
+     * A fresh caller is asked exactly the change's operations with their
+     * maximum ages.
      *
      * @param  string  $mutation
      * @param  list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation>  $operations
@@ -226,8 +212,7 @@ final class FreshnessConventionTest extends TestCase
     }
 
     /**
-     * The caller a change is asked about, with its session, is the one its
-     * event names as acting: its identity, and never its session.
+     * The caller asked about is the acting identity the event names.
      *
      * @return void
      */
@@ -259,8 +244,7 @@ final class FreshnessConventionTest extends TestCase
     }
 
     /**
-     * An update of the display name, the attribute mapping or the scopes alone
-     * asks the contract nothing, and is written and reported.
+     * A change to the display name, the mapping or the scopes asks nothing.
      *
      * @param  array<string, mixed>  $changes
      * @param  string  $changed
@@ -279,8 +263,7 @@ final class FreshnessConventionTest extends TestCase
     }
 
     /**
-     * Enabling asks `sso.connection.enable` even when the connection is enabled
-     * already, which then changes nothing.
+     * Enabling asks even when the connection is enabled already.
      *
      * @return void
      */
@@ -316,8 +299,7 @@ final class FreshnessConventionTest extends TestCase
     }
 
     /**
-     * Each mutation of a connection, by name, to run against the connections
-     * prepared.
+     * Each connection mutation, by name.
      *
      * @return array<string, \Closure(): \SineMacula\Laravel\Sso\Connections\ConnectionResult>
      */
@@ -369,8 +351,7 @@ final class FreshnessConventionTest extends TestCase
     }
 
     /**
-     * Each change to a key or certificate, by name, to run against the keys
-     * prepared.
+     * Each key or certificate change, by name.
      *
      * @return array<string, \Closure(): \SineMacula\Laravel\Sso\Keys\KeyResult>
      */
@@ -399,9 +380,8 @@ final class FreshnessConventionTest extends TestCase
     }
 
     /**
-     * Prepare, under a contract that answers `fresh`, an OIDC connection, a
-     * SAML connection with a current and a next signing key and a trusted
-     * certificate, and a SAML connection with IdP-initiated sign-in on.
+     * Prepare an OIDC connection, a SAML connection with keys and a
+     * certificate, and an IdP-initiated one.
      *
      * @return void
      */
@@ -446,8 +426,7 @@ final class FreshnessConventionTest extends TestCase
     }
 
     /**
-     * Every row of the connections table and the keys table, as stored, in
-     * order of id.
+     * Every row of the connections and keys tables, in id order.
      *
      * @return array{connections: list<array<array-key, mixed>>, keys: list<array<array-key, mixed>>}
      */

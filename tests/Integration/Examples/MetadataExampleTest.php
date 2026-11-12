@@ -18,11 +18,8 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 
 /**
- * The metadata worked examples of the testing guide (SSO-2.8, SSO-12.4): a SAML
- * identity provider's metadata imported from its URL and an OpenID provider's
- * discovery document imported from its issuer, each through the fake fetcher,
- * each making a connection usable; a metadata URL that fails and a document
- * that names another issuer, each refused.
+ * The testing guide's metadata examples: SAML metadata and an OpenID discovery
+ * document imported through the fake fetcher.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,8 +35,8 @@ final class MetadataExampleTest extends ExampleTestCase
     private const string METADATA_URL = 'https://idp.example.test/metadata';
 
     /**
-     * The provider's metadata, fetched from its URL, proposes the connection's
-     * settings and certificate, which make a usable connection once trusted.
+     * Imported SAML metadata proposes settings and a certificate that make a
+     * usable connection.
      *
      * @return void
      */
@@ -73,8 +70,7 @@ final class MetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * A metadata URL that does not answer `2xx` is refused with `fetch_failed`,
-     * proposing nothing.
+     * A metadata URL that does not answer `2xx` is refused with `fetch_failed`.
      *
      * @return void
      */
@@ -91,9 +87,8 @@ final class MetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * The provider's discovery document, fetched from under its issuer with its
-     * keys, proposes the connection's endpoints, which the import saver stores
-     * with the fetch they came from.
+     * An imported discovery document proposes endpoints that are saved with
+     * their fetch.
      *
      * @return void
      */
@@ -126,8 +121,7 @@ final class MetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * A discovery document that names another issuer than the one it was
-     * fetched for is refused with `issuer_mismatch`.
+     * A document naming another issuer is refused with `issuer_mismatch`.
      *
      * @return void
      */

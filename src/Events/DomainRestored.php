@@ -9,14 +9,7 @@ use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
  * A verified domain whose record had gone passed a check again within its grace
- * period (SSO-3.3): linking by it resumes and it no longer lapses. Its
- * verification time is unchanged.
- *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol; a scheduled check has no acting identity (SSO-10.4). It reports
- * only, and never holds the verification token or a record's value; it crosses
- * a queue as it is.
+ * period; its verification time is unchanged.
  *
  * @api
  *
@@ -48,7 +41,7 @@ final readonly class DomainRestored implements SsoEvent
         /** When the domain became verified, kept across the restoration, in UTC. */
         public CarbonImmutable $verifiedAt,
 
-        /** When the check that confirmed it again ran, its last successful check, in UTC. */
+        /** When the check that confirmed it again ran, in UTC. */
         public CarbonImmutable $checkedAt,
     ) {}
 

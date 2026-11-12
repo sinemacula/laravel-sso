@@ -13,14 +13,8 @@ use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * The example application's re-authentication contract (SSO-5.10, SSO-9.5),
- * over its own `Session` model on the package's storage connection: a start
- * reads the session without a lock; a redemption reads it with a locking read,
- * in the redemption's transaction, and accepts only the exact application and
- * link that established it; and a renewal writes the later of the session's
- * authentication time and the provider's on that locked row, so it never moves
- * backwards. The application keeps no further-factor evidence, so the evidence
- * a renewal is given is not written.
+ * The example application's reauthentication sessions, over its own `Session`
+ * model on the package's storage connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

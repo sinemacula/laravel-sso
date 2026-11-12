@@ -25,21 +25,11 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races changes to one tenant's enforcement across processes, each with its own
- * database connection, on PostgreSQL and MySQL (SSO-4.3, SSO-4.5, SSO-4.6).
- * Each change locks the tenant's row, then the connections it names in id
- * order, and judges itself again on what the locks show: racing first changes
- * store one row and one change, racing changes are serialised into one chain of
- * versions, and a change waits for a connection another process is disabling
- * and then sees it disabled.
+ * Integration tests racing enforcement changes across processes.
  *
- * Each race runs twice: plainly, and with every process inside a transaction of
- * its own that read the enforcement table before the race began, so a locking
- * read that answered from that snapshot (MySQL's `REPEATABLE READ`) would fail
- * it.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Each race also runs inside transactions that read the table first, to catch
+ * answers from a `REPEATABLE READ` snapshot. Skipped on SQLite and without
+ * `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,9 +58,8 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock and a
-     * fresh caller, switch the feature on, create the tables and a connection
-     * per process, and make the directory the processes report in.
+     * Skip where processes cannot share the database, then set up the tenant, a
+     * connection per process and the outcome directory.
      *
      * @return void
      *
@@ -121,8 +110,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * Rows of `[inTransaction]`: each race plainly, and with every process
-     * inside a transaction of its own.
+     * Rows of `[inTransaction]`.
      *
      * @return iterable<string, array{bool}>
      */
@@ -133,9 +121,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * Processes racing to make the tenant's first change, each the same: one
-     * stores it, the rest find it stored and are unchanged, and the tenant has
-     * one row.
+     * Racing first changes store one row, and the rest are unchanged.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -160,9 +146,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * Processes racing to change the rule, each to a set of its own: every
-     * change is made, each against the one committed before it, so the versions
-     * are distinct and form one chain, and the row holds the last.
+     * Racing changes are serialised into one chain of versions.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -194,15 +178,11 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * A change that turns enforcement on, with as its only completed connection
-     * one another process holds locked while it disables it, waits for that
-     * process to commit and is then refused.
+     * A change waits for a connection another process is disabling, then is
+     * refused.
      *
-     * The disabling process commits only once the database shows a session
-     * waiting on its lock, however late the change starts. The change runs its
-     * plain check before it takes any lock, so a change seen waiting saw the
-     * connection still enabled there: its refusal can only come from the locked
-     * read again. It stores no rule: the row it locked stays unconfigured.
+     * The change's plain check runs before any lock, so only the locked read
+     * can refuse it.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -230,8 +210,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * Follow the chain of versions from the one given, each change replacing
-     * the one before it, and answer which process made the last.
+     * Follow the chain of versions and answer which process made the last.
      *
      * @param  string  $initial
      * @param  list<array<string, mixed>>  $outcomes
@@ -268,9 +247,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * Fork a process per set of ids, have each turn the tenant's enforcement on
-     * with its set at the same moment on a connection of its own, and collect
-     * what each reported.
+     * Fork a process per set of ids, each turning enforcement on with its set.
      *
      * @param  list<list<string>>  $sets
      * @param  bool  $inTransaction
@@ -287,14 +264,9 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * In a forked process: build the helper and listen for the change, open a
-     * transaction that reads the enforcement table first when asked, wait for
-     * the start, make the change, commit, and report the outcome, the version
-     * and the version the change replaced.
+     * In a forked process: wait for the start, make the change and report it.
      *
-     * A process that reaches the start late, on a loaded machine, changes at
-     * once rather than failing: the race is then less close, but every
-     * assertion still holds.
+     * A late process changes at once; the race is less close but still holds.
      *
      * @param  float  $start
      * @param  list<string>  $ids
@@ -333,9 +305,8 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * In a forked process: lock the connection, disable it, say so, hold the
-     * lock until the database shows a session waiting on it (or the deadline
-     * passes), and commit, reporting whether one waited.
+     * In a forked process: disable the connection under lock and hold it until
+     * another session waits.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $locked
@@ -359,8 +330,8 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * Poll, on the connection that holds the lock, until another session waits
-     * on a lock it holds, or the deadline passes; answer whether one did.
+     * Poll until another session waits on a lock this one holds, or the
+     * deadline passes.
      *
      * @param  \Illuminate\Database\Connection  $database
      * @return bool
@@ -387,8 +358,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * The query that counts the sessions waiting on a lock the current session
-     * holds.
+     * The query counting sessions waiting on a lock the current session holds.
      *
      * @param  string  $driver
      * @return string
@@ -405,10 +375,8 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * In a forked process: open a transaction that reads the enforcement table
-     * first when asked, wait until the connection is locked, turn enforcement
-     * on with it, commit, and report the outcome and, for diagnosis only, how
-     * long the change took.
+     * In a forked process: wait for the lock, turn enforcement on, and report
+     * the outcome and duration.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $locked
@@ -443,8 +411,7 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * Fork a process per body, have each run its body on a connection of its
-     * own, and collect what each reported, in order.
+     * Fork a process per body and collect what each reported, in order.
      *
      * @param  list<\Closure(): array<string, mixed>>  $bodies
      * @return list<array<string, mixed>>
@@ -483,9 +450,8 @@ final class ConcurrentEnforcementChangesTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, run the body, report
-     * what it answered, or the error it threw, and end without running the
-     * parent's shutdown.
+     * In a forked process: run the body on a new connection, report its answer
+     * or error, and exit without the parent's shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): array<string, mixed>  $body

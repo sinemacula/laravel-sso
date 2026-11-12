@@ -10,14 +10,8 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\RateLimit;
 
 /**
- * The statements behind the default attempt limiter (SSO-11.8), on the
- * counters' own connection and always on its write PDO (SSO-11.3). Every change
- * to a count is one statement the database applies atomically, so concurrent
- * attempts on any number of servers can never read a count, add to it, and
- * write it back over each other.
- *
- * Database errors propagate: the store catches nothing, so a limiter that
- * cannot count does not let attempts through (SSO-11.4).
+ * The attempt limiter's counter statements; every count change is one atomic
+ * statement, so concurrent servers never overwrite each other.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,16 +21,8 @@ use SineMacula\Laravel\Sso\Models\RateLimit;
 final readonly class RateLimitStore
 {
     /**
-     * Take one slot of the counter's window, unless the window is full: a
-     * counter whose window has ended starts the window that ends at `$end` with
-     * this attempt, and a missing counter is created with it. Returns the end
-     * of the window the slot was taken from, as stored; when the window is
-     * full, the Unix time it ends instead.
-     *
-     * A live counter whose window does not end at `$end` was started under a
-     * different `decay_seconds`, or by a server whose clock is ahead: its own
-     * window is kept and counted in, so a change of configuration neither
-     * forgives earlier attempts nor loses track of the window a slot came from.
+     * Take a slot and return its window as stored, or, when full, the Unix time
+     * to retry; a live window not ending at `$end` is kept.
      *
      * @param  string  $key
      * @param  int  $max
@@ -54,9 +40,7 @@ final readonly class RateLimitStore
     }
 
     /**
-     * Give back one slot taken from the window that ends at `$window`, as
-     * `take()` returned it; a counter that has moved on to another window, or
-     * holds no attempt, is left alone.
+     * Give back a slot, only to the window `take()` returned it from.
      *
      * @param  string  $key
      * @param  string  $window
@@ -72,12 +56,8 @@ final readonly class RateLimitStore
     }
 
     /**
-     * Read the counter the statements could not take a slot from, and take one
-     * from its stored window when that is live, does not end at the computed
-     * end, and has room. Returns that window as stored, or the Unix time the
-     * attempt may be made again: the stored window's end, and never earlier
-     * than a second from now (a counter that ended or went in the meantime is
-     * worth one more try).
+     * Take from the live stored window if it has room, else return when to
+     * retry, at least a second from now.
      *
      * @param  string  $key
      * @param  int  $max
@@ -103,8 +83,7 @@ final readonly class RateLimitStore
     }
 
     /**
-     * Add one attempt to the counter's stored window, in one statement, while
-     * that window is still the one stored and has room. Returns whether it did.
+     * Count one attempt in the stored window if unchanged and with room.
      *
      * @param  string  $key
      * @param  string  $window
@@ -125,14 +104,8 @@ final readonly class RateLimitStore
     }
 
     /**
-     * Add one attempt to an existing counter in one statement: the counter's
-     * window restarts when it has ended, and otherwise only a window that ends
-     * at `$end` and has room is counted in (any other live window is left
-     * untouched). Returns whether the counter was changed.
-     *
-     * The count is assigned before the window: MySQL evaluates the assignments
-     * of an UPDATE from left to right, so the count's condition must read the
-     * window before it is moved.
+     * Count one attempt, restarting an ended window; the count is assigned
+     * first because MySQL evaluates UPDATE assignments left to right.
      *
      * @param  string  $key
      * @param  int  $max
@@ -160,8 +133,7 @@ final readonly class RateLimitStore
     }
 
     /**
-     * Create the counter with this attempt, unless another request created it
-     * first. Returns whether this call created it.
+     * Create the counter with this attempt unless another request did first.
      *
      * @param  string  $key
      * @param  int  $end
@@ -179,8 +151,7 @@ final readonly class RateLimitStore
     }
 
     /**
-     * A query on the counters' table, for the writes the query builder can
-     * express.
+     * A query on the counters' table.
      *
      * @return \Illuminate\Database\Query\Builder
      */
@@ -201,7 +172,7 @@ final readonly class RateLimitStore
     }
 
     /**
-     * A counter model, which carries the configured table and connection.
+     * A model carrying the configured table and connection.
      *
      * @return \SineMacula\Laravel\Sso\Models\RateLimit
      */
@@ -211,9 +182,7 @@ final readonly class RateLimitStore
     }
 
     /**
-     * Format a Unix time as the counters' connection stores times, in UTC, to
-     * the whole second, so no daylight-saving change can make a live window
-     * read as ended (see `Models\Casts\UtcDateTime`).
+     * Format a Unix time as the connection stores times, in UTC.
      *
      * @param  int  $timestamp
      * @return string

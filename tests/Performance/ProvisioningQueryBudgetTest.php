@@ -33,24 +33,8 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Query budgets of the provisioning boundary (SSO-8.6, SSO-11.8), each measured
- * once the IP address's and the connection's counters exist, over the package's
- * link store and an issuer that costs nothing:
- *
- * - a completion that crosses the boundary and ends unlinked adds to an
- *   ordinary completion the link's locking read and the request's `verified_at`
- *   in its preparation, T2, and in its final continuation, T3, the connection's
- *   and the request's locks and the link's read again;
- * - the helper locks the connection, the request and the subject's row, and
- *   then the store locks the connection again, counts the identity's links and
- *   looks for an expired reservation; it writes the link and the links version;
- * - T3 then finds the link, and stamps its last use;
- * - a refusal writes nothing, and stops at what it needed: a spent grant reads
- *   nothing; a disabled connection and a passed deadline read the two locks; a
- *   held subject its row too; a limit reached the store's two reads more;
- * - with enforcement on, each of T2, the helper and T3 first upserts and locks
- *   the tenant's enforcement row, and locks the connection with the rule's
- *   connections in the one statement that locked it alone.
+ * Query budgets for the provisioning boundary, measured once the IP and
+ * connection counters exist, over the package's link store.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,10 +60,8 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
     private int $measured = 0;
 
     /**
-     * Bind the link store, the recording issuer and a request from an IP
-     * address, register the application and the driver, make a usable
-     * connection that maps the email, create the counters, and store the
-     * request.
+     * Make a usable connection that maps the email, create the counters and
+     * store the request.
      *
      * @return void
      */
@@ -118,7 +100,8 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Crossing the boundary and ending unlinked is ten reads and six writes.
+     * Beside a completion, T2 adds the link's locking read and the request's
+     * `verified_at`, and T3 the two locks and the link's read again.
      *
      * @return void
      */
@@ -130,7 +113,8 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Provisioned, the whole completion is sixteen reads and nine writes.
+     * The helper's statements are added, and T3 finds the link and stamps its
+     * last use.
      *
      * @return void
      */
@@ -144,8 +128,8 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Under enforcement, ending unlinked is twelve reads and eight writes, and
-     * provisioned nineteen reads and twelve writes.
+     * T2, the helper and T3 each upsert and lock the rule row, and lock the
+     * rule's connections with the connection.
      *
      * @return void
      */
@@ -171,7 +155,8 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * The helper alone is six reads and two writes.
+     * The connection, request and subject row locked, then the store's lock,
+     * link count and reservation check; the link and its version.
      *
      * @return void
      */
@@ -185,7 +170,7 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Under enforcement, the helper is seven reads and three writes.
+     * Enforcement adds the rule row's upsert and lock to the helper.
      *
      * @return void
      */
@@ -304,8 +289,7 @@ final class ProvisioningQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Have the listener make what is arranged, then assert what the helper
-     * costs and answers.
+     * Have the listener arrange, then assert what the helper costs and answers.
      *
      * @param  int  $reads
      * @param  int  $writes

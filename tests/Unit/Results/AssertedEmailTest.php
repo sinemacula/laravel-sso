@@ -12,10 +12,7 @@ use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Unit tests for the email a provider asserted with its `email_verified`
- * (SSO-7.7): kept exactly, `email_verified` as asserted, its bounds, its stored
- * form read back with every part checked, its JSON and every dump never showing
- * the email, and refusing to be serialised.
+ * Unit tests for a provider-asserted email.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +28,7 @@ final class AssertedEmailTest extends TestCase
     private const string EMAIL = ' Person+Tag@Example.COM ';
 
     /**
-     * The email is kept exactly, never trimmed or normalised, with the source,
-     * in the stored form.
+     * The email is kept exactly, never trimmed or normalised.
      *
      * @return void
      */
@@ -59,8 +55,7 @@ final class AssertedEmailTest extends TestCase
     }
 
     /**
-     * `email_verified` is carried exactly as asserted, through the stored form
-     * and back and in JSON.
+     * `email_verified` is carried exactly as asserted, stored and in JSON.
      *
      * @param  ?bool  $verified
      * @return void
@@ -114,8 +109,7 @@ final class AssertedEmailTest extends TestCase
     }
 
     /**
-     * JSON shows the source and the flag, under exactly those names and nothing
-     * else; never the email.
+     * JSON shows only the source and the flag, never the email.
      *
      * @return void
      */
@@ -125,8 +119,7 @@ final class AssertedEmailTest extends TestCase
     }
 
     /**
-     * What a dump shows is pinned, and no way of dumping or casting it shows
-     * the email.
+     * No dump or cast shows the email.
      *
      * @return void
      */
@@ -168,8 +161,7 @@ final class AssertedEmailTest extends TestCase
     }
 
     /**
-     * What it stored reads back the same, its email exact; a stored form with
-     * no flag is unknown.
+     * The stored form reads back exactly; without a flag it is unknown.
      *
      * @return void
      */

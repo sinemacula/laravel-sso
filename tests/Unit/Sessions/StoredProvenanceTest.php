@@ -15,12 +15,7 @@ use SineMacula\Laravel\Sso\Sessions\ProvenanceDomain;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Unit tests for a session provenance's stored form (SSO-9.7, SSO-9.10): UTC
- * instants to the microsecond, every key present with `null` where unstated,
- * the versioned form restored exactly (in any key order, as a database's JSON
- * column may give it back), every refusal of a form this version did not write,
- * each bound of a construction at its edge, and that no dump, JSON or PHP
- * serialisation shows a provider value.
+ * Unit tests for a session provenance's stored form.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,8 +32,7 @@ final class StoredProvenanceTest extends TestCase
     private const int JSON = JSON_THROW_ON_ERROR | JSON_PRESERVE_ZERO_FRACTION;
 
     /**
-     * Instants are kept in UTC to the microsecond, whatever zone they were
-     * given in, and the effective cap is kept to whatever precision it has.
+     * Instants are kept in UTC to the microsecond.
      *
      * @return void
      */
@@ -65,8 +59,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * A provenance with only what every one has stores every key, `null` and no
-     * methods for the rest.
+     * Every key is stored, `null` where unstated.
      *
      * @return void
      */
@@ -90,8 +83,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * The stored form restores exactly, including through JSON with its keys in
-     * another order, as a database's JSON column may give them back.
+     * The stored form restores exactly, even with reordered JSON keys.
      *
      * @return void
      */
@@ -121,8 +113,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * A provenance of each protocol with every fact, and one with every
-     * optional part `null`.
+     * A provenance of each protocol with every fact, and one with none.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Sessions\Provenance}>
      */
@@ -147,11 +138,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * The stored form is a non-empty map with string keys whose values are
-     * plain: the version an integer, every other value a string, `null` or a
-     * list of strings, and no array nested in the list. So it is stored the
-     * same by anything that keeps plain values, and comes back from JSON
-     * exactly as it went in.
+     * The stored form holds only plain values, so it survives JSON unchanged.
      *
      * @param  \SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
      * @return void
@@ -179,10 +166,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * The stored form at its worst, encoded as JSON with the default escaping
-     * (`json_encode()` with only `JSON_PRESERVE_ZERO_FRACTION` beside the
-     * exception flag), takes 3,364 bytes, within `MAX_STORED_JSON_BYTES`, and
-     * holds only plain values.
+     * The worst stored form, as default JSON, fits `MAX_STORED_JSON_BYTES`.
      *
      * @return void
      *
@@ -204,9 +188,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * The worst stored form holds every part at its limit, with every character
-     * one JSON escapes the most, and names every stored key: so a key added, or
-     * a limit loosened, changes what it takes and fails here.
+     * The worst stored form holds every part at its limit and every key.
      *
      * @return void
      *
@@ -241,9 +223,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * The escaping the worst case assumes: JSON's default escaping takes no
-     * more than two bytes for a byte of printable ASCII, and no more than six
-     * for a byte of any valid UTF-8, whatever its length.
+     * JSON escapes an ASCII byte to at most two bytes, any other to six.
      *
      * @return void
      *
@@ -326,8 +306,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * A stored form this version did not write is refused, never read as
-     * something else.
+     * A stored form this version did not write is refused.
      *
      * @param  array<array-key, mixed>  $stored
      * @return void
@@ -341,8 +320,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * Each bound of a construction, by its arguments, and the message of its
-     * refusal; `null` where it is accepted.
+     * Each construction bound with its refusal message, `null` where accepted.
      *
      * @return iterable<string, array{0: array<array-key, mixed>, 1: ?string}>
      */
@@ -418,8 +396,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * `json_encode()` and a dump show the methods as a count and each raw
-     * context as `[redacted]`, never a value the provider asserted.
+     * JSON and dumps show counts and `[redacted]`, never a provider value.
      *
      * @return void
      */
@@ -483,9 +460,7 @@ final class StoredProvenanceTest extends TestCase
     }
 
     /**
-     * The provenance whose stored form takes the most: every part at its limit,
-     * of the characters JSON escapes the most, every registered method, the
-     * longest link provenance and every instant.
+     * The provenance whose stored form is largest.
      *
      * @return \SineMacula\Laravel\Sso\Sessions\Provenance
      */

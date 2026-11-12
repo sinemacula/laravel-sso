@@ -15,9 +15,7 @@ use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
- * Feature tests for the rules of a `sign_in` (SSO-8.8): a suspended link and a
- * live reservation each refuse it for its own reason; anything else, including
- * a link not yet resolved, goes on.
+ * Feature tests for the rules of a `sign_in`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,8 +26,7 @@ use Tests\TestCase;
 final class SignInRulesTest extends TestCase
 {
     /**
-     * A suspended link is refused as suspended, and a live reservation as
-     * reserved.
+     * A suspended link and a live reservation each refuse for their own reason.
      *
      * @return void
      */

@@ -5,13 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Authentication\Context;
 
 /**
- * A stand-in for `laravel-authentication`'s real `Context\ContextContributors`,
- * which this package does not install, with the exact signatures of its
- * `register()` and `registered()`
- * (`docs/guides/integrating-with-laravel-iam.md`): a contributor is registered
- * under a namespace of a lower-case letter and then up to 31 lower-case
- * letters, digits or underscores, never `authentication`, and once; anything
- * else is a `LogicException`, as the sibling's is.
+ * A stand-in for `laravel-authentication`'s `Context\ContextContributors`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

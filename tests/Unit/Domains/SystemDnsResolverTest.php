@@ -12,11 +12,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Domains\SystemDnsResolver;
 
 /**
- * Unit tests for the default DNS resolver (SSO-3.2, decision D3): it asks for
- * the TXT records of the name, as absolute; an answer with none is `absent`; a
- * lookup that fails or warns is `lookup_failed`, logged with the name and never
- * a record; each record's character-strings are joined; and what it keeps is
- * capped. Every lookup is a stand-in, so no name is looked up over the network.
+ * Unit tests for the default DNS resolver, against a stubbed lookup.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,9 +39,7 @@ final class SystemDnsResolverTest extends TestCase
     }
 
     /**
-     * The resolver asks for the TXT records of the name as absolute, with a
-     * trailing dot, so no search domain is ever tried in its place, and joins
-     * each record's character-strings into one value.
+     * The name is queried as absolute, so no search domain applies.
      *
      * @return void
      */
@@ -69,8 +63,7 @@ final class SystemDnsResolverTest extends TestCase
     }
 
     /**
-     * An answer with no TXT record is `absent`, and so is one whose records are
-     * all of another type or malformed.
+     * An answer with no well-formed TXT record is `absent`.
      *
      * @return void
      */
@@ -89,9 +82,7 @@ final class SystemDnsResolverTest extends TestCase
     }
 
     /**
-     * A lookup that answers `false`, or that warns whatever it answers, is
-     * `lookup_failed`, never `absent`, and is logged with the name as given and
-     * the warning only.
+     * A lookup that fails or warns is `lookup_failed`, logged without records.
      *
      * @return void
      */
@@ -115,8 +106,7 @@ final class SystemDnsResolverTest extends TestCase
     }
 
     /**
-     * The handler that caught the warning is removed, so the application's own
-     * is in place afterwards.
+     * The resolver restores the application's error handler.
      *
      * @return void
      */
@@ -137,9 +127,7 @@ final class SystemDnsResolverTest extends TestCase
     }
 
     /**
-     * At most `MAX_RECORDS` records of at most `MAX_RECORD_LENGTH` bytes are
-     * kept: a record of exactly that length is kept whole, and a longer one is
-     * left out, not cut short.
+     * Records over the length cap are dropped, never truncated.
      *
      * @return void
      */

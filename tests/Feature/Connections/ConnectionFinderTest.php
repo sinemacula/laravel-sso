@@ -19,10 +19,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the tenant-scoped lookup the management helpers share: a
- * connection is found only for its own tenant, matched exactly whatever the
- * column's collation, on the write connection, locked only when asked, and a
- * tenant's connections are listed oldest first.
+ * Feature tests for the tenant-scoped connection lookup.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -55,8 +52,7 @@ final class ConnectionFinderTest extends TestCase
     }
 
     /**
-     * A connection is found for its own tenant only; another tenant's, an
-     * unknown id and an id that cannot be one find nothing.
+     * A connection is found for its own tenant only.
      *
      * @return void
      */
@@ -73,9 +69,8 @@ final class ConnectionFinderTest extends TestCase
     }
 
     /**
-     * Tenant ids that differ only in case or a trailing space are distinct
-     * tenants: each finds and lists only its own connection, as any engine's
-     * collation would have it.
+     * Tenant ids differing only in case or a trailing space are distinct
+     * tenants, whatever the collation.
      *
      * @return void
      *
@@ -106,9 +101,7 @@ final class ConnectionFinderTest extends TestCase
     }
 
     /**
-     * A row the statement matched only under the column's collation, whose
-     * recorded tenant id is not byte for byte the one given, is treated as
-     * absent by every lookup.
+     * A row matched only under the column's collation is treated as absent.
      *
      * @return void
      *
@@ -135,7 +128,7 @@ final class ConnectionFinderTest extends TestCase
     }
 
     /**
-     * A tenant id of exactly 255 bytes, the longest the table holds, finds its
+     * A tenant id of 255 bytes, the longest the table holds, finds its
      * connection.
      *
      * @return void
@@ -168,9 +161,8 @@ final class ConnectionFinderTest extends TestCase
     }
 
     /**
-     * Only the locking lookup locks the row for update, which serialises a
-     * connection's changes and rotations. SQLite has no row lock, so there the
-     * lock is compiled to a marker comment to show it was asked for.
+     * Only the locking lookup locks the row; SQLite has no row lock, so it
+     * compiles to a marker comment.
      *
      * @return void
      *
@@ -260,8 +252,8 @@ final class ConnectionFinderTest extends TestCase
     }
 
     /**
-     * A connection id no connection can have, empty or longer than an id, is
-     * not found, without a query.
+     * An id no connection can have, empty or overlong, is not found without a
+     * query.
      *
      * @return void
      */

@@ -20,18 +20,8 @@ use Tests\Concerns\UsesConnections;
 use Tests\Fixtures\Clients;
 
 /**
- * Query budgets for the public JWKS, a body an unauthenticated route serves for
- * a connection named in its URL, so its reads must not grow with what a
- * connection holds or depend on who asks (SSO-2.7):
- *
- * - an id that names no connection, empty or longer than a ULID: nothing;
- * - an unknown id: 1 read, the connection;
- * - a protocol with no such keys, a protocol switched off, a client secret
- *   method or an unsupported one: 1 read, the connection;
- * - `private_key_jwt`: 2 reads, the connection and its key ring together,
- *   whether it holds no key, one or a current and a next.
- *
- * None of them writes.
+ * Query budgets for the public JWKS, which must not grow with what a connection
+ * holds or vary by caller. None of them writes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -84,8 +74,8 @@ final class ServiceProviderDescriptionQueryBudgetTest extends PerformanceContrac
     }
 
     /**
-     * A client secret method, an unsupported one, a protocol with no such keys
-     * and a protocol switched off are each the read of the connection alone.
+     * A client secret, an unsupported method, a protocol without such keys and
+     * a disabled protocol each read the connection alone.
      *
      * @return void
      */
@@ -108,7 +98,8 @@ final class ServiceProviderDescriptionQueryBudgetTest extends PerformanceContrac
     }
 
     /**
-     * `private_key_jwt` is two reads with no key, one, or a current and a next.
+     * `private_key_jwt` reads the connection and its key ring, with no key,
+     * one, or a current and a next.
      *
      * @return void
      */
@@ -128,8 +119,7 @@ final class ServiceProviderDescriptionQueryBudgetTest extends PerformanceContrac
     }
 
     /**
-     * The public keys of the id given, asserted to cost the reads given and no
-     * write.
+     * The id's public keys, asserted to cost the reads given and no write.
      *
      * @param  string  $id
      * @param  int  $reads

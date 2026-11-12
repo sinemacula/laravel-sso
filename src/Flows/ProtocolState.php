@@ -7,19 +7,8 @@ namespace SineMacula\Laravel\Sso\Flows;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * The random protocol state the package makes for one authorisation request
- * (SSO-5.1, SSO-5.2, SSO-5.4): the state sent as the OIDC `state` or the SAML
- * `RelayState`, the OIDC nonce, and the PKCE verifier the package uses with the
- * identity provider. Each is 43 base64url characters from 32 random bytes of
- * the system's CSPRNG, independent of the request's public reference and of the
- * client's verifier.
- *
- * Each is a `Secrets\Secret`, given to the driver to send, and none is ever
- * stored as it is: the request keeps the state's and the nonce's digests (the
- * lower-case hex SHA-256) and the PKCE verifier encrypted. A dump and
- * `json_encode()` show none of them, and the state refuses to be serialised or
- * unserialised, so it never reaches a log, an exception, a queue or an event
- * (SSO-9.8).
+ * The random state, nonce and PKCE verifier the package makes for one
+ * authorisation request; only their digests or ciphertext are stored.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,7 +46,7 @@ final readonly class ProtocolState implements \JsonSerializable
     ) {}
 
     /**
-     * What a dump shows: none of the values.
+     * Dump none of the values.
      *
      * @return array<string, string>
      */
@@ -139,8 +128,7 @@ final readonly class ProtocolState implements \JsonSerializable
     }
 
     /**
-     * The lower-case hex SHA-256 of the state, the only form the request keeps
-     * it in and a response is looked up by.
+     * The hex SHA-256 of the state, the only form the request keeps.
      *
      * @return string
      */
@@ -150,8 +138,7 @@ final readonly class ProtocolState implements \JsonSerializable
     }
 
     /**
-     * The lower-case hex SHA-256 of the nonce, the only form the request keeps
-     * it in.
+     * The hex SHA-256 of the nonce, the only form the request keeps.
      *
      * @return string
      */
@@ -161,8 +148,7 @@ final readonly class ProtocolState implements \JsonSerializable
     }
 
     /**
-     * The S256 challenge of the PKCE verifier (RFC 7636 §4.2):
-     * `BASE64URL(SHA-256(verifier))` without padding.
+     * The S256 challenge of the PKCE verifier (RFC 7636 section 4.2).
      *
      * @return string
      */
@@ -172,7 +158,7 @@ final readonly class ProtocolState implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: none of the values.
+     * Encode none of the values.
      *
      * @return array<string, string>
      */
@@ -195,7 +181,7 @@ final readonly class ProtocolState implements \JsonSerializable
     }
 
     /**
-     * The bytes in base64url, without padding (RFC 4648 §5).
+     * The bytes in base64url, without padding (RFC 4648 section 5).
      *
      * @param  string  $bytes
      * @return string

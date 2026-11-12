@@ -29,12 +29,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for assembling what an OpenID Connect completion verified
- * (SSO-7.5, SSO-7.7, SSO-8.1, SSO-2.10): UserInfo off makes no fetch; on and
- * refused fails closed with the exact reason, logging an error's code alone;
- * UserInfo never changes the issuer, the subject or an authentication claim; it
- * wins for mapped attributes but for the email, which comes from one source;
- * the full claims pinned; and a claim that does not fit refused, never thrown.
+ * Feature tests for assembling what an OpenID Connect completion verified.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -126,9 +121,7 @@ final class ClaimsAssemblerTest extends TestCase
 
     /**
      * Every part of the claims is pinned, from an ID token and a UserInfo
-     * response each with everything: the identity and the authentication
-     * context from the ID token, the attributes with UserInfo over them and no
-     * protocol value, the email from the ID token, and no replay record.
+     * response that each carry everything.
      *
      * @return void
      */
@@ -206,9 +199,8 @@ final class ClaimsAssemblerTest extends TestCase
     }
 
     /**
-     * An ID token that states no authentication context states none, and a
-     * UserInfo response stating one changes nothing: not the context, the
-     * issuer or the subject, and no linking email without a pair.
+     * UserInfo never changes the authentication context, the issuer or the
+     * subject.
      *
      * @return void
      */
@@ -241,9 +233,8 @@ final class ClaimsAssemblerTest extends TestCase
     }
 
     /**
-     * Mapped through the connection's mapping, UserInfo wins for a claim both
-     * state, the ID token's stands for one only it states, and the email is the
-     * pair's.
+     * UserInfo wins for a mapped claim both state, the ID token stands for one
+     * only it states, and the email is the pair's.
      *
      * @return void
      */
@@ -384,9 +375,8 @@ final class ClaimsAssemblerTest extends TestCase
     }
 
     /**
-     * An ID token's flag that is not a JSON boolean gives no evidence and does
-     * not refuse the sign-in; UserInfo's flag never stands in when the token
-     * has the email.
+     * An ID token's non-boolean flag is no evidence and no refusal, and
+     * UserInfo's flag never stands in.
      *
      * @param  mixed  $flag
      * @return void
@@ -406,9 +396,8 @@ final class ClaimsAssemblerTest extends TestCase
     }
 
     /**
-     * UserInfo's flag that is not a JSON boolean gives no evidence and does not
-     * refuse the sign-in, though UserInfo stays mandatory; the ID token's flag
-     * never stands in when UserInfo has the email.
+     * UserInfo's non-boolean flag is no evidence and no refusal, and the ID
+     * token's flag never stands in.
      *
      * @param  mixed  $flag
      * @return void
@@ -590,9 +579,8 @@ final class ClaimsAssemblerTest extends TestCase
     }
 
     /**
-     * UserInfo is read first: a token whose claims do not fit is refused only
-     * once it passed, and a UserInfo refusal is what is answered when both are
-     * refused.
+     * UserInfo is read first, so its refusal wins over a token whose claims do
+     * not fit.
      *
      * @return void
      */

@@ -9,18 +9,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList;
 
 /**
- * An OpenID Connect connection's settings, typed, for the driver and its
- * collaborators to read (SSO-2.4): every setting of `OidcSettings`, defaults
- * applied, through an accessor of its own. It is read from what the connection
- * holds at the moment it is built, which the driver does once per call, so
- * nothing is kept between calls (SSO-11.2).
- *
- * Only a complete connection is ever used (`OidcDriver::isComplete()`), so a
- * flow reads a valid issuer, endpoints and client id; a setting the connection
- * does not hold is `null` (or its default), and an accessor that needs one
- * throws a `LogicException`, the caller's mistake. It holds no secret: the
- * client secret is read from the connection's secrets and the `private_key_jwt`
- * key from its keys, each only for the call that sends it.
+ * An OpenID Connect connection's settings, typed and with defaults applied,
+ * built once per driver call. It holds no secret.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,7 +31,7 @@ final readonly class OidcOptions
     ) {}
 
     /**
-     * The options of the connection as it holds them now.
+     * Read the connection's current options.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return self
@@ -76,7 +66,7 @@ final readonly class OidcOptions
     }
 
     /**
-     * The token endpoint, exactly as configured: a client assertion's `aud`.
+     * The token endpoint exactly as configured, a client assertion's `aud`.
      *
      * @return string
      *
@@ -124,8 +114,7 @@ final readonly class OidcOptions
     }
 
     /**
-     * How the client authenticates at the token endpoint:
-     * `client_secret_basic`, `client_secret_post` or `private_key_jwt`.
+     * How the client authenticates at the token endpoint.
      *
      * @return string
      */
@@ -137,8 +126,7 @@ final readonly class OidcOptions
     }
 
     /**
-     * The algorithm client assertions are pinned to, or `null` when none is, so
-     * each key signs with its own default.
+     * The pinned client assertion algorithm, or `null` for the key's default.
      *
      * @return ?string
      */
@@ -203,8 +191,7 @@ final readonly class OidcOptions
     }
 
     /**
-     * The `max_age` every authorisation request sends, in seconds, or `null`
-     * when none is configured.
+     * The `max_age` sent with every authorisation request, in seconds.
      *
      * @return ?int
      */
@@ -236,7 +223,7 @@ final readonly class OidcOptions
     }
 
     /**
-     * The setting as a string, which a complete connection holds.
+     * A string setting every complete connection holds.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting  $setting
      * @return string

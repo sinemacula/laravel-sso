@@ -10,13 +10,8 @@ use SineMacula\Laravel\AuditLog\Records\Reference;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 
 /**
- * The `laravel-audit-log` mapper of `docs/guides/events.md` (SSO-10.4,
- * SSO-12.5), run against the examples' stand-ins for that sibling's API
- * (`Events/AuditLog`): a failed flow is recorded under an explicit code, as a
- * failure with its reason, by the identity the event names, for the active
- * tenant or else the connection's, and correlated with the other records of its
- * flow by the connection and the request's public reference; every other event
- * is skipped.
+ * The `laravel-audit-log` mapper of `docs/guides/events.md`, against the
+ * stand-ins in `Events/AuditLog`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

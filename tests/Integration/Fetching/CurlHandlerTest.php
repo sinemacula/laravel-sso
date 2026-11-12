@@ -24,12 +24,7 @@ use Tests\Fixtures\Fetching\StubHostResolver;
 use Tests\TestCase;
 
 /**
- * Integration tests for the default fetcher's transport: resolved from the
- * container it sends through Guzzle's cURL handler and never PHP streams; it
- * refuses to be built without `ext-curl` rather than fall back; it refuses a
- * refused address before any connection is attempted; and the options it sends
- * are ones the installed Guzzle's cURL layer accepts (SSO-2.9). No request
- * leaves the process: the last test builds cURL handles without running them.
+ * Integration tests for the default fetcher's cURL transport.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -40,9 +35,7 @@ use Tests\TestCase;
 final class CurlHandlerTest extends TestCase
 {
     /**
-     * The contract resolves to the default fetcher, on Guzzle's cURL handler,
-     * with no handler injected: never the stream handler, and never one Guzzle
-     * would choose.
+     * The container's fetcher uses Guzzle's cURL handler, never streams.
      *
      * @return void
      */
@@ -59,9 +52,7 @@ final class CurlHandlerTest extends TestCase
     }
 
     /**
-     * A refused literal and a name resolving to a refused address are refused
-     * before any connection is attempted, by the real cURL handler: the literal
-     * is never resolved.
+     * A refused address is refused before any connection is attempted.
      *
      * @return void
      */
@@ -79,8 +70,7 @@ final class CurlHandlerTest extends TestCase
     }
 
     /**
-     * Without `ext-curl`, and with no handler injected, the fetcher refuses to
-     * be built rather than fall back to PHP streams.
+     * Without `ext-curl` the fetcher refuses to be built.
      *
      * @return void
      */
@@ -95,12 +85,8 @@ final class CurlHandlerTest extends TestCase
     }
 
     /**
-     * Every option the fetcher sends, for every purpose and credential, is
-     * accepted by the installed Guzzle's cURL layer: each request is turned
-     * into a cURL handle by Guzzle's own factory, and the handle released
-     * without being run, so an option Guzzle refuses (as Guzzle 8 refuses the
-     * cURL options it manages itself) fails here instead of on every real
-     * request.
+     * Every option the fetcher sends is accepted by Guzzle's cURL handle
+     * factory, which refuses the options it manages itself.
      *
      * @return void
      */

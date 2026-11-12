@@ -3,15 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The adapter's `sign_in` redemption of
- * `docs/guides/integrating-with-laravel-iam.md` (SSO-9.2, SSO-9.9, SSO-12.5),
- * as its redemption endpoint runs it, given the application, the connection,
- * the code and the client's verifier: the package admits the code first, then
- * authentication's external sign-in establishes the session, in that one
- * transaction on the package's storage connection. A refusal by the package
- * commits; one by authentication, or an unlinked result, rolls back. It answers
- * the refusal or the sign-in, which the endpoint turns into its response only
- * after the commit.
+ * The adapter's `sign_in` redemption, as its endpoint runs it with `$input`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

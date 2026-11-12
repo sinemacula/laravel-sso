@@ -3,7 +3,7 @@
 ## Purpose
 
 This note records what a connection is in storage, how a protocol is plugged in behind one contract, what makes a
-connection usable, and how presets fill in settings (SSO-2.1, SSO-2.2). Every later part of the package (management,
+connection usable, and how presets fill in settings (SSO-2.1, SSO-2.2). Every other part of the package (management,
 keys, domains, enforcement, links, the flows) reads a connection through what is described here.
 
 ## Invariants
@@ -24,6 +24,11 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
   | `has_completed_sign_in` | Whether a `sign_in` through it has been redeemed (default `false`; SSO-4.3)            |
   | `links_version`         | Raised by one for each link created through it (default `0`; see `links.md`)           |
   | `flows_version`         | Raised by one for each request stored and code issued through it (default `0`)         |
+  | `trust_version`         | Raised by one for each change that voids its flows, and on enabling (default `0`)      |
+  | `linking_*`             | The linking settings and their version (`linking.md`)                                  |
+  | `evidence_policy`       | JSON: the evidence policy, or `null` (`evidence.md`)                                   |
+  | `metadata_*`            | The metadata refresh state and its claim (`metadata-refresh.md`)                       |
+  | `jwks*`                 | The OIDC JWKS, its version, its refetch state and its claim (`oidc-discovery.md`)      |
   | `created_at`            | When it was created, whole seconds in UTC, from the package's clock                    |
   | `updated_at`            | When it last changed, whole seconds in UTC, from the package's clock                   |
 
@@ -33,19 +38,20 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
 - A new connection is disabled, has completed no sign-in, and has no settings or mapping until it is given them.
 - Tenant ids are opaque and compared exactly, whatever the column's collation. `Connections\ConnectionFinder` narrows
   by `tenant_id` in the statement, then keeps a row only when its recorded tenant id is byte for byte the one given, so
-  under a collation such as MySQL's default `_ci` (which counts `acme`, `Acme` and `acme` as equal) another tenant's
+  under a collation such as MySQL's default `_ci` (which counts `acme`, `Acme` and `ACME` as equal) another tenant's
   connection is still answered exactly as an unknown one.
 - Secrets never sit among the settings: they are taken out of what an administrator gives by the protocol's
   `secretNames()`, each encrypted on its own through `Contracts\SecretEncrypter` and kept under its name in `secrets`
   (so a read masks them by name without decrypting one), hidden from serialisation, and never returned by a helper
   (SSO-2.5). `Contracts\SsoConnection` exposes no secret.
-- `has_completed_sign_in` has exactly one writer: the redemption of a `sign_in` handoff code (BL-35), by the package's
-  own redemption or an adapter's acknowledgement in its redemption transaction. `link`, `reauthenticate`, an issued but
-  unredeemed code and an unlinked handoff never set it. Nothing in P1 writes it.
-- `links_version` has exactly one writer: `Links\LinkStore::create()`, which raises it by one, under the connection's
-  lock, for each link it inserts. It means nothing on its own; it makes a link's insert also write the connection's row,
-  so a PostgreSQL `REPEATABLE READ` transaction that locks the row after the creation commits fails to serialise rather
-  than go on without the link (see `flows.md`'s lock order).
+- `has_completed_sign_in` has exactly one writer: the redemption of a `sign_in` handoff code, by the package's own
+  redemption or an adapter's acknowledgement in its redemption transaction. `link`, `reauthenticate`, an issued but
+  unredeemed code and an unlinked handoff never set it.
+- `links_version` is raised by one, under the connection's lock, whenever a link or reservation of the connection is
+  written: by `Links\LinkStore` (create, confirm, suspend), `Links\LinkReservations`, `Links\ReservationWithdrawal`
+  and `Links\LinkService::delete()`. It means nothing on its own; it makes a link's write also write the connection's
+  row, so a PostgreSQL `REPEATABLE READ` transaction that locks the row after the write commits fails to serialise
+  rather than go on without it (see `flows.md`'s lock order).
 - `flows_version` has exactly two writers, each raising it by one under the connection's lock:
   `Flows\AuthorizationRequestService` for each authorisation request it stores, and `Handoffs\DatabaseHandoffStore` for
   each handoff code it issues. It means nothing on its own; it makes either insert also write the connection's row, so
@@ -58,10 +64,11 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
 - `Casts\UtcDateTime` never hands back the object it was given: every read is the `CarbonImmutable` in UTC the stored
   value names.
 - A protocol is a driver behind `Contracts\ProtocolDriver`: it reads a connection's settings (`settings()`, typed as
-  `Contracts\ProtocolSettings`), says whether a connection is complete (`isComplete()`), starts an authorisation
-  request (`start()`), completes it (`complete()`) and describes the service provider side (`describe()`). Expected
-  refusals are values (`Protocols\Start`, `Protocols\Completion`, `Protocols\ServiceProviderDescription`, each carrying
-  a `FailureReason`); a database error, a misconfiguration or a library failure propagates.
+  `Contracts\ProtocolSettings`), says whether a connection is complete (`isComplete()`), starts an authorisation request
+  (`start()`), correlates a response with its request (`correlate()`), completes it (`complete()`) and describes the
+  service provider side (`describe()`). Expected refusals are values (`Protocols\Start`, `Protocols\Completion`,
+  `Protocols\ServiceProviderDescription`, each carrying a `FailureReason`); a database error, a misconfiguration or a
+  library failure propagates.
 - A driver reads a connection only through `Contracts\SsoConnection` (an architecture rule forbids `Protocols` to name
   `Models`), and holds no connection, tenant, flow or result state between calls (SSO-11.2).
 - `Protocols\ProtocolManager` is the registry, in the style of `laravel-authentication`'s `SignInMethodManager`:
@@ -97,13 +104,12 @@ keys, domains, enforcement, links, the flows) reads a connection through what is
   (`Protocols\Presets`); an application registers its own with `ProtocolManager::registerPreset()`, never under a
   shipped name and only for a registered protocol. A preset never holds a secret.
 - The flow value types (`Protocols\StartRequest`, `Start`, `Navigation`, `CompletionRequest`, `Completion`,
-  `ServiceProviderDescription`) are the contract's shape now; the authorisation request (BL-32) and completion pipeline
-  (BL-34) add to them, through new named constructors and fields, before the real drivers land. `StartRequest` holds
-  the protocol state as `Secrets\Secret` values, and `CompletionRequest` (which carries an assertion or a code) shows
-  nothing in a dump and refuses to be serialised. `Navigation` holds its URL and form fields (an OIDC request's
-  `state`, `nonce` and `code_challenge`, a SAML form's `SAMLRequest` and `RelayState`) in `\SensitiveParameterValue`,
-  gives them through `url()`, `fields()` and `jsonSerialize()` (the start response's `navigation`), and shows in a dump
-  only its type, its URL with every query value and any fragment redacted, and its fields' names.
+  `ServiceProviderDescription`) are the contract's shape. `StartRequest` holds the protocol state as `Secrets\Secret`
+  values, and `CompletionRequest` (which carries an assertion or a code) shows nothing in a dump and refuses to be
+  serialised. `Navigation` holds its URL and form fields (an OIDC request's `state`, `nonce` and `code_challenge`, a
+  SAML form's `SAMLRequest` and `RelayState`) in `\SensitiveParameterValue`, gives them through `url()`, `fields()` and
+  `jsonSerialize()` (the start response's `navigation`), and shows in a dump only its type, its URL with every query
+  value and any fragment redacted, and its fields' names.
 
 ## Success Path
 
@@ -146,7 +152,8 @@ $this->callAfterResolving(ProtocolManager::class, fn (ProtocolManager $protocols
 
 - `tests/Feature/Protocols/ProtocolManagerTest.php`
 - `tests/Feature/Models/ConnectionTest.php`, `tests/Feature/Models/Casts/UtcDateTimeTest.php`
-- `tests/Integration/Connections/ConnectionsMigrationTest.php`, `tests/Integration/Connections/ConnectionUsabilityTest.php`
+- `tests/Integration/Connections/ConnectionsMigrationTest.php`,
+  `tests/Integration/Connections/ConnectionUsabilityTest.php`
 - `tests/Unit/Protocols/PresetTest.php`, `tests/Unit/Protocols/PresetsTest.php`
 - `tests/Unit/Protocols/Saml2/Enums/Saml2SettingTest.php`, `tests/Unit/Protocols/Oidc/Enums/OidcSettingTest.php`
 - `tests/Unit/Protocols/NavigationTest.php`, `StartTest.php`, `StartRequestTest.php`, `CompletionTest.php`,

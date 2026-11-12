@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 
 /**
- * Unit tests for the single-use store's outcomes: two, the first of which is
- * success.
+ * Unit tests for the single-use store's outcomes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

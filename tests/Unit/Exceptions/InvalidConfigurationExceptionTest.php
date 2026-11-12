@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
 
 /**
- * Unit tests for the boot check's exception: a logic error that lists every
- * problem in its message and keeps them for a caller to read.
+ * Unit tests for the boot check's exception.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -21,8 +20,7 @@ use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
 final class InvalidConfigurationExceptionTest extends TestCase
 {
     /**
-     * The exception names every problem, one per line, points at `sso:check`,
-     * and keeps the problems.
+     * The message lists every problem and points at `sso:check`.
      *
      * @return void
      */

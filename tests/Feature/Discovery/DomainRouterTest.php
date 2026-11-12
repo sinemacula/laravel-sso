@@ -22,14 +22,7 @@ use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for resolving an email to the connection its domain routes
- * discovery to (SSO-3.4, SSO-3.5): a verified domain routes, before and within
- * the grace period that follows its record going, and not at or after its end;
- * a pending or lapsed claim, a disabled, incomplete or deleted connection, a
- * subdomain and an unknown domain all answer `null`; the domain is the part
- * after the last `@`, normalised by IDNA and in lower case; another tenant's
- * verified domain routes to that tenant's connection; and an email whose domain
- * does not normalise reads nothing.
+ * Feature tests for routing an email's domain to a discovery connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,8 +42,7 @@ final class DomainRouterTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, register the driver, create the tables and a usable
-     * connection.
+     * Bind a fixed clock, register the driver and create a usable connection.
      *
      * @return void
      */
@@ -90,8 +82,8 @@ final class DomainRouterTest extends TestCase
     }
 
     /**
-     * Each instant a verified claim's grace period ends, and whether the claim
-     * still routes then.
+     * Each instant a verified claim's grace period ends, and whether it still
+     * routes.
      *
      * @return iterable<string, array{0: string, 1: bool}>
      */
@@ -104,9 +96,9 @@ final class DomainRouterTest extends TestCase
     }
 
     /**
-     * A verified domain whose record went still routes within its grace period,
-     * linking suspended or not, and stops routing at its end, before any
-     * recheck marks it lapsed.
+     * A verified domain whose record went routes within its grace period,
+     * linking suspended or not, and stops at its end without waiting for a
+     * recheck.
      *
      * @param  string  $lapsesAt
      * @param  bool  $routes
@@ -155,8 +147,8 @@ final class DomainRouterTest extends TestCase
     }
 
     /**
-     * A claim no longer verified never routes, even if its `verified_domain`
-     * were still set.
+     * A claim no longer verified never routes, even with `verified_domain`
+     * still set.
      *
      * @return void
      */
@@ -172,8 +164,8 @@ final class DomainRouterTest extends TestCase
     }
 
     /**
-     * A domain another tenant holds verified routes to that tenant's
-     * connection, whatever claims of it other tenants hold pending or lapsed.
+     * Another tenant's verified domain routes to its own connection, whatever
+     * other claims exist.
      *
      * @return void
      */
@@ -215,8 +207,7 @@ final class DomainRouterTest extends TestCase
     }
 
     /**
-     * A connection whose protocol is switched off does not route: the starting
-     * driver is available only while a protocol is on.
+     * A connection whose protocol is switched off does not route.
      *
      * @return void
      */
@@ -262,8 +253,8 @@ final class DomainRouterTest extends TestCase
     }
 
     /**
-     * A subdomain of a verified domain, and the domain it is under, do not
-     * route: claims are exact.
+     * A subdomain of a verified domain, and its parent, do not route: claims
+     * are exact.
      *
      * @return void
      */
@@ -311,8 +302,8 @@ final class DomainRouterTest extends TestCase
     }
 
     /**
-     * An email with no domain, or a domain that does not normalise, is `null`,
-     * never an exception, and reads nothing.
+     * An email with no domain, or one that does not normalise, routes nowhere
+     * and reads nothing.
      *
      * @param  string  $email
      * @return void

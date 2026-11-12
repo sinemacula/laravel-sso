@@ -15,12 +15,7 @@ use SineMacula\Laravel\Sso\Models\Link;
 
 /**
  * Makes links, authorisation requests and handoff codes for a test to work on.
- * A test that uses it uses `UsesConnections` too, since each row belongs to a
- * connection, and calls `usePackageTables()` in its `setUp()`, so the tables
- * exist.
- *
- * Each row is written through its model, so its key and stamps come from the
- * package's clock; what the attributes given name replaces the defaults.
+ * A test that uses it calls `usePackageTables()` in its `setUp()`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -30,10 +25,8 @@ use SineMacula\Laravel\Sso\Models\Link;
 trait UsesFlowTables
 {
     /**
-     * Make and save an authorisation request through the connection: a
-     * `sign_in` for `web`, with a random reference and state digest, a fixed
-     * challenge, the connection's trust version as stored now, expiring ten
-     * minutes after the clock's now, unless the attributes given say otherwise.
+     * Make and save a `sign_in` request for `web` at the stored trust version,
+     * unless overridden.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array<string, mixed>  $attributes
@@ -58,11 +51,8 @@ trait UsesFlowTables
     }
 
     /**
-     * Make and save a handoff code for the connection: a `sign_in` code for
-     * `web`, with a random digest, a fixed reference and challenge, an empty
-     * stored result, issued under the connection's trust version as the model
-     * holds it, expiring a minute after the clock's now, unless the attributes
-     * given say otherwise.
+     * Make and save a `sign_in` code for `web` at the model's trust version,
+     * unless overridden.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array<string, mixed>  $attributes
@@ -88,12 +78,8 @@ trait UsesFlowTables
     }
 
     /**
-     * Make and save an active link through the connection: issuer
-     * `https://idp.example.com`, the subject given, no NameID format, to `user`
-     * `1`, unless the attributes given say otherwise. Its key is the one
-     * `LinkSubject` derives from the issuer, format and subject the row ends up
-     * with, so the link resolves through the store, unless a `subject_key` is
-     * given.
+     * Make and save an active link to `user` `1`, unless overridden; its
+     * subject key is derived from the final attributes, so it resolves.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $subject
@@ -118,8 +104,7 @@ trait UsesFlowTables
     }
 
     /**
-     * The key `LinkSubject` derives from the issuer, NameID format and subject
-     * of the link's attributes.
+     * The key `LinkSubject` derives from the link's attributes.
      *
      * @param  array<string, mixed>  $attributes
      * @return string

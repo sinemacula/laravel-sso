@@ -14,12 +14,7 @@ use SineMacula\Laravel\Sso\Operations\OperationsSchedule;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The installation guide's wiring (SSO-11.11, SSO-12.5), run on the shared
- * example harness: once Artisan starts, the schedule its `bootstrap/app.php`
- * wires holds the pruning, the domain recheck, the metadata refresh and the key
- * expiry report, each once on its default cadence; while no protocol is on, as
- * on a fresh install, it holds none of them, since the tables they read may not
- * exist yet.
+ * The installation guide's schedule wiring.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -30,8 +25,7 @@ use Tests\Integration\Examples\ExampleTestCase;
 final class InstallationExampleTest extends ExampleTestCase
 {
     /**
-     * Once Artisan starts, the schedule the guide wires holds each of the
-     * package's operations exactly once, on its default cadence.
+     * The schedule holds each operation once, on its default cadence.
      *
      * @return void
      */
@@ -46,8 +40,7 @@ final class InstallationExampleTest extends ExampleTestCase
     }
 
     /**
-     * With every protocol off, as the package is installed, the schedule the
-     * guide wires holds none of the package's operations.
+     * With every protocol off, as installed, the schedule holds no operation.
      *
      * @return void
      */
@@ -60,10 +53,8 @@ final class InstallationExampleTest extends ExampleTestCase
     }
 
     /**
-     * Configure the application under test with the guide's
-     * `bootstrap/app.php`, start Artisan as `php artisan` does, and answer each
-     * of the package's operations the schedule then holds, in order, as its
-     * command and its cadence.
+     * Each operation's command and cadence, in order, once the guide's
+     * bootstrap starts Artisan.
      *
      * @return list<array{0: string, 1: string}>
      */

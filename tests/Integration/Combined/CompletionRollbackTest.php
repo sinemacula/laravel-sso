@@ -39,26 +39,10 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * What a failure in each of a completion's transactions rolls back, and what it
- * leaves standing, on every database the suite runs on (SSO-10.5, SSO-11.4,
- * `docs/design/transaction-ownership.md`). Each test names the transaction it
- * rolls back, and compares every row stored with how they stood when that
- * transaction was about to open, so nothing of it survives; and asserts what
- * earlier transactions committed stays, by design:
+ * Integration tests for what a failure in each completion transaction rolls
+ * back.
  *
- * - T2, preparation: failed before and after its mutations, at the named
- *   statement, at its commit and by an issuer that throws. T1's consumption
- *   stays, and nothing is reported.
- * - TP, the listener's provisioning: T2's `verified_at` and `ResultVerified`
- *   stay, and the synchronous `ResultUnlinked`; no link, identity or
- *   `LinkCreated` does.
- * - T3, the final continuation: all of that stays, TP's committed link and
- *   `LinkCreated` with it; no code, `completed_at` or terminal event does.
- *
- * It runs on every engine, one process, with the failure injected through
- * `FailsDatabaseStatements`. Cases `CompletionTransactionTest` already pins are
- * not repeated: a linked completion's issuer throwing and the tables going
- * away.
+ * Transaction names follow `docs/design/transaction-ownership.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -87,8 +71,8 @@ final class CompletionRollbackTest extends LinkingTestCase
     private IdentityReference $provisioned;
 
     /**
-     * Bind a fresh caller, ask a response to record its assertion against
-     * replay, and create the listener's table.
+     * Bind a fresh caller, record assertions against replay, and create the
+     * listener's table.
      *
      * @return void
      */
@@ -123,9 +107,8 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the flow, the verb, the table's key, the occurrence]`, the verb
-     * `null` for the commit: T2 failed before each of its mutations, the last
-     * of them being the commit that follows all of them.
+     * Rows of `[the flow, the verb, the table's key, the occurrence]`; a `null`
+     * verb fails the commit.
      *
      * @return iterable<string, array{0: string, 1: ?string, 2: ?string, 3: int}>
      */
@@ -147,11 +130,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back T2, a finishing one. Nothing it wrote survives, neither the
-     * reservation nor the code, and none of its events: not even
-     * `ResultVerified`, which waits for its commit. T1 committed before it, so
-     * the request stays consumed, and a second answer to it is
-     * `request_unknown`.
+     * Rolls back T2 of a finishing flow; T1's consumption stays.
      *
      * @param  string  $flow
      * @param  ?string  $verb
@@ -196,9 +175,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back T2, a reservation's: an issuer that throws, before or after it
-     * wrote its code, leaves neither the code nor the reservation it was to bind;
-     * T1 stays.
+     * Rolls back T2 of a reservation when the issuer throws; T1 stays.
      *
      * @param  bool  $writes
      * @return void
@@ -222,8 +199,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key]`, the verb `null` for the commit: T2
-     * failed latching a suspension, or after it.
+     * Rows of `[the verb, the table's key]`; a `null` verb fails the commit.
      *
      * @return iterable<string, array{0: ?string, 1: ?string}>
      */
@@ -235,8 +211,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back T2, one that latched a suspension: the link stays active, and
-     * neither `LinkSuspended` nor the refusal is reported.
+     * Rolls back T2 that latched a suspension; the link stays active.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -263,8 +238,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key]`, the verb `null` for the commit: T2
-     * failed on its way to the provisioning boundary.
+     * Rows of `[the verb, the table's key]`; a `null` verb fails the commit.
      *
      * @return iterable<string, array{0: ?string, 1: ?string}>
      */
@@ -276,9 +250,8 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back T2, one stopping at the boundary: its replay record and
-     * `verified_at` go, nothing is reported, and the result is never offered.
-     * T1 stays.
+     * Rolls back T2 stopping at the provisioning boundary; the result is never
+     * offered.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -310,9 +283,8 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table, the occurrence]`, the verb `null` for the
-     * commit: TP failed before and after the helper's mutations, with the
-     * listener's identity written before it and its membership after.
+     * Rows of `[the verb, the table, the occurrence]`; a `null` verb fails the
+     * commit.
      *
      * @return iterable<string, array{0: ?string, 1: ?string, 2: int}>
      */
@@ -326,11 +298,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TP, the listener's own transaction. Neither the identity, nor
-     * the link, nor `LinkCreated` survives. T2 committed before it:
-     * `verified_at`, its replay record and `ResultVerified` stay, as does the
-     * synchronous `ResultUnlinked`; T3 never runs, so there is no code and no
-     * `completed_at`.
+     * Rolls back TP, the listener's transaction; what T2 committed stays.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -368,8 +336,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key]`, the verb `null` for the commit: T3
-     * failed before and after its mutations.
+     * Rows of `[the verb, the table's key]`; a `null` verb fails the commit.
      *
      * @return iterable<string, array{0: ?string, 1: ?string}>
      */
@@ -382,9 +349,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back T3, the final continuation. No code, no `completed_at`, no
-     * `HandoffIssued`. What TP committed stays: the identity, its membership,
-     * the active link and `LinkCreated`, with what T2 committed before it.
+     * Rolls back T3; what TP and T2 committed stays.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -405,8 +370,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back T3: an issuer that throws, before or after it wrote its code,
-     * in the final continuation. What TP committed stays.
+     * Rolls back T3 when the issuer throws; what TP committed stays.
      *
      * @param  bool  $writes
      * @return void
@@ -426,8 +390,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key]`, the verb `null` for the commit: T3
-     * failed finishing a result nobody provisioned.
+     * Rows of `[the verb, the table's key]`; a `null` verb fails the commit.
      *
      * @return iterable<string, array{0: ?string, 1: ?string}>
      */
@@ -438,9 +401,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back T3, one ending `unlinked`. Its `completed_at` goes, and the
-     * terminal `FlowFailed` with it. What T2 committed stays, as does
-     * `ResultUnlinked`.
+     * Rolls back T3 of an `unlinked` ending; `ResultUnlinked` stays.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -521,9 +482,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Provision on the offer, in the listener's transaction, and commit it; then
-     * read every row and run what comes before T3, and answer those rows as they
-     * stood.
+     * Provision and commit on the offer, then snapshot the rows before T3 runs.
      *
      * @param  \Closure(): void  $then
      * @return \ArrayObject<string, list<string>>
@@ -550,8 +509,8 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * What a listener does: in one transaction on the storage connection, write
-     * the identity, link it, and write its membership.
+     * In one storage transaction, write the identity, link it and write its
+     * membership.
      *
      * @param  \SineMacula\Laravel\Sso\Events\ResultUnlinked  $event
      * @return void
@@ -569,8 +528,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Listen for the offer on the contract, so the recording listener sees it
-     * first, and sees it though this one throws.
+     * Listen on the contract, so the recording listener sees the offer first.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Events\ResultUnlinked): void  $listener
      * @return void
@@ -588,9 +546,7 @@ final class CompletionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Once T1 has committed, as the driver validates, read every row and arm
-     * the failure, and answer those rows as they stood; an occurrence of
-     * nothing arms nothing.
+     * Once T1 has committed, snapshot every row and arm the failure.
      *
      * @param  ?string  $verb
      * @param  ?string  $table

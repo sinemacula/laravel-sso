@@ -13,19 +13,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Library\MetadataWriter;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 
 /**
- * Describes a SAML connection's service provider side as SAML 2.0 Metadata
- * (SSO-5.9), `application/samlmetadata+xml`: its entity id and assertion
- * consumer service from the endpoint resolver (SSO-5.5), the certificates of
- * its published signing and encryption keys (`KeyRing::published()`: the
- * current key, then the next one during a rotation), its NameID format, its
- * `AuthnRequestsSigned` and `WantAssertionsSigned` switches, and the encryption
- * methods it allows, written by `Library\MetadataWriter`.
- *
- * Only the service provider side is described, so a connection whose identity
- * provider settings are not yet given is described too, for an administrator to
- * register it first. A key published with no certificate is left out. It holds
- * no private key and no secret, and is not signed. Every value is read afresh
- * on each call, and nothing is kept between calls (SSO-11.2).
+ * Describes a SAML connection's service provider side as unsigned SAML 2.0
+ * Metadata, so it can be registered before the IdP settings are given.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -79,7 +68,8 @@ final readonly class ServiceProviderMetadata
     }
 
     /**
-     * The certificate of each published key of the use, the current key first.
+     * The certificate of each published key of the use, current key first;
+     * keys without one are skipped.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use

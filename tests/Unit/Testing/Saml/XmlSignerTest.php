@@ -10,12 +10,7 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\XmlSigner;
 
 /**
- * Unit tests for the enveloped signature the fake SAML identity provider
- * writes: the exact `SignedInfo` (canonicalisation, signature method,
- * reference, transforms, digest method and the digest of the exclusive
- * canonical bytes, comments left out), the transforms a test names, a signature
- * value that verifies with the provider's certificate, the `KeyInfo` carrying
- * it, where the signature goes, and each option changing just its part.
+ * Unit tests for the fake identity provider's enveloped XML signature.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,9 +42,8 @@ final class XmlSignerTest extends TestCase
     private static ?array $keys = null;
 
     /**
-     * By default the signature references the element by its `ID`, digests its
-     * exclusive canonical form without comments with SHA-256, signs with
-     * RSA-SHA256, carries the certificate, and goes right after the issuer.
+     * By default it signs the element by `ID` with exclusive C14N, SHA-256 and
+     * RSA-SHA256, carries the certificate and follows the issuer.
      *
      * @return void
      */
@@ -93,9 +87,8 @@ final class XmlSignerTest extends TestCase
     }
 
     /**
-     * An empty reference digests the whole document, even when the element
-     * signed is another, and an element with no issuer takes the signature as
-     * its first child.
+     * An empty reference digests the whole document, and with no issuer the
+     * signature is the first child.
      *
      * @return void
      */
@@ -114,9 +107,8 @@ final class XmlSignerTest extends TestCase
     }
 
     /**
-     * The algorithm, digest and comments options change the signature method,
-     * the digest and the canonicalisation the `SignedInfo` names, and the value
-     * verifies with the algorithm's hash.
+     * The algorithm, digest and comments options change what `SignedInfo`
+     * names, and the value verifies with that hash.
      *
      * @return void
      */
@@ -139,9 +131,8 @@ final class XmlSignerTest extends TestCase
     }
 
     /**
-     * The transforms option lists those transforms, in order and repeated as
-     * given, and leaves the digest of the exclusive canonical bytes without
-     * comments as it was.
+     * The transforms option lists its transforms in order, repeats kept, and
+     * leaves the digest unchanged.
      *
      * @return void
      */

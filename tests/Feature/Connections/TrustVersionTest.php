@@ -20,12 +20,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Feature tests for a connection's trust version (P4/P5 agreed design): every
- * change that voids what is in flight through the connection raises it by one
- * under the connection's lock (a trust change of its settings, a disable), and
- * so does enabling it; a change that asks no trust, and enabling an enabled
- * connection, leave it as it was. A flow that holds no request to void and a
- * metadata refresh compare it under the lock.
+ * Feature tests for a connection's trust version.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +57,7 @@ final class TrustVersionTest extends TestCase
     }
 
     /**
-     * Voiding what is in flight raises the trust version by one, each time, on
-     * the locked connection and in memory alike.
+     * Each voiding raises the trust version by one, in the row and in memory.
      *
      * @return void
      */
@@ -82,8 +76,7 @@ final class TrustVersionTest extends TestCase
     }
 
     /**
-     * A trust change of the settings raises the trust version; one that asks no
-     * trust leaves it.
+     * A trust change of the settings raises it; one asking no trust leaves it.
      *
      * @return void
      */
@@ -102,8 +95,7 @@ final class TrustVersionTest extends TestCase
     }
 
     /**
-     * Disabling and enabling each raise the trust version; enabling an enabled
-     * connection, and disabling a disabled one, leave it.
+     * Disabling and enabling raise it; repeating either leaves it.
      *
      * @return void
      */

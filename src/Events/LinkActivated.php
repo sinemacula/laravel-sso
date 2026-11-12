@@ -7,16 +7,9 @@ namespace SineMacula\Laravel\Sso\Events;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * A link reservation was activated by the redemption of its handoff (SSO-8.8):
- * a person's existing identity is now linked by a verified domain, which the
- * application should tell them about on their existing channels.
+ * A link reservation was activated by the redemption of its handoff.
  *
- * Dispatched after the transaction that activated it commits, right after
- * `LinkCreated`, and never when it rolls back (SSO-10.5). It carries references
- * sufficient to notify the person (the connection, its tenant and protocol, the
- * identity, the application, the request's public reference and the link),
- * never the email the provider supplied, which must never be used as a
- * notification destination, and crosses a queue as it is.
+ * Tell the person on their existing channels, never at the provider's email.
  *
  * @api
  *

@@ -3,10 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The discovery route of `docs/guides/discovery.md` (SSO-3.4, SSO-12.5), as an
- * application's routes file holds it: a start by email address, answered with
- * the start's body and headers, `200` for a match and a miss alike, `429` when
- * rate limited, and `400` for any other refusal.
+ * The discovery route of `docs/guides/discovery.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

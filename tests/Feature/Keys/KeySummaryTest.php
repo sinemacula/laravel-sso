@@ -16,10 +16,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for the summary of a key or certificate (SSO-2.5 to SSO-2.7):
- * read from a row's certificate, or from its bare public key when it has none;
- * its expiry answered at the edges, never enforced; and its JSON form, which
- * never holds a private key.
+ * Feature tests for the summary of a key or certificate.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +33,7 @@ final class KeySummaryTest extends TestCase
     private const string CONNECTION = '01jbconnection000000000001';
 
     /**
-     * A row with a certificate is summarised from it: the certificate, its
-     * public key and its fingerprint, with every other column as stored.
+     * A row with a certificate is summarised from it, other columns as stored.
      *
      * @return void
      */
@@ -65,7 +61,7 @@ final class KeySummaryTest extends TestCase
 
     /**
      * A row with no certificate is summarised from its bare public key, with no
-     * certificate and no validity.
+     * validity.
      *
      * @return void
      */
@@ -100,8 +96,8 @@ final class KeySummaryTest extends TestCase
     }
 
     /**
-     * A certificate expires within the seconds given when its validity ends at
-     * or before their end, or has ended already.
+     * A certificate expires within the given seconds when its validity ends by
+     * then, or has ended.
      *
      * @return void
      */
@@ -119,8 +115,8 @@ final class KeySummaryTest extends TestCase
     }
 
     /**
-     * The JSON form names every field, with snake_case keys and ISO 8601 UTC
-     * times, and never the private key, however the row holds it.
+     * The JSON form has snake_case keys and ISO 8601 UTC times, and never the
+     * private key.
      *
      * @return void
      */

@@ -9,9 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Handoffs\HandoffCode;
 
 /**
- * Unit tests for a handoff code: 43 random base64url characters, stored only as
- * its SHA-256 digest, matched in constant time, and never shown in a dump, JSON
- * or a serialisation.
+ * Unit tests for a handoff code.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,8 +20,7 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffCode;
 final class HandoffCodeTest extends TestCase
 {
     /**
-     * A generated code is 43 base64url characters and new each time; its digest
-     * is the lower-case hex SHA-256 of it, and it matches only that.
+     * A code is 43 random base64url characters matching its SHA-256 digest.
      *
      * @return void
      *

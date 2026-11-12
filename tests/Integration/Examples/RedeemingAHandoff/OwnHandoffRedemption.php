@@ -15,19 +15,7 @@ use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
 
 /**
- * The redemption of an application's own handoff codes of
- * `docs/guides/redeeming-a-handoff.md` (SSO-4.6, SSO-8.5, SSO-8.8, SSO-9.9,
- * SSO-12.5), for codes its own store issued: it reads the code plainly to learn
- * the result it carries, then, in one transaction on the package's storage
- * connection, takes `HandoffRecheck`'s lock first, consumes and checks its own
- * code after it, describes what the code was bound to with a `HandoffBinding`,
- * the trust version it was issued under included, and admits it, discarding the
- * reservation of every refusal and writing the session of an admitted `sign_in`
- * in that same transaction: capped at the session's latest end the code
- * carries, with the provenance captured from that admission and that same
- * latest end.
- *
- * It answers `null` when the code is admitted, or the reason it is refused; a
+ * Redeems codes the application's own store issued, through `HandoffRecheck`; a
  * refusal commits, and spends the code.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
@@ -53,9 +41,7 @@ final readonly class OwnHandoffRedemption
     ) {}
 
     /**
-     * Redeem the code for the purpose the endpoint redeems, with the client's
-     * verifier and the caller the application authenticated, which a `link`
-     * needs.
+     * Redeem the code, answering `null` when admitted or the refusal reason.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $value
@@ -73,7 +59,6 @@ final readonly class OwnHandoffRedemption
         ClientContext $client,
         ?Caller $caller = null,
     ): ?FailureReason {
-        // Read the code plainly first, to learn the result it carries
         $code = $this->codes->find($value);
 
         return $code === null ? FailureReason::HANDOFF_UNKNOWN : $this->admit($code, $purpose, $verifier, $client, $caller);

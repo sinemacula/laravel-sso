@@ -52,17 +52,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for starting an OIDC flow through the public start service
- * (SSO-5.1, SSO-5.2, SSO-5.4, SSO-5.5, SSO-5.10, SSO-2.4, SSO-7.1), with the
- * fake provider reading the URL as an authorisation endpoint would: it sees
- * exactly the expected parameters; the stored row keeps the digests of the
- * state and the nonce, the PKCE verifier encrypted, the expected issuer,
- * whether `iss` is required and the connection's trust version; the client's
- * challenge and the generated verifier stay apart from the PKCE verifier; a
- * `link` asks freshness and a `reauthenticate` the session contract; each
- * refusal reports one `FlowFailed` and stores nothing; a start reports one
- * `AuthorizationRequestStarted` after it commits; and no protocol value reaches
- * an event, a log or a dump. No start reaches the provider.
+ * Feature tests for starting an OIDC flow through the public start service. No
+ * start reaches the provider.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -113,10 +104,8 @@ final class OidcStartTest extends TestCase
     private FakeOpenIdProvider $provider;
 
     /**
-     * Bind a fixed clock, a freshness contract that answers `fresh`, a fake
-     * fetcher and a request from the client, switch OIDC on, register the
-     * application and the endpoints, create the tables, and record events and
-     * logs.
+     * Bind a fixed clock, fresh freshness, a fake fetcher and a client request,
+     * enable OIDC, and record events and logs.
      *
      * @return void
      */
@@ -147,8 +136,7 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * The provider sees exactly the expected parameters, in order, as a
-     * redirect the start made without reaching it.
+     * The provider sees exactly the expected parameters, in order.
      *
      * @return void
      *
@@ -185,10 +173,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * The stored row keeps the digests of the state and the nonce, never
-     * either; the PKCE verifier encrypted, whose challenge is the one sent; the
-     * expected issuer, whether `iss` is required, and the connection's trust
-     * version; and no SAML request id.
+     * The row keeps digests of the state and nonce, the encrypted verifier, the
+     * issuer and the trust version.
      *
      * @return void
      *
@@ -244,8 +230,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * The row keeps the issuer exactly as configured and whether the provider
-     * must return `iss`.
+     * The row keeps the issuer as configured and whether `iss` must be
+     * returned.
      *
      * @param  array<string, mixed>  $settings
      * @param  bool  $required
@@ -263,9 +249,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * A client's own challenge is what the request keeps for its handoff, with
-     * no verifier answered, and the provider sees the challenge of the
-     * package's own verifier, never the client's.
+     * A client's own challenge is kept for the handoff and never sent to the
+     * provider.
      *
      * @return void
      *
@@ -286,9 +271,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * With no client challenge, the verifier the package generates for the
-     * client is answered once, its challenge kept for the handoff, and it is
-     * neither the PKCE verifier nor the source of what the provider sees.
+     * A generated client verifier is answered once and is never the PKCE
+     * verifier.
      *
      * @return void
      *
@@ -309,8 +293,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * A `link` asks the freshness contract, once, and then starts for its
-     * identity with no fresh authentication forced; a `sign_in` never asks.
+     * A `link` asks freshness once and forces no fresh authentication; a
+     * `sign_in` never asks.
      *
      * @return void
      *
@@ -352,10 +336,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` asks the session contract with exactly the identity,
-     * the session, the application and the connection, then forces fresh
-     * authentication: `max_age=0` over the connection's, and `prompt=login`
-     * over an extra one, the other extra parameters kept.
+     * A `reauthenticate` asks the session contract, then forces `max_age=0` and
+     * `prompt=login`.
      *
      * @return void
      *
@@ -398,8 +380,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * A sign in sends the connection's own `max_age` and extra parameters in
-     * order, through the same start.
+     * A sign-in sends the connection's own `max_age` and extra parameters, in
+     * order.
      *
      * @return void
      *
@@ -424,8 +406,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * An authorisation endpoint with a query of its own keeps it, with the
-     * request's after it.
+     * An authorisation endpoint's own query is kept, with the request's after
+     * it.
      *
      * @return void
      *
@@ -442,8 +424,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * An authorisation endpoint whose query names a parameter the request sets
-     * is refused, reporting one `FlowFailed` and storing nothing.
+     * An endpoint whose query names a parameter the request sets is refused,
+     * storing nothing.
      *
      * @return void
      */
@@ -455,9 +437,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * Rows of `[settings, attributes, whether its secret is set, reason]`: a
-     * disabled connection, an incomplete one, and an expired refresh of its
-     * discovery document or its JWKS, at the stale limit and past it.
+     * Rows of `[settings, attributes, secret set, reason]`: disabled,
+     * incomplete, and stale-refresh connections.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: array<string, mixed>, 2: bool, 3: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -480,8 +461,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * Each refused connection stores nothing, reaches nothing and reports
-     * exactly one `FlowFailed(authorization_request, reason)`.
+     * Each refused connection stores nothing and reports exactly one
+     * `FlowFailed`.
      *
      * @param  array<string, mixed>  $settings
      * @param  array<string, mixed>  $attributes
@@ -498,8 +479,7 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * Rows of `[attributes]`: what a refresh wrote one second inside the stale
-     * limit.
+     * Rows of `[attributes]`: a refresh one second inside the stale limit.
      *
      * @return iterable<string, array{0: array<string, int>}>
      */
@@ -524,8 +504,7 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * A `private_key_jwt` connection with a current client assertion key and no
-     * secret is complete, and starts.
+     * A `private_key_jwt` connection with a current key and no secret starts.
      *
      * @return void
      */
@@ -540,8 +519,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * A start inside a transaction already open on the storage connection is a
-     * `LogicException` before anything else: no request, no event.
+     * A start inside an open storage transaction is a `LogicException` before
+     * anything else.
      *
      * @return void
      */
@@ -567,9 +546,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * A start reports exactly `AuthorizationRequestStarted`, once its
-     * transaction has committed and with the request stored, carrying the
-     * request's reference as its only flow identifier.
+     * A start reports only `AuthorizationRequestStarted`, after commit, with
+     * the reference as flow id.
      *
      * @return void
      */
@@ -612,9 +590,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * No state, nonce, verifier, challenge, client secret or extra parameter
-     * reaches an event, a log or a dump of the answer, for a start of each
-     * purpose and for a refused one.
+     * No protocol value reaches an event, a log or a dump, for any purpose or a
+     * refusal.
      *
      * @return void
      *
@@ -669,8 +646,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * Assert the start was refused for the reason, storing nothing, reaching
-     * nothing and reporting exactly one failure of the authorisation request.
+     * Assert the start was refused for the reason, stored nothing and reported
+     * one failure.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $result
@@ -691,8 +668,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * Assert no recorded event shows any of the needles, through its context or
-     * any dump of the event.
+     * Assert no recorded event shows any of the needles, in its context or a
+     * dump.
      *
      * @param  list<string>  $needles
      * @return void
@@ -792,8 +769,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * Assert that no dump of the answer or its navigation shows the request's
-     * state, nonce or challenge.
+     * Assert no dump of the answer or its navigation shows the state, nonce or
+     * challenge.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $result
      * @param  array<string, string>  $parameters
@@ -840,8 +817,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * An enabled OIDC connection to the fake provider, with the settings and
-     * attributes given, and its client secret set unless told otherwise.
+     * An enabled OIDC connection to the fake provider, with its secret unless
+     * told otherwise.
      *
      * @param  array<string, mixed>  $settings
      * @param  array<string, mixed>  $attributes
@@ -870,8 +847,8 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * The attributes with the age of a refresh of the discovery document and of
-     * the JWKS, in seconds, as the times they were fetched.
+     * The attributes with each refresh age, in seconds, turned into fetch
+     * times.
      *
      * @param  array<string, mixed>  $attributes
      * @return array<string, mixed>
@@ -941,8 +918,7 @@ final class OidcStartTest extends TestCase
     }
 
     /**
-     * The client every action of the test is taken for: the browser's IP
-     * address and user agent, which its events carry.
+     * The browser client every action is taken for.
      *
      * @return \SineMacula\Laravel\Sso\Http\ClientContext
      */

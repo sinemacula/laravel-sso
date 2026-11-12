@@ -7,10 +7,7 @@ namespace Tests\Integration\Examples\Events;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The example application's audit entry, an Eloquent model of its own
- * `audit_entries` table (SSO-10.4): one administration change the package
- * reported, by the event's name, the connection's tenant, the connection, who
- * acted, what the event adds to its context, and the context's whole record.
+ * The example application's record of one administration change.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

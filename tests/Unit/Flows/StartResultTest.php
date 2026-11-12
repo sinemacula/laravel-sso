@@ -15,10 +15,7 @@ use SineMacula\Laravel\Sso\Protocols\Navigation;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Unit tests for the answer to a start: started with its reference, navigation
- * and the verifier generated once; refused; or rate limited with its wait; each
- * answered with `Cache-Control: no-store`, the body revealing the verifier and
- * the navigation's protocol values, and no dump ever showing them.
+ * Unit tests for flow start results.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -32,8 +29,7 @@ final class StartResultTest extends TestCase
     use DumpsValues;
 
     /**
-     * A started answer's body is the reference, the navigation and, once, the
-     * generated verifier.
+     * A started body holds the reference, the navigation and the verifier once.
      *
      * @return void
      */
@@ -105,8 +101,7 @@ final class StartResultTest extends TestCase
     }
 
     /**
-     * A rate limited answer carries its wait, at least a second, in its body
-     * and as `Retry-After`.
+     * A rate limited answer carries its wait in the body and `Retry-After`.
      *
      * @return void
      */
@@ -156,9 +151,7 @@ final class StartResultTest extends TestCase
     }
 
     /**
-     * No dump of a started answer, leading by an OIDC redirect or a SAML post,
-     * shows a query value, a field's value or the verifier, while its body
-     * carries every one of them exactly.
+     * No dump shows the navigation's protocol values or the verifier.
      *
      * @return void
      */

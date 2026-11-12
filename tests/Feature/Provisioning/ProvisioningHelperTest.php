@@ -38,18 +38,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Feature tests for the client a provisioning listener links a result for: the
- * `LinkCreated` the helper reports carries the IP address and user agent of the
- * client it was given, never those of the request being served, while the
- * completion's own events carry the completion's client.
- *
- * And for a listener's retries, through the public completion: the grant is
- * claimed again only once the outermost transaction its claim was bound to has
- * rolled back, whether the listener's or, with none, the helper's own (the
- * testing traits' wrapping transaction is none); a commit, a rolled-back
- * savepoint, a refusal, a commit the manager was never told failed, or a claim
- * not yet bound leaves it spent; and the grant is void once the dispatch ends.
- * A deadlock is injected in place of the link's insert.
+ * Feature tests for the provisioning helper's client and its claim retries.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -61,7 +50,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
 {
     use FailsDatabaseStatements;
 
-    /** @var list<\SineMacula\Laravel\Sso\Provisioning\Enums\ProvisioningStatus> What the helper answered, in order. */
+    /** @var list<\SineMacula\Laravel\Sso\Provisioning\Enums\ProvisioningStatus> The helper's answers, in order. */
     private array $statuses = [];
 
     /**
@@ -116,8 +105,8 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A listener retrying its whole transaction after a deadlock claims the
-     * grant again and provisions: one link, reported once.
+     * A listener retrying its whole transaction after a deadlock provisions
+     * once.
      *
      * @return void
      */
@@ -140,8 +129,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * With no transaction of the listener's, the claim is bound to the helper's
-     * own: its rollback lets the listener call the helper again.
+     * With no listener transaction, the helper's own rollback allows a retry.
      *
      * @return void
      */
@@ -168,9 +156,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * Inside a listener's transaction, the claim is bound before the helper's
-     * savepoint begins: a deadlock beginning it still rolls back a claim the
-     * retry can make again.
+     * The claim is bound before the helper's savepoint begins.
      *
      * @return void
      */
@@ -203,8 +189,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A claim made before the helper's own transaction is bound to it gets no
-     * second use: a call from that transaction's beginning is refused.
+     * A claim not yet bound to the helper's transaction gets no second use.
      *
      * @return void
      */
@@ -236,8 +221,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A claim whose transaction committed cannot be claimed again, not even
-     * from a commit callback of that commit, nor after it.
+     * A committed claim cannot be claimed again.
      *
      * @return void
      */
@@ -267,9 +251,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A savepoint rolled back inside the listener's surviving transaction
-     * leaves the grant claimed: only a retry of the whole transaction claims it
-     * again.
+     * A rolled-back savepoint leaves the grant claimed.
      *
      * @return void
      */
@@ -296,8 +278,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A refusal spends the grant for good: a retry of the whole transaction
-     * that held it is refused, whether the claim or the attempt was refused.
+     * A refusal spends the grant for good.
      *
      * @return void
      */
@@ -327,8 +308,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A claim refused for another result spends the grant for good, though the
-     * transaction it was made in rolls back.
+     * A claim refused for another result spends the grant for good.
      *
      * @return void
      */
@@ -357,8 +337,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * Under the testing traits' manager, with only its wrapping transaction
-     * open, the claim is bound to the helper's own transaction, as with none.
+     * The testing traits' wrapping transaction is not the listener's.
      *
      * @return void
      */
@@ -400,8 +379,8 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A commit Laravel 12 fails without telling the transactions manager leaves
-     * the claim's transaction held, so a retry is refused.
+     * A commit Laravel 12 fails without telling the manager leaves the grant
+     * spent.
      *
      * @return void
      */
@@ -426,8 +405,8 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[inTransaction]`: the listener calling the helper with no
-     * transaction of its own, and inside one it commits.
+     * Rows of `[inTransaction]`: with no listener transaction, and inside one
+     * that commits.
      *
      * @return iterable<string, array{bool}>
      */
@@ -438,10 +417,8 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A record an unreported failed commit left behind, still current, is no
-     * transaction of the claim: the claim's own transaction commits, and a
-     * later rollback that runs the stale record's callbacks leaves the grant
-     * spent.
+     * A stale record left by an unreported failed commit does not unspend a
+     * committed claim.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -479,9 +456,8 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A failed commit of `transaction()` allows a retry where Laravel tells its
-     * transactions manager (13), and leaves the grant spent where it does not
-     * (12).
+     * A failed commit allows a retry only where Laravel tells the manager (13,
+     * not 12).
      *
      * @return void
      */
@@ -512,8 +488,7 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * A grant released by its transaction's rollback is void once the dispatch
-     * ends.
+     * A grant released by rollback is void once the dispatch ends.
      *
      * @return void
      */
@@ -560,8 +535,8 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * Ask the helper to link the event's result to the person, and keep the
-     * status it answered.
+     * Ask the helper to link the event's result to the person and keep its
+     * status.
      *
      * @param  \SineMacula\Laravel\Sso\Events\ResultUnlinked  $event
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -590,9 +565,8 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
-     * End the outermost transaction open on the storage connection as Laravel
-     * 12 ends one whose commit failed: the database rolls it back, but the
-     * transactions manager is never told, so its record stays current.
+     * End the outermost transaction as Laravel 12 ends a failed commit, leaving
+     * the manager's record current.
      *
      * @return void
      *

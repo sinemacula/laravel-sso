@@ -13,13 +13,8 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Endpoints\ConnectionEndpoints;
 
 /**
- * The example application's service provider (SSO-5.5): it lays each
- * connection's endpoints out under the connection's own path on the single
- * sign-on host, and sends the web application of each client to that client's
- * own host, in place of the package's defaults, and adds its own check of those
- * hosts to the package's configuration checks. It registers after the package's
- * provider, as an application's providers do, so its bindings replace the
- * defaults as any later binding does.
+ * The example application's service provider: per-connection endpoints,
+ * per-client redirect hosts, and its own configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,8 +24,8 @@ use SineMacula\Laravel\Sso\Endpoints\ConnectionEndpoints;
 final class AppServiceProvider extends ServiceProvider
 {
     /**
-     * Bind the application's endpoint and redirect URI resolvers, and add its
-     * check of each client's host.
+     * Bind the application's endpoint and redirect URI resolvers and add its
+     * host check.
      *
      * @return void
      */

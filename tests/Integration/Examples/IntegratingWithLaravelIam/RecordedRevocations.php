@@ -8,9 +8,7 @@ use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * The example application's session revocation, which records each scope it is
- * asked to revoke (SSO-4.5): an adapter binds authentication's revocation
- * helpers here, and a test reads what the package asked of them.
+ * A session revocation that records each scope it is asked to revoke.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

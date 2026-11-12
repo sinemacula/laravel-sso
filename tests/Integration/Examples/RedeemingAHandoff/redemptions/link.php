@@ -3,14 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The `link` redemption of `docs/guides/redeeming-a-handoff.md` (SSO-5.11,
- * SSO-9.9, SSO-12.5), as an application's authenticated link endpoint runs it,
- * given the connection, the code and the client's verifier in `$input`, and
- * the caller the application authenticated in `$caller`, never from the body:
- * it resolves the redemption helper from the container for the request, and
- * admits the `link` code for that caller inside its own transaction on the
- * package's storage connection. It answers the redemption's result, which the
- * endpoint turns into its response after the commit.
+ * The `link` redemption of `docs/guides/redeeming-a-handoff.md`, given `$input`
+ * from the request and the authenticated `$caller`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

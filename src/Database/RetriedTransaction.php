@@ -8,17 +8,11 @@ use Illuminate\Database\Connection;
 use Illuminate\Database\DeadlockException;
 
 /**
- * Runs work in a transaction that Laravel tries again on a concurrency failure,
- * a serialisation failure in a savepoint inside it included.
+ * Runs work in a transaction Laravel retries on any concurrency failure,
+ * including one raised in a nested savepoint.
  *
- * Laravel throws a concurrency failure in a savepoint as a `DeadlockException`
- * with no SQLSTATE, which its detector then recognises by message alone: a
- * deadlock's, but not PostgreSQL's serialisation failure (SQLSTATE `40001`). So
- * inside the work, a `DeadlockException` whose chain of `DeadlockException`s
- * ends in a `40001` failure is rethrown as that failure, and Laravel retries it
- * within the attempts given. Anything else is rethrown as it is. The catch is
- * inside the transaction's callback, so an exception after the commit, an
- * after-commit listener's, never runs the work again.
+ * Laravel wraps a savepoint's failure in a `DeadlockException` with no
+ * SQLSTATE, hiding PostgreSQL's `40001`, so the cause is unwrapped to retry.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +30,7 @@ final class RetriedTransaction
     private function __construct() {}
 
     /**
-     * Run the work in a transaction on the connection, tried up to the attempts
-     * given in all.
+     * Run the work in a transaction, tried at most `$attempts` times in all.
      *
      * @template TResult
      *
@@ -51,6 +44,7 @@ final class RetriedTransaction
     public static function run(Connection $connection, \Closure $work, int $attempts): mixed
     {
         return $connection->transaction(static function (Connection $connection) use ($work): mixed {
+            // Inside the callback, so an after-commit failure never reruns it.
             try {
                 return $work($connection);
             } catch (DeadlockException $exception) {
@@ -60,8 +54,8 @@ final class RetriedTransaction
     }
 
     /**
-     * The serialisation failure at the end of the exception's chain of
-     * `DeadlockException`s, or the exception itself when it ends in another.
+     * The serialisation failure the `DeadlockException` chain ends in, or the
+     * exception itself.
      *
      * @param  \Illuminate\Database\DeadlockException  $exception
      * @return \Throwable

@@ -17,13 +17,7 @@ use SineMacula\Laravel\Sso\Testing\Navigations;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeAuthnRequest;
 
 /**
- * Unit tests for how the fake identity providers read the request a start sent
- * the browser with (SSO-12.4): the SAML provider receives the `AuthnRequest`
- * and answers it, in response to its `ID`, for its issuer and its assertion
- * consumer service, authenticating at the instant given when it forces
- * authentication; the OpenID provider grants the authorisation request a start
- * result, its navigation or its URL carries; and neither reads a start that was
- * refused.
+ * Unit tests for the fake identity providers reading a start's request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,9 +69,8 @@ final class FakeProvidersReadTheStartTest extends TestCase
     }
 
     /**
-     * Its response answers the request: in response to its `ID`, for its issuer
-     * and its assertion consumer service, at the instant given, its
-     * authentication a minute before it.
+     * The response answers the request's `ID`, issuer and assertion consumer
+     * service at the instant given, authenticated a minute before.
      *
      * @return void
      *
@@ -109,9 +102,8 @@ final class FakeProvidersReadTheStartTest extends TestCase
     }
 
     /**
-     * A request that forces authentication is answered with every
-     * authentication made at the instant given, and a response made with no
-     * instant is made at the current time.
+     * A forced authentication is made at the instant given, and a response with
+     * no instant is made now.
      *
      * @return void
      *

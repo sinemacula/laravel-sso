@@ -28,16 +28,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/evidence.md` (SSO-8.7, SSO-12.5), on the shared
- * example harness: the application opts in by binding the package's policy in
- * its service provider, gives an OIDC and a SAML connection each its evidence
- * policy, and reads the evidence a sign-in's redemption accepted. Each asserts
- * what a redemption then carries: only the accepted methods, as asserted and
- * each once, when an accepted combination is satisfied, and no evidence at all
- * when none is, when the connection names no policy, or when the application
- * never opted in. A change asked without trust freshness, of a connection the
- * tenant does not have, or naming what the protocol or the ceiling does not
- * allow, is refused and writes nothing.
+ * The examples of `docs/guides/evidence.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -58,7 +49,7 @@ final class EvidenceExampleTest extends ExampleTestCase
     /** @var \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider The tenant's OpenID provider. */
     private FakeOpenIdProvider $provider;
 
-    /** @var string The OIDC connection that trusts it, through which the person is linked. */
+    /** @var string The OIDC connection the person is linked through. */
     private string $connectionId;
 
     /** @var \SineMacula\Laravel\Sso\Identities\IdentityReference The person the application knows. */
@@ -88,9 +79,7 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * Until the application binds the package's policy, the default accepts
-     * nothing: a connection's stored policy is written, and a provider stating
-     * every method it accepts still gives no evidence.
+     * Until the application binds the package's policy, no evidence counts.
      *
      * @return void
      *
@@ -105,9 +94,8 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * The service provider binds the package's policy, scoped, so one request
-     * or job judges by one instance; with no policy stored on the connection it
-     * still accepts nothing.
+     * The provider binds the policy scoped, and a connection with no policy
+     * accepts nothing.
      *
      * @return void
      *
@@ -124,11 +112,8 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * An OIDC connection's policy is written whole and reported by name; the
-     * same policy again is `unchanged`. A result counts only by an accepted
-     * combination, and then carries only the accepted methods it stated: a
-     * password with a one-time code, or a hardware key with the class, counts;
-     * a password alone, or the hardware key with another class, does not.
+     * An OIDC result counts only by an accepted combination, carrying only the
+     * accepted methods.
      *
      * @return void
      *
@@ -167,10 +152,8 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * A change is refused, and nothing written, when the caller's
-     * authentication is too old for `sso.connection.trust`, when the tenant has
-     * no such connection, and when the policy's maximum age is above the
-     * ceiling; an empty policy clears what is stored.
+     * A stale, foreign or over-ceiling change is refused; an empty policy
+     * clears.
      *
      * @return void
      */
@@ -203,10 +186,7 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * A SAML connection names its accepted classes and combinations of one
-     * class each: a response stating the class gives evidence with no methods
-     * and the class as its raw context, and one stating another class gives
-     * none. A SAML policy naming `amr` is invalid.
+     * A SAML connection's policy accepts classes, never `amr`.
      *
      * @return void
      *
@@ -248,10 +228,7 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * The evidence a sign-in's redemption carries names the connection and the
-     * provider's authentication time, the accepted methods as asserted and each
-     * once, and the raw class, though the policy lists it nowhere. A dump or
-     * `json_encode()` shows only how many methods, and it refuses to be
+     * Accepted evidence is readable, redacted when encoded, and never
      * serialised.
      *
      * @return void
@@ -292,7 +269,7 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * Set the OIDC connection's evidence policy, as its administrator would.
+     * Set the OIDC connection's evidence policy.
      *
      * @param  array<array-key, mixed>  $policy
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
@@ -303,8 +280,7 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * Sign the person in through the OIDC connection, the provider stating the
-     * methods and the class given, and answer the admitted redemption.
+     * Sign the person in through OIDC with the methods and class stated.
      *
      * @param  list<string>  $methods
      * @param  ?string  $class
@@ -325,8 +301,7 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * Sign the person in through the SAML connection, the provider stating the
-     * class given, and answer the admitted redemption.
+     * Sign the person in through SAML with the class stated.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider  $idp
      * @param  string  $connectionId
@@ -345,8 +320,7 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a `sign_in` through the connection, have the provider answer it
-     * with the tailor, and admit the code into a new session.
+     * Complete a `sign_in` with the tailor and admit it into a new session.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider|\SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider  $provider
      * @param  string  $connectionId
@@ -368,7 +342,7 @@ final class EvidenceExampleTest extends ExampleTestCase
     }
 
     /**
-     * Each violation of the result, as its setting and its code.
+     * Each violation of the result as `[setting, code]`.
      *
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionResult  $result
      * @return list<array{0: string, 1: string}>

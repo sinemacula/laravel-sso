@@ -29,15 +29,7 @@ use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
 
 /**
- * A match and a miss answer in the same time (SSO-3.5), on every database the
- * suite runs on: with the least time a discovery start takes set to 100 ms,
- * fifteen matches and fifteen misses, interleaved, each take at least 100 ms
- * and their medians differ by less than 15 ms, and still do when the identity
- * provider's driver is slow to start (30 ms). The pacer waits out the rest of
- * the floor and never less; an exception is not held; a floor below 50 ms fails
- * closed before anything is counted, and is refused at boot by `[flows]`
- * (`Tests\Feature\Flows\FlowsCheckTest::testTheRanges` checks the range
- * itself).
+ * Integration tests that a discovery match and a miss take the same time.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,9 +58,8 @@ final class DiscoveryTimingTest extends TestCase
     private StartingDriver $driver;
 
     /**
-     * Bind a fixed clock and a request, turn discovery on with a 100 ms floor
-     * and limits no comparison reaches, register the application and the
-     * driver, create the tables, a usable connection and its verified domain.
+     * Bind a fixed clock and a request, enable discovery with a 100 ms floor,
+     * and prepare a verified domain.
      *
      * @return void
      */
@@ -110,8 +101,7 @@ final class DiscoveryTimingTest extends TestCase
     }
 
     /**
-     * Matches and misses, interleaved, each take at least the floor, and their
-     * medians differ by less than 15 ms.
+     * Interleaved matches and misses each take the floor, medians within 15 ms.
      *
      * @return void
      */
@@ -123,8 +113,7 @@ final class DiscoveryTimingTest extends TestCase
     }
 
     /**
-     * A driver that takes 30 ms to start keeps the property: the match's extra
-     * work is within the floor, which the miss waits out too.
+     * A driver slow to start keeps the timing within the floor.
      *
      * @return void
      */
@@ -142,9 +131,7 @@ final class DiscoveryTimingTest extends TestCase
     }
 
     /**
-     * The pacer waits until the floor has passed since the answer started, and
-     * no longer once it has: what remains is the whole floor at the start, less
-     * as time passes, and none, never fewer, once the floor is past.
+     * The pacer waits out the rest of the floor and never less.
      *
      * @return void
      */
@@ -179,8 +166,7 @@ final class DiscoveryTimingTest extends TestCase
     }
 
     /**
-     * An exception is not held: a misbound start throws at once, whatever the
-     * floor.
+     * An exception is thrown at once, whatever the floor.
      *
      * @return void
      *
@@ -203,8 +189,7 @@ final class DiscoveryTimingTest extends TestCase
     }
 
     /**
-     * A floor below 50 ms fails closed before anything is counted, read or
-     * stored.
+     * A floor below 50 ms fails closed before anything is counted.
      *
      * @return void
      *
@@ -227,8 +212,7 @@ final class DiscoveryTimingTest extends TestCase
     }
 
     /**
-     * A floor below 50 ms is refused at boot by `[flows]`, with the key and its
-     * range, as the application boots to serve a request.
+     * A floor below 50 ms is refused at boot.
      *
      * @return void
      */
@@ -253,9 +237,7 @@ final class DiscoveryTimingTest extends TestCase
     }
 
     /**
-     * Run the matches and the misses, interleaved, each match after the
-     * preparation given, and assert each took at least the floor and the
-     * medians differ by less than the most allowed.
+     * Run interleaved matches and misses and assert both take the same time.
      *
      * @param  \Closure(): mixed  $beforeMatch
      * @return void
@@ -285,8 +267,8 @@ final class DiscoveryTimingTest extends TestCase
     }
 
     /**
-     * Start a `sign_in` for `discovering` by the email, and answer the result
-     * with the nanoseconds it took.
+     * Start a discovering `sign_in` by the email and answer it with its
+     * nanoseconds.
      *
      * @param  string  $email
      * @return array{0: \SineMacula\Laravel\Sso\Flows\StartResult, 1: int}

@@ -5,11 +5,9 @@ declare(strict_types = 1);
 namespace Tests\Concerns;
 
 /**
- * Outlines a SAML document as the elements a signature wrapping moves: every
- * `Response`, `Assertion`, `EncryptedAssertion`, `Signature`, `Extensions` and
- * `Object`, each with its `ID` and the outlined elements inside it, in document
- * order. `Response#_r{Signature,Assertion#_a}` is a response whose signature
- * precedes its assertion.
+ * Outlines a SAML document as the elements a signature wrapping moves.
+ * `Response#_r{Signature,Assertion#_a}` is a response whose signature precedes
+ * its assertion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

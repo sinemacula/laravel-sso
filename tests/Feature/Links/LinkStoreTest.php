@@ -43,12 +43,7 @@ use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
 
 /**
- * Feature tests for the link store (SSO-8.2 to SSO-8.4, SSO-6.9, SSO-1.5,
- * SSO-10.3): a result resolves only through an active link of its own
- * connection matching its issuer, format and subject byte for byte; a link's
- * last use is stamped at most once a minute; and a creation locks, counts, asks
- * the limit and inserts in that order, refusing a subject already linked or an
- * identity at its limit as values and reporting each link made once.
+ * Feature tests for the link store's resolution, last-use stamp and creation.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -109,8 +104,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A result whose connection, issuer, format and subject are linked resolves
-     * to the link's identity.
+     * A linked result resolves to the link's identity.
      *
      * @return void
      */
@@ -124,8 +118,8 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Another connection, of this tenant or another, with the same issuer and
-     * subject, reaches none of this connection's links (SSO-8.2).
+     * Another connection with the same issuer and subject reaches none of the
+     * links.
      *
      * @return void
      */
@@ -142,8 +136,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Rows of `[subject, format, issuer]`: a result that differs from the link
-     * in one part only.
+     * Rows of `[subject, format, issuer]`: a result differing in one part.
      *
      * @return iterable<string, array{string, ?string, string}>
      */
@@ -159,8 +152,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A result that differs from the link in case, a trailing space, the format
-     * or the issuer resolves nothing, and stamps nothing (SSO-6.9).
+     * A result that differs in any part resolves and stamps nothing.
      *
      * @param  string  $subject
      * @param  ?string  $format
@@ -177,8 +169,8 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Rows of `[attributes]`: a row holding the key of the subject linked, but
-     * something else in one part.
+     * Rows of `[attributes]`: a row with the subject's key but one part
+     * changed.
      *
      * @return iterable<string, array{array<string, ?string>}>
      */
@@ -191,8 +183,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A row whose key matches but whose issuer, format or subject does not is
-     * not the subject's link, and resolves nothing.
+     * A row whose key matches but whose content does not resolves nothing.
      *
      * @param  array<string, ?string>  $attributes
      * @return void
@@ -211,8 +202,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A reserved link resolves nothing, whether its reservation is live or has
-     * expired, and is not stamped.
+     * A reserved link resolves nothing and is not stamped, live or expired.
      *
      * @return void
      */
@@ -235,8 +225,8 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A link made by a verified domain still resolves while its identity holds
-     * only principals of the tenant (SSO-8.8).
+     * A domain link resolves while its identity holds only the tenant's
+     * principals.
      *
      * @return void
      */
@@ -254,8 +244,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A suspended link resolves to its identity and link, and to nothing it may
-     * sign in as.
+     * A suspended link resolves to its identity but to nothing to sign in as.
      *
      * @return void
      */
@@ -297,8 +286,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A link not made by a verified domain never asks after its identity's
-     * principals, and stays active.
+     * A link not made by a verified domain never asks for principals.
      *
      * @return void
      */
@@ -316,8 +304,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * What an identity holds in a connection is read directly: its active and
-     * suspended links, and a reservation until it expires.
+     * An identity's active and suspended links and live reservations are read.
      *
      * @return void
      */
@@ -336,7 +323,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * The limit is read directly: what the binding answers, at one and above.
+     * The limit is read as the binding answers it.
      *
      * @return void
      */
@@ -358,8 +345,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A subject's expired reservation does not stand in the way of its link,
-     * and is gone once the link is made.
+     * An expired reservation is replaced by the subject's new link.
      *
      * @return void
      */
@@ -385,8 +371,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * The bound linking contract is still `NoLinks`, which resolves nothing
-     * even for a stored link: the store is bound only by the application.
+     * The bound linking contract is still `NoLinks`.
      *
      * @return void
      */
@@ -404,8 +389,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A link never used is stamped with the clock's now as it first resolves,
-     * and nothing else of it changes.
+     * A link's first resolution stamps its last use and changes nothing else.
      *
      * @return void
      */
@@ -435,10 +419,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A resolution for a `link` or a `reauthenticate` resolves the link and is
-     * no use of it: `last_used_at` stays exactly as it was, whether never
-     * stamped or stamped long ago, so such an operation never looks like a
-     * sign-in.
+     * A `link` or `reauthenticate` resolution leaves the last use as it was.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @return void
@@ -472,8 +453,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds since the last use, stamped again]`: a resolution
-     * stamps the last use again only once a minute has passed.
+     * Rows of `[seconds since the last use, stamped again]`.
      *
      * @return iterable<string, array{int, bool}>
      */
@@ -485,8 +465,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A link last used less than a minute ago keeps its last use; one used a
-     * minute or more ago is stamped with now.
+     * The last use is stamped again only once a minute has passed.
      *
      * @param  int  $seconds
      * @param  bool  $stamped
@@ -510,9 +489,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A creation makes an active link holding the subject byte for byte under
-     * its key, answers its summary, and reports it once with its origin and the
-     * whole context.
+     * A creation stores the subject byte for byte and reports it once.
      *
      * @return void
      */
@@ -584,8 +561,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A creation made outside a flow reports no application, purpose, reference
-     * or acting identity.
+     * A creation outside a flow reports no flow or actor.
      *
      * @return void
      */
@@ -606,8 +582,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Rows of `[origin, verified domain provenance]`: only a link made by a
-     * verified domain carries the provenance.
+     * Rows of `[origin, verified domain provenance]`.
      *
      * @return iterable<string, array{\SineMacula\Laravel\Sso\Links\Enums\LinkOrigin, bool}>
      */
@@ -620,8 +595,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * The link carries verified domain provenance only when a verified domain
-     * made it, and the event carries its origin.
+     * Only a link made by a verified domain carries its provenance.
      *
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      * @param  bool  $provenance
@@ -641,8 +615,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A subject already linked to another identity is refused, with nothing
-     * written or reported.
+     * A subject linked to another identity is refused and nothing is written.
      *
      * @return void
      */
@@ -660,8 +633,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A subject already linked to the same identity is refused too, when the
-     * identity's limit leaves room.
+     * A subject linked to the same identity is refused too.
      *
      * @return void
      */
@@ -681,8 +653,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * At the default limit of one, a second subject for the identity in the
-     * connection is refused, with nothing written or reported.
+     * The default limit of one refuses a second subject in the connection.
      *
      * @return void
      */
@@ -700,8 +671,8 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A bound limit of two allows two links and refuses the third, and the
-     * limit is asked with the identity and the connection.
+     * A limit of two refuses the third link and is asked with the identity and
+     * connection.
      *
      * @return void
      */
@@ -718,9 +689,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Each link created raises the connection's links version by exactly one,
-     * and a creation refused by the unique index or the limit leaves it, so a
-     * link's insert always writes the connection's row too.
+     * Each creation raises the links version by one; a refusal leaves it.
      *
      * @return void
      */
@@ -742,8 +711,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A bound limit below one is a misconfigured binding, named in the
-     * exception, and nothing is written.
+     * A limit below one is a misconfigured binding and nothing is written.
      *
      * @return void
      *
@@ -769,8 +737,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds from now the reservation expires, counts]`: a
-     * reservation counts toward the limit only while it expires after now.
+     * Rows of `[seconds from now the reservation expires, counts]`.
      *
      * @return iterable<string, array{?int, bool}>
      */
@@ -783,8 +750,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A reserved link of the identity counts toward the limit only while its
-     * reservation expires after now; an active one always counts.
+     * A reservation counts toward the limit only until it expires.
      *
      * @param  ?int  $expiresIn
      * @param  bool  $counts
@@ -806,8 +772,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Only the identity's own links in the connection count: another identity's
-     * there, and its own in another tenant's connection, do not (SSO-1.5).
+     * Only the identity's own links in the connection count.
      *
      * @return void
      */
@@ -848,8 +813,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A connection of another tenant than the model given claims is not locked,
-     * and is a logic error too.
+     * A connection of another tenant is not locked and is a logic error.
      *
      * @return void
      */
@@ -865,9 +829,8 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Inside a transaction the application opened, a subject already linked is
-     * refused within a savepoint of its own, so the application's transaction
-     * goes on, and its later work commits.
+     * In an open transaction, a duplicate is refused in a savepoint and the
+     * transaction goes on.
      *
      * @return void
      */
@@ -890,8 +853,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Inside a transaction the application opened, a link made is reported only
-     * once it commits, and a rollback leaves no link and reports nothing.
+     * In an open transaction, a link is reported only once it commits.
      *
      * @return void
      */
@@ -919,8 +881,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Link the subject given (with the format) through the connection, to the
-     * identity given or the test's.
+     * Link the subject through the connection to the given or default identity.
      *
      * @param  string  $subject
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -944,8 +905,8 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * Bind a link limit that answers the most given, and answer each identity
-     * and connection it is asked about, in order.
+     * Bind a link limit and record each identity and connection it is asked
+     * about.
      *
      * @param  int  $max
      * @return \ArrayObject<int, array{0: string, 1: string, 2: string}>
@@ -972,7 +933,7 @@ final class LinkStoreTest extends TestCase
             ) {}
 
             /**
-             * Record the question and answer the most set.
+             * Record the question and answer the limit.
              *
              * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
@@ -991,8 +952,7 @@ final class LinkStoreTest extends TestCase
     }
 
     /**
-     * A verified result through the connection, with the subject, format and
-     * issuer given or those linked.
+     * A verified result through the connection, with the given or linked parts.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $subject

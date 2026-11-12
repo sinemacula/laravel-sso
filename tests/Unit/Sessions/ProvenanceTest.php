@@ -21,12 +21,7 @@ use SineMacula\Laravel\Sso\Sessions\Provenance;
 use SineMacula\Laravel\Sso\Sessions\ProvenanceDomain;
 
 /**
- * Unit tests for capturing a session's provenance (SSO-9.7, SSO-9.10): what
- * `capture()` takes from an admitted `sign_in` and from nothing else, the raw
- * context kept only from accepted evidence and under its protocol's own name,
- * only registered methods and a raw context of the stored domain kept, so
- * neither fails a sign-in, both deadlines, and nothing about the person. The
- * stored form, its bounds and its redaction are `StoredProvenanceTest`'s.
+ * Unit tests for capturing a session's provenance.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -78,11 +73,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * An admitted `sign_in` captures every fact: the connection, its tenant at
-     * sign-in, the protocol, the asserted time, only the accepted methods and
-     * raw context, the exact link with its provenance as admitted, the raw
-     * deadline, the effective cap and the enforcement version. The time is the
-     * result's, never the evidence's, which here differs.
+     * An admitted `sign_in` captures every fact, with the result's time.
      *
      * @return void
      */
@@ -111,9 +102,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * The raw context the accepted evidence carried, under each protocol: the
-     * package's SAML driver as `AuthnContextClassRef`, every other driver (OIDC
-     * and an application's own) as `acr`, as the evidence policy reads them.
+     * The accepted raw context under each protocol's own name.
      *
      * @return iterable<string, array{0: string, 1: ?string, 2: ?string}>
      */
@@ -144,9 +133,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * With no accepted evidence, nothing of what the provider asserted about
-     * how is kept: no methods and no raw context, though the result asserted
-     * both; when the person authenticated is kept.
+     * Without accepted evidence only the authentication time is kept.
      *
      * @return void
      */
@@ -172,8 +159,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * Raw context classes outside the stored domain, each under a protocol that
-     * keeps it as `acr` and one that keeps it as `AuthnContextClassRef`.
+     * Raw context classes outside the stored domain, under each protocol.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -189,9 +175,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * A raw context class outside the stored domain is data, never a decision,
-     * so the sign-in is still captured, with that class kept as `null` and the
-     * accepted methods kept.
+     * A raw context outside the stored domain is kept as `null`, not refused.
      *
      * @param  string  $protocol
      * @param  string  $raw
@@ -208,8 +192,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * A raw context class of exactly `MAX_CONTEXT_LENGTH` printable bytes is
-     * kept as it is.
+     * A raw context of exactly `MAX_CONTEXT_LENGTH` bytes is kept.
      *
      * @return void
      */
@@ -223,9 +206,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * Of the methods an evidence policy accepted, only RFC 8176's registered
-     * values are kept, in their order and each once, so an application's own
-     * policy accepting another never fails a sign-in.
+     * Only RFC 8176 registered methods are kept, in order and once each.
      *
      * @return void
      */
@@ -238,8 +219,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * The raw deadline is kept whatever the effective cap is, including none
-     * when the deadline contract ignored it.
+     * The raw deadline is kept whatever the effective cap.
      *
      * @return void
      */
@@ -267,8 +247,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * A `link` and a `reauthenticate` capture nothing, so neither can stand in
-     * for, or overwrite, how a session began.
+     * A `link` and a `reauthenticate`, which capture nothing.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose}>
      */
@@ -323,9 +302,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * Nothing the result carried about the person or the provider's session
-     * reaches the provenance: not the subject, the issuer, the provider session
-     * id, the email or any mapped attribute.
+     * Nothing about the person or the provider session is captured.
      *
      * @return void
      */
@@ -352,8 +329,7 @@ final class ProvenanceTest extends TestCase
     }
 
     /**
-     * A verified result of the protocol and purpose, through `connection-1` of
-     * `tenant-1`, asserting every part of its authentication context.
+     * A verified result with a full authentication context.
      *
      * @param  string  $protocol
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose

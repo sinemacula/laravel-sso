@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Limits;
 use Tests\TestCase;
 
 /**
- * Feature tests for the caps and windows every SAML connection is held to
- * (SSO-6.1, SSO-6.5, SSO-12.3): each default, each bound at, under and over, a
- * malformed value failing closed with its key, and `[saml2]` checking each the
- * same way, only while the `saml2` feature is on.
+ * Feature tests for the caps and windows every SAML connection is held to.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

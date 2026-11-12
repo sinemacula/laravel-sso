@@ -8,11 +8,8 @@ use SineMacula\Laravel\Sso\Contracts\RedirectUriResolver;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 
 /**
- * The default redirect URI resolver (SSO-5.5, decision D7): every connection's
- * completions for an application redirect to the application's one configured
- * `redirect_uri`, exactly as configured.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The default redirect URI resolver: the application's configured
+ * `redirect_uri`, whatever the connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -20,7 +17,7 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 final readonly class ConfiguredRedirectUriResolver implements RedirectUriResolver
 {
     /**
-     * The application's configured redirect URI, whichever the connection.
+     * The application's configured redirect URI.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection

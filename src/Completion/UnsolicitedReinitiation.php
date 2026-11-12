@@ -17,45 +17,8 @@ use SineMacula\Laravel\Sso\Protocols\Reinitiation;
 use SineMacula\Laravel\Sso\Protocols\ReplayRecord;
 
 /**
- * Answers an unsolicited SAML response by re-initiation (SSO-5.8, SSO-6.11),
- * once the correlation step handed it over: the response is validated by the
- * unsolicited profile, the connection is checked again under its lock, the
- * assertion is recorded against replay, and the browser is sent to the
- * connection's start URL so the application starts an SP-initiated flow. It
- * never consumes or creates an authorisation request, never resolves a link,
- * never issues a handoff code and never verifies a result: the unsolicited
- * identity never carries into the new flow.
- *
- * 1. Outside any transaction, the connection's trust version is captured from
- *    the row the completion read, and the driver
- *    (`Contracts\ReinitiatingDriver`) validates the response against what the
- *    connection holds; validation may be slow, so no lock is held across it. A
- *    refusal ends here.
- * 2. In one transaction on the storage connection, the connection's row alone
- *    is locked for update on the write connection (the package's lock order,
- *    `flows.md`, with no request or code row involved), and checked again,
- *    recording nothing when it is refused. A connection gone, no longer usable
- *    (`Protocols\ProtocolManager::isUsable()`) or whose trust version moved
- *    since step 1 (a certificate distrusted, a metadata anchor changed, the
- *    connection disabled and enabled again) is `connection_unavailable`; one
- *    whose refreshed metadata has expired by now (`Metadata\MetadataExpiry`) is
- *    `metadata_expired`; one that no longer allows IdP-initiated sign-in (the
- *    driver's `startUrl()` of the locked row is `null`) is
- *    `unsolicited_not_allowed`; and one whose start URL changed since step 1 is
- *    `connection_unavailable`. Otherwise the assertion's replay record is
- *    recorded by the stage registered for `replay_recording`, exactly as a
- *    solicited response's is: `assertion_expired` once its expiry is not after
- *    now, `replayed` when it was recorded before.
- * 3. After that transaction commits, a re-initiation reports
- *    `UnsolicitedResponseReinitiated` and answers
- *    `CompletionResult::reinitiated()` with the start URL; a refusal reports
- *    one `FlowFailed` for the flow and answers `CompletionResult::rejected()`,
- *    since an unsolicited response has no trusted redirect target. Each event
- *    names the connection, its tenant and its protocol only (SSO-10.4).
- *
- * A database error propagates as a server error (SSO-11.4) and rolls the record
- * back. It holds the drivers' registry, the reporter and the metadata expiry,
- * none of which keeps anything of one completion for the next (SSO-11.2).
+ * Answers an unsolicited SAML response by sending the browser to the
+ * connection's start URL; the unsolicited identity never carries over.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -73,7 +36,7 @@ final readonly class UnsolicitedReinitiation
      */
     public function __construct(
 
-        /** The connection's driver, and whether the connection is still usable under its lock. */
+        /** The connection's driver, and whether the connection is usable. */
         private ProtocolManager $protocols,
 
         /** Reports how the re-initiation ended. */
@@ -84,8 +47,8 @@ final readonly class UnsolicitedReinitiation
     ) {}
 
     /**
-     * Re-initiate the unsolicited response the state holds, recording its
-     * assertion through the replay stage given, and answer how it ended.
+     * Validate the response, record its assertion under the connection's lock
+     * and answer how it ended.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
@@ -112,8 +75,7 @@ final readonly class UnsolicitedReinitiation
     }
 
     /**
-     * The connection of a state handed over by the correlation step, which
-     * holds the connection read and the unsolicited correlation.
+     * The connection of an unsolicited state.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -149,9 +111,8 @@ final readonly class UnsolicitedReinitiation
     }
 
     /**
-     * In the transaction: lock the connection's row, refuse it gone, no longer
-     * usable, with its trust changed, or no longer taking the response as
-     * validated, and record the assertion otherwise.
+     * Lock the connection, refuse what changed since validation, and record the
+     * assertion otherwise.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  int  $trustVersion
@@ -181,10 +142,8 @@ final readonly class UnsolicitedReinitiation
     }
 
     /**
-     * Why the locked connection no longer takes the response as validated: its
-     * refreshed metadata expired by now, IdP-initiated sign-in no longer
-     * allowed, or its start URL no longer the one validated with; `null` when
-     * it still does.
+     * Why the locked connection no longer takes the response as validated, or
+     * `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  ?string  $startUrl
@@ -206,8 +165,8 @@ final readonly class UnsolicitedReinitiation
     }
 
     /**
-     * Whether the locked connection is still there, at the trust version the
-     * validation was based on, and usable.
+     * Whether the locked connection is still usable at the validated trust
+     * version.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  int  $trustVersion
@@ -225,9 +184,7 @@ final readonly class UnsolicitedReinitiation
     }
 
     /**
-     * Report how the re-initiation ended, and answer it: `reinitiated` with the
-     * start URL once the assertion is recorded, `rejected` for the reason
-     * otherwise.
+     * Report how the re-initiation ended and answer it.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\Flow  $flow
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection

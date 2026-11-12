@@ -16,10 +16,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the connection model (SSO-2.1): its table and connection,
- * its ULID key and clock timestamps, its defaults, its casts, the contract it
- * answers through, its hidden secrets, and its tenant and protocol fixed at
- * creation.
+ * Feature tests for the connection model.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -70,8 +67,8 @@ final class ConnectionTest extends TestCase
     }
 
     /**
-     * A new connection gets a lower-case ULID and is stamped from the package's
-     * clock, in UTC; an update stamps only `updated_at`.
+     * A new connection gets a lower-case ULID and UTC timestamps from the
+     * clock.
      *
      * @return void
      */
@@ -95,8 +92,7 @@ final class ConnectionTest extends TestCase
     }
 
     /**
-     * A new connection is disabled, has completed no sign-in, and has no
-     * settings or mapping.
+     * A new connection is disabled, unused and has no settings or mapping.
      *
      * @return void
      */
@@ -143,9 +139,7 @@ final class ConnectionTest extends TestCase
     }
 
     /**
-     * The connection answers its linking settings from its columns, under
-     * exactly these names; the moment of its acknowledgement shows only as
-     * whether there is one.
+     * The connection answers its linking settings from its columns.
      *
      * @return void
      */
@@ -208,8 +202,7 @@ final class ConnectionTest extends TestCase
     }
 
     /**
-     * The organisation a linking result must assert is hidden from
-     * serialisation too, and stays readable to the linking settings.
+     * The linking organisation is hidden from serialisation but readable.
      *
      * @return void
      */
@@ -225,8 +218,8 @@ final class ConnectionTest extends TestCase
     }
 
     /**
-     * Rows of `[column, value]`: the columns fixed at creation, and a value
-     * each could be changed to.
+     * Rows of `[column, value]`: the columns fixed at creation and a new value
+     * for each.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -239,8 +232,7 @@ final class ConnectionTest extends TestCase
     }
 
     /**
-     * Changing the tenant or the protocol once the connection exists throws,
-     * and nothing is written.
+     * Changing the tenant or protocol once created throws and writes nothing.
      *
      * @param  string  $column
      * @param  string  $value

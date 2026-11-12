@@ -20,9 +20,9 @@ they are today. The guide is `docs/guides/session-provenance.md`.
   the provider asserted; the admission carries what was accepted under the redemption's locks: the evidence the evidence
   contract accepted at redemption, the exact link admitted and that link's provenance, and the version of the
   enforcement the connection was judged by under those locks, alongside the effective session cap the code was bound to.
-  The recommended default (2026-11-03, [RD-34](requirements.md#recorded-decisions)) is that the session keeps that
-  version, never the one the completion checked (which no code keeps), since a rule may change between the two and the
-  redemption's is the one the session was admitted under.
+  The session keeps that version, never the one the completion checked (which no code keeps), since a rule may change
+  between the two and the redemption's is the one the session was admitted under
+  ([RD-34](requirements.md#recorded-decisions)).
 - Only an admitted `sign_in` captures provenance. `Provenance::capture()` answers `null` for a `link`, a
   `reauthenticate` or an admission that did not pass, and `HandoffRedemption` captures nothing outside the caller's
   transaction. So no later operation of the package yields a value that could overwrite how a session began: a

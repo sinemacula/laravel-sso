@@ -38,14 +38,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for when a SAML connection follows its metadata URL (SSO-2.8),
- * through the services an administrator uses: an anchor or an explicit `true`
- * brings it in, `false` keeps it out, and with neither nothing changes by
- * itself and nothing expires. Adding an anchor turns the default on and
- * removing it turns the default off; whatever brings a connection in starts it
- * with no clock running and its first refresh due; opting in is a
- * freshness-gated trust change; and an administrator may still refresh a
- * connection that has not opted in, which leaves it holding no deadline.
+ * Feature tests for when a SAML connection follows its metadata URL.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,9 +69,8 @@ final class SamlRefreshRuleTest extends TestCase
     private FakeFetcher $fetcher;
 
     /**
-     * Bind a fixed clock, a fake fetcher serving the provider's metadata signed
-     * by its anchor and a fresh freshness contract, switch SAML and the refresh
-     * on and create the tables.
+     * Bind a fixed clock, a fetcher serving anchor-signed metadata and fresh
+     * freshness, enable SAML and refresh, and create the tables.
      *
      * @return void
      */
@@ -104,8 +96,7 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Rows of `[anchored, switch, due]`: whether a connection with a URL is due
-     * on the schedule.
+     * Rows of `[anchored, switch, due]` for a connection with a URL.
      *
      * @return iterable<string, array{0: bool, 1: ?bool, 2: bool}>
      */
@@ -122,8 +113,7 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * The schedule lists a connection, and a queued refresh acts on it, by its
-     * anchor and its switch; a run refreshes only those.
+     * The schedule and queued refresh follow the anchor and switch.
      *
      * @param  bool  $anchored
      * @param  ?bool  $switch
@@ -146,8 +136,7 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Every chunk of a due listing keeps its order, whichever connections its
-     * anchors bring in.
+     * Every chunk of a due listing keeps its order whatever anchors bring in.
      *
      * @return void
      */
@@ -166,9 +155,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Adding the first anchor turns the default on: the connection is due at
-     * once, whatever refresh date a refresh by hand left, what was stamped
-     * before it counted starts no clock, and its first refresh does.
+     * Adding the first anchor makes the connection due at once with no clock
+     * running until its first refresh.
      *
      * @return void
      */
@@ -197,9 +185,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Removing the last anchor stops the default: the connection is no longer
-     * due, and what was stamped while it was anchored no longer expires it, so
-     * it keeps working with nothing needed to recover it.
+     * Removing the last anchor stops refresh, and old stamps no longer expire
+     * the connection.
      *
      * @return void
      */
@@ -225,9 +212,7 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * An anchor removed and added again does not bring back what was stamped
-     * before: it expired nothing while it held no deadline, and it expires
-     * nothing now, until a refresh stamps it again.
+     * An anchor removed and added again does not revive an old stamp.
      *
      * @return void
      */
@@ -249,8 +234,7 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Another anchor on a connection already anchored, and removing one of two,
-     * change nothing about its deadline or its refresh.
+     * A second anchor, or removing one of two, changes nothing.
      *
      * @return void
      */
@@ -274,9 +258,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * An anchor on a connection with `metadata_refresh` set `true` already, or
-     * with no URL, brings nothing in, so it clears nothing; on one set `false`
-     * it brings the deadline in but no refresh, and starts no clock.
+     * An anchor clears only what it brings in: nothing if already `true` or
+     * without a URL, the deadline alone if `false`.
      *
      * @return void
      */
@@ -299,9 +282,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * An explicit `false` on an anchored connection is still off, and a
-     * validated fetch still counts on it: an administrator's refresh stamps it,
-     * and it expires with nothing on the schedule to refresh it.
+     * An explicit `false` on an anchored connection is off, but an
+     * administrator's refresh still stamps and expires it.
      *
      * @return void
      */
@@ -323,9 +305,7 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Opting in with a stale authentication is refused: nothing changes, the
-     * trust version and what is in flight stay as they were, and only the
-     * connection's trust is asked.
+     * Opting in with a stale authentication is refused and changes nothing.
      *
      * @return void
      */
@@ -349,10 +329,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Opting in is a trust change: it raises the trust version, voids what is
-     * in flight, is reported naming the setting, makes the connection due at
-     * once and starts no clock from an old stamp, so it does not expire the
-     * moment it opts in.
+     * Opting in is a trust change that voids flights, is reported, makes the
+     * connection due and starts no clock from an old stamp.
      *
      * @return void
      */
@@ -384,8 +362,7 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Rows of `[stored, given]`: changes of the switch that are each a trust
-     * change, whichever way they go.
+     * Rows of `[stored, given]` switch changes, each a trust change.
      *
      * @return iterable<string, array{0: ?bool, 1: ?bool}>
      */
@@ -401,8 +378,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Every change of the switch asks the connection's trust and raises its
-     * trust version.
+     * Every switch change asks the connection's trust and raises its trust
+     * version.
      *
      * @param  ?bool  $stored
      * @param  ?bool  $given
@@ -422,9 +399,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Leaving, and a change that stays in, leave the stamps alone: leaving
-     * simply ends the deadline, and an anchored connection set `true` keeps the
-     * clock its last fetch started.
+     * Only coming to hold a deadline clears the stamps; leaving, or staying in,
+     * does not.
      *
      * @return void
      */
@@ -448,9 +424,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Saving the URL on an anchored connection brings it in as the anchor
-     * would, clearing a stamp from before; another setting's change reads no
-     * anchor and clears nothing.
+     * Saving the URL on an anchored connection brings it in and clears old
+     * stamps; other settings do not.
      *
      * @return void
      */
@@ -471,9 +446,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * An administrator's refresh of a connection that has not opted in needs a
-     * fresh authentication, and then runs: the certificates are replaced from
-     * the URL, yet it starts no clock and the schedule still leaves it alone.
+     * An administrator's refresh of a connection not opted in needs freshness,
+     * replaces certificates and starts no clock.
      *
      * @return void
      */
@@ -511,8 +485,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * What a refresh by hand stamped starts no clock if the connection opts in
-     * a year later.
+     * A manual refresh's stamp starts no clock if the connection opts in a year
+     * later.
      *
      * @return void
      */
@@ -533,8 +507,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * Whatever a SAML connection does, an OIDC connection's document still
-     * holds a deadline with its refresh off and no anchor.
+     * An OIDC connection's document keeps its deadline with refresh off and no
+     * anchor.
      *
      * @return void
      */
@@ -568,8 +542,8 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
-     * A SAML connection of the tenant with a URL and no switch, but for the
-     * settings given, a `null` among them leaving one out.
+     * A SAML connection of the tenant with a URL and no switch; a `null`
+     * setting is left out.
      *
      * @param  array<string, mixed>  $settings
      * @param  array<string, mixed>  $attributes

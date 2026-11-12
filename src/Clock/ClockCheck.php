@@ -9,10 +9,8 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[clock]`: the clock skew every protocol time check allows, while the package
- * is in use (SSO-6.5, SSO-11.13). It must be an integer from 0 to 300 seconds,
- * read as `ClockSkew::seconds()` reads it, so the check and the time checks
- * judge it the same way.
+ * `[clock]`: checks the clock skew the same way `ClockSkew::seconds()` reads
+ * it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

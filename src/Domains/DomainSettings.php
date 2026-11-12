@@ -8,25 +8,8 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The settings of claimed domains and their checks (SSO-3.1 to SSO-3.3), read
- * from `sso.domains` on each call (SSO-11.2), each failing closed with an
- * `InvalidArgumentException` naming its key when it is malformed; `[domains]`
- * reports the same at boot.
- *
- * - `record_name`: the name the TXT record is looked up at under a domain, one
- *   to four labels of lower-case letters, digits, `-` and `_` (not at either
- *   end of a label), at most 63 characters (default `_sso-verification`).
- * - `refused`: domains no tenant may claim, added to
- *   `PUBLIC_MAILBOX_PROVIDERS`, each a domain `DomainName` normalises; a listed
- *   domain's subdomains are refused too. It never removes a built-in one.
- * - `pending_expiry_seconds`: how long a claim waits to be verified, 3600 to
- *   2592000 seconds (default 604800, a week).
- * - `recheck_grace_seconds`: how long a verified domain whose record has gone
- *   keeps routing discovery before it lapses, 0 to 2592000 seconds (default
- *   259200, three days).
- * - `linking_max_age_seconds`: how recent the last successful check must be for
- *   the domain to allow linking by email, 60 to 86400 seconds (default and
- *   ceiling 86400, a day).
+ * The `sso.domains` settings, read on each call and failing closed when
+ * malformed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,10 +28,10 @@ final readonly class DomainSettings
     /** @var int The grace period when none is configured, in seconds (three days). */
     public const int DEFAULT_RECHECK_GRACE_SECONDS = 259200;
 
-    /** @var int The linking maximum age when none is configured, and the most it may be, in seconds (a day). */
+    /** @var int The default and ceiling linking maximum age, in seconds (a day). */
     public const int MAX_LINKING_AGE_SECONDS = 86400;
 
-    /** @var list<string> Public mailbox providers, whose domains no tenant can own; always refused, whatever is configured. */
+    /** @var list<string> Public mailbox providers, always refused whatever is configured. */
     public const array PUBLIC_MAILBOX_PROVIDERS = [
         '126.com', '163.com', 'aol.com', 'fastmail.com', 'gmail.com', 'gmx.com', 'gmx.de', 'gmx.net', 'googlemail.com',
         'hey.com', 'hotmail.co.uk', 'hotmail.com', 'icloud.com', 'live.com', 'mac.com', 'mail.com', 'mail.ru', 'me.com',
@@ -60,7 +43,7 @@ final readonly class DomainSettings
     /** @var int The longest a claim may wait or a grace period last, in seconds (30 days). */
     private const int MAX_PERIOD_SECONDS = 2592000;
 
-    /** @var string A record name: one to four labels of lower-case letters, digits, `-` and `_`, with no `-` at either end of a label. */
+    /** @var string One to four labels of `[a-z0-9_-]`, no `-` at either end. */
     private const string RECORD_NAME = '/^[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?(?:\.[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?){0,3}$/';
 
     /**
@@ -95,8 +78,8 @@ final readonly class DomainSettings
     }
 
     /**
-     * Every refused domain: the public mailbox providers, then those
-     * configured, each normalised and listed once.
+     * The public mailbox providers, then those configured, normalised and
+     * listed once.
      *
      * @return list<string>
      *
@@ -165,8 +148,7 @@ final readonly class DomainSettings
     }
 
     /**
-     * Whether the value is a record name: a string of one to four labels, at
-     * most `MAX_RECORD_NAME_LENGTH` characters.
+     * Whether the value is a valid record name.
      *
      * @param  mixed  $name
      * @return bool

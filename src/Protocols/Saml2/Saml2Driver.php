@@ -24,32 +24,8 @@ use SineMacula\Laravel\Sso\Protocols\Start;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 
 /**
- * The `saml2` driver (SSO-2.2, SSO-2.3, SSO-5.3, SSO-5.8, SSO-5.9, SSO-6): one
- * SAML 2.0 connection's flows, each through a collaborator of its own, with the
- * connection's settings read afresh into `Saml2Options` on every call.
- *
- * - `settings()` reads `Saml2Settings`.
- * - `isComplete()`: the settings are complete (`Saml2Settings::isComplete()`),
- *   the connection trusts at least one identity provider signing certificate,
- *   and it has a current service provider signing key when it signs its
- *   `AuthnRequest`s and a current encryption key when it requires encrypted
- *   assertions. Only a complete, enabled connection is used (SSO-2.1).
- * - `start()` (`AuthnRequests`), `complete()` (`ResponseValidator`) and
- *   `reinitiate()` (`UnsolicitedResponses`) are refused with
- *   `metadata_expired`, before their collaborator is asked, while what a
- *   metadata refresh applied to the connection has expired
- *   (`Metadata\MetadataExpiry`, SSO-2.8).
- * - `correlate()` (`ResponseCorrelator`) reads which request a response
- *   answers, validating nothing.
- * - `describe()` (`ServiceProviderMetadata`) is the service provider metadata.
- *
- * Every library call is made inside the SAML adapter's namespace (`Library`,
- * entered through `Library\SamlAdapter`); the driver and its collaborators read
- * only the package's own values. The protocol manager keeps one instance per
- * process (and per application under Octane), so it and its collaborators hold
- * no connection, flow or result state between calls (SSO-11.2), and never touch
- * the package's storage beyond the reads of the key ring and the metadata
- * expiry.
+ * The `saml2` protocol driver. Settings are read afresh on every call; library
+ * calls stay inside the `Library` namespace.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -58,7 +34,7 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
  */
 final readonly class Saml2Driver implements ProtocolDriver, ReinitiatingDriver
 {
-    /** @var string The name the driver is registered under, and a SAML connection's protocol. */
+    /** @var string The driver's registered name and a SAML connection's protocol. */
     public const string NAME = 'saml2';
 
     /**
@@ -171,9 +147,8 @@ final readonly class Saml2Driver implements ProtocolDriver, ReinitiatingDriver
     }
 
     /**
-     * Validate the response against the consumed request, unless the
-     * connection's metadata expired. A SAML validation reports nothing, so the
-     * client is not read.
+     * Validate the response, unless the connection's metadata expired. SAML
+     * reports nothing, so the client is unused.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
@@ -216,8 +191,7 @@ final readonly class Saml2Driver implements ProtocolDriver, ReinitiatingDriver
     }
 
     /**
-     * Where re-initiation sends the browser for the connection, or `null` when
-     * it does not allow IdP-initiated sign-in.
+     * Where re-initiation sends the browser, or `null` when it is off.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return ?string
@@ -243,7 +217,7 @@ final readonly class Saml2Driver implements ProtocolDriver, ReinitiatingDriver
     }
 
     /**
-     * Whether the connection has a current key of the use, when it needs one.
+     * Whether the connection has a current key of the use, if it needs one.
      *
      * @param  string  $connectionId
      * @param  bool  $needed

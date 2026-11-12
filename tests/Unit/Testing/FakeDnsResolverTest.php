@@ -14,9 +14,7 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Testing\FakeDnsResolver;
 
 /**
- * Unit tests for the fake DNS resolver (SSO-12.4): each answer it can give, a
- * claimed domain's record published, names matched as DNS matches them, a stray
- * lookup failing loudly, and the assertions on what was looked up.
+ * Unit tests for the fake DNS resolver.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

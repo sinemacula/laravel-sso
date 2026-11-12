@@ -17,14 +17,7 @@ use SineMacula\Laravel\Sso\Testing\FrozenClock;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/clock.md` (SSO-11.13, SSO-12.5), on the shared
- * example harness: the package's default clock following Laravel's time travel,
- * the application's own clock bound in a service provider in place of the
- * default, and a frozen clock bound and moved by a test. Each asserts the clock
- * the package reads by an authorisation request's ten-minute lifetime: a
- * response delivered at its end is refused with `request_expired`, and, by the
- * default and the frozen clock, one delivered a second short of it is handed
- * off.
+ * The examples of `docs/guides/clock.md`, timed by a request's ten-minute life.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,9 +45,7 @@ final class ClockExampleTest extends ExampleTestCase
     }
 
     /**
-     * With the harness's frozen clock unbound, the package reads its default,
-     * which follows Laravel's clock: ten minutes of time travel expires the
-     * request a flow started.
+     * The default clock follows Laravel's time travel.
      *
      * @return void
      *
@@ -85,8 +76,7 @@ final class ClockExampleTest extends ExampleTestCase
     }
 
     /**
-     * A second short of the request's lifetime by Laravel's clock, the default
-     * clock still consumes it and the flow is handed off.
+     * The default clock consumes a request a second before it expires.
      *
      * @return void
      *
@@ -111,10 +101,7 @@ final class ClockExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's own clock, bound by its service provider after the
-     * package's, replaces the harness's frozen clock as the one shared clock
-     * the package reads: it follows Laravel's time, so ten minutes of time
-     * travel expires the request while the frozen clock has not moved.
+     * The application's own clock replaces the default.
      *
      * @return void
      *
@@ -143,10 +130,7 @@ final class ClockExampleTest extends ExampleTestCase
     }
 
     /**
-     * A frozen clock bound in place of the package's moves only when the test
-     * moves it, backwards as well as forwards: a request started at its instant
-     * expires when it has moved ten minutes on, and one moved a second short of
-     * that is handed off.
+     * A frozen clock moves only when the test moves it, in either direction.
      *
      * @return void
      *
@@ -188,8 +172,7 @@ final class ClockExampleTest extends ExampleTestCase
     }
 
     /**
-     * Make the provider, reading the clock now bound; the link store is bound
-     * afresh, since the one the harness bound was given the clock bound before.
+     * Make a provider on the bound clock, rebinding the link store to read it.
      *
      * @return \SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider
      */

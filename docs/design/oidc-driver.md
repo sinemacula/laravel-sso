@@ -59,8 +59,8 @@ relying party's description in `oidc-relying-party.md`.
 - A connection's JWKS is kept on its row (`jwks`, a JSON list of the public members of each admitted key, at most
   `sso.oidc.max_jwks_keys`), with `jwks_version` (raised by every write of it, so a refetch and a refresh compare and
   set), `jwks_fetched_at` (its last validated fetch), `jwks_refetch_at` (no unknown-`kid` refetch starts before it: the
-  cooldown) and `jwks_claim_token` (the token of the refetch in progress). The discovery document's refresh state is
-  the row's `metadata_*` columns, shared with SAML.
+  cooldown), `jwks_claim_token` (the token of the refetch in progress) and `jwks_refetch_suppressed` (the tokens the
+  cooldown turned away). The discovery document's refresh state is the row's `metadata_*` columns, shared with SAML.
 - The scheduled and administrator's refresh of the discovery document and the JWKS runs through the shared refresh
   machinery (`metadata-refresh.md`): `Metadata\OidcMetadataSource` is the OIDC `Metadata\MetadataSource`, so the claim
   and its token, the backoff, the queued job, the command, the compare and set (`Metadata\RefreshWriter`), the stale

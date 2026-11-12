@@ -28,10 +28,7 @@ use SineMacula\Laravel\Sso\SsoServiceProvider;
 use SineMacula\Laravel\Sso\Support\RequestState;
 
 /**
- * Unit tests for `RequestState`: it forgets the package's scoped defaults and
- * its driver scope, and keeps the singleton defaults, the stranded
- * transactions, what the application scoped itself and what it bound over a
- * contract.
+ * Unit tests for `RequestState`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,8 +45,7 @@ final class RequestStateTest extends TestCase
     ];
 
     /**
-     * Each scoped default and the driver scope are built afresh after
-     * `forget()`, through the contract and through the private key alike.
+     * Scoped defaults and the driver scope are rebuilt after `forget()`.
      *
      * @return void
      */
@@ -72,8 +68,7 @@ final class RequestStateTest extends TestCase
     }
 
     /**
-     * The singleton defaults, the protocol registry and the stranded
-     * transactions outlive `forget()`.
+     * Singletons, the registry and stranded transactions survive `forget()`.
      *
      * @return void
      */
@@ -91,8 +86,7 @@ final class RequestStateTest extends TestCase
     }
 
     /**
-     * What the application bound over a contract, and what it scoped itself, is
-     * left as it was.
+     * What the application bound or scoped itself is kept.
      *
      * @return void
      */

@@ -17,10 +17,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Feature tests for the link resolution step of a completion: it asks the
- * linking contract about the verified result for the client the completion
- * arrived from, the very context its state carries, and goes on with what the
- * contract resolved.
+ * Feature tests for the link resolution stage of a completion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +28,7 @@ use Tests\Fixtures\Results\ExampleResults;
 final class ResolveLinkTest extends TestCase
 {
     /**
-     * The linker is given the state's result and its client, and the stage goes
-     * on with the resolution it answered.
+     * The linker is given the state's result and client.
      *
      * @return void
      */
@@ -54,8 +50,7 @@ final class ResolveLinkTest extends TestCase
     }
 
     /**
-     * A state with no verified result is a `LogicException`, before the linker
-     * is asked.
+     * A state with no verified result is a `LogicException`.
      *
      * @return void
      */
@@ -85,8 +80,7 @@ final class ResolveLinkTest extends TestCase
     }
 
     /**
-     * A linker that answers the resolution given and records each result and
-     * client it is asked about.
+     * A linker answering the resolution given and recording each question.
      *
      * @param  \SineMacula\Laravel\Sso\Links\LinkResolution  $resolution
      * @param  \ArrayObject<int, array{0: \SineMacula\Laravel\Sso\Results\VerifiedResult, 1: \SineMacula\Laravel\Sso\Http\ClientContext}>  $asked

@@ -9,10 +9,7 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[flows]`: the settings of the flows themselves, while the package is in use
- * (SSO-5.1, SSO-3.5), each read as `FlowSettings` reads it, so the check and
- * the flows judge it the same way. The tables' names are checked under
- * `[storage]`, and each application's handoff lifetime under `[applications]`.
+ * `[flows]`: checks the flows' own settings, read as `FlowSettings` reads them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,8 +39,7 @@ final readonly class FlowsCheck implements ConfigurationCheck
     }
 
     /**
-     * The authorisation request's lifetime and the least time a discovery start
-     * takes.
+     * The request lifetime and the discovery minimum duration.
      *
      * @return list<\Closure(): mixed>
      */

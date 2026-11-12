@@ -19,11 +19,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for how the flows reach an application: admitted only when
- * registered under exactly its name and allowed by the bound policy, refused
- * alike otherwise; and its redirect URI resolved by the bound resolver from the
- * application and the connection alone, exactly as answered, a malformed answer
- * failing closed.
+ * Feature tests for application admission and redirect URI resolution.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,8 +50,8 @@ final class ApplicationGateTest extends TestCase
     }
 
     /**
-     * By default, an application allows external sign-in exactly when its
-     * configuration says so; an unknown one is refused the same way.
+     * By default only a registered application that allows external sign-in is
+     * admitted.
      *
      * @return void
      */
@@ -82,8 +78,7 @@ final class ApplicationGateTest extends TestCase
     }
 
     /**
-     * A bound policy decides for every registered application, and is never
-     * asked about a name no application is registered under.
+     * A bound policy decides for registered applications only.
      *
      * @return void
      */
@@ -119,8 +114,8 @@ final class ApplicationGateTest extends TestCase
     }
 
     /**
-     * The default resolver answers the application's configured redirect URI
-     * exactly, whichever the connection.
+     * The default resolver answers the configured redirect URI for any
+     * connection.
      *
      * @return void
      */
@@ -137,8 +132,8 @@ final class ApplicationGateTest extends TestCase
     }
 
     /**
-     * A bound resolver is given the application and the connection, and its
-     * answer is used exactly; a native application's scheme is a redirect URI.
+     * A bound resolver's answer for the application and connection is used
+     * exactly.
      *
      * @return void
      */
@@ -167,8 +162,7 @@ final class ApplicationGateTest extends TestCase
     }
 
     /**
-     * A bound resolver's answer that is not an exact redirect URI fails closed,
-     * naming the application and never the answer.
+     * A malformed resolver answer fails closed, naming the application only.
      *
      * @return void
      */

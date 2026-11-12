@@ -5,10 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\AuditLog\Records;
 
 /**
- * A stand-in for `laravel-audit-log`'s real `Records\Reference`, which this
- * package does not install, with the exact signature of the `of()` the guide's
- * mapper calls (`docs/guides/events.md`): a type and an id, each 1 to 191
- * characters, an integer id kept as its decimal string.
+ * A stand-in for `laravel-audit-log`'s `Records\Reference`, with the exact
+ * signature of `of()`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -21,7 +19,7 @@ final readonly class Reference
     public const int MAX_CHARACTERS = 191;
 
     /**
-     * Constructor.
+     * Check each part is 1 to 191 characters.
      *
      * @param  string  $type
      * @param  string  $id
@@ -30,7 +28,7 @@ final readonly class Reference
      */
     private function __construct(
 
-        /** The type: a morph class, a class name or any name the application uses. */
+        /** A morph class, a class name or any name the application uses. */
         public string $type,
 
         /** The id, exactly as given, as a string. */
@@ -44,8 +42,7 @@ final readonly class Reference
     }
 
     /**
-     * A reference to the type and id given; an integer id is kept as its
-     * decimal string.
+     * A reference to the type and id, an integer id kept as its decimal string.
      *
      * @param  string  $type
      * @param  int|string  $id

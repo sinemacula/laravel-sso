@@ -13,11 +13,7 @@ use SineMacula\Laravel\Sso\Responses\CompletionResponse;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 
 /**
- * The controller of `docs/guides/oidc-callback.md` (SSO-5.6, SSO-7.1,
- * SSO-12.5): the OIDC callback, completing the flow the authorisation response
- * answers, from the raw query `CompletionRequest::fromRequest()` keeps, and
- * returning the redirect or refusal `CompletionResponses` builds for its
- * result.
+ * The example application's OIDC callback controller.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,8 +39,7 @@ final readonly class SsoCompletionController
 
     // @snippet-start oidc-callback-action
     /**
-     * GET: the OIDC authorisation response the provider sends the browser back
-     * with.
+     * GET: the provider's authorisation response.
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  string  $connection

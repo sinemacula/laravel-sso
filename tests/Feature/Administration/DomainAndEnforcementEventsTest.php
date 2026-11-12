@@ -29,13 +29,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporters of the scheduled domain checks and of
- * enforcement (SSO-3.3, SSO-4.4, SSO-4.5, SSO-10.3, SSO-10.4, SSO-10.5), whose
- * helpers arrive with the recheck and enforcement items: each event built
- * through the one projection with what it concerns and nothing more, a recheck
- * with no acting identity, an enforcement change's connections in id order, an
- * exemption's context naming the enforcing and the active tenant, and each
- * dispatched only once the storage connection's transaction commits.
+ * Feature tests for the domain recheck and enforcement event reporters.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,9 +59,8 @@ final class DomainAndEnforcementEventsTest extends TestCase
     }
 
     /**
-     * A failed recheck, a restoration and a lapse are each reported with the
-     * connection, its tenant and protocol and no acting identity; a failed
-     * recheck carries the failure and the lapse time the row holds.
+     * A failed recheck, a restoration and a lapse are reported with no acting
+     * identity.
      *
      * @return void
      */
@@ -102,8 +95,7 @@ final class DomainAndEnforcementEventsTest extends TestCase
     }
 
     /**
-     * An enforcement change reports the row as it is, its connections each once
-     * in id order, the version it replaced, and the acting identity.
+     * An enforcement change reports its connections once each in id order.
      *
      * @return void
      */
@@ -134,8 +126,7 @@ final class DomainAndEnforcementEventsTest extends TestCase
     }
 
     /**
-     * An exemption used names the enforcing tenant, the tenant the session is
-     * active in, the application, the identity, the session and the version.
+     * An exemption used names the enforcing and the active tenant.
      *
      * @return void
      */
@@ -158,8 +149,7 @@ final class DomainAndEnforcementEventsTest extends TestCase
     }
 
     /**
-     * Each is reported only once the storage connection's transaction commits,
-     * and never when it rolls back.
+     * Each is reported once the transaction commits, never on rollback.
      *
      * @return void
      */

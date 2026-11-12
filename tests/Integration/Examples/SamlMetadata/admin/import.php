@@ -3,14 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The import endpoint of `docs/guides/saml-metadata.md` (SSO-2.8, SSO-2.11,
- * SSO-12.5), as the application's administration screen runs it for the
- * tenant's SAML connection, or before the connection exists, given the tenant
- * and the connection or `null`: the package fetches the provider's metadata and
- * answers the settings it proposes, writing and trusting nothing. A rate
- * limited import goes back with the wait, and a refused one with its reason; a
- * proposal is answered with what the screen shows the administrator, for the
- * endpoint to render.
+ * The import endpoint of `docs/guides/saml-metadata.md`, given `$input`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

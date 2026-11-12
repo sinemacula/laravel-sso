@@ -3,12 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The public keys route of `docs/guides/service-provider-metadata.md`
- * (SSO-5.9, SSO-12.5), as an application's routes file holds it: a `GET` route
- * on the path `sso.endpoints.paths.jwks` builds each OIDC connection's
- * `jwks_uri` from, with no authentication and no tenant, answering the
- * connection's current and next public keys, and `404` for a connection with
- * none to serve.
+ * The public keys route of `docs/guides/service-provider-metadata.md`, with no
+ * authentication and no tenant.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

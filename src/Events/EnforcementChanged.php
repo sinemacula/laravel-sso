@@ -7,15 +7,10 @@ namespace SineMacula\Laravel\Sso\Events;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * A tenant's enforcement changed (SSO-4.5, SSO-10.3): turned on or off, or the
- * connections that satisfy it changed, with a new `version`. Any revocation the
- * change needed ran in the same transaction, through the synchronous revocation
- * contract; this event only reports it.
+ * A tenant's enforcement was turned on or off, or its satisfying connections
+ * changed.
  *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the tenant and the acting
- * identity as the application passed it (SSO-10.4). It reports only; it crosses
- * a queue as it is.
+ * Any revocation the change needed already ran in its transaction.
  *
  * @api
  *

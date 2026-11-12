@@ -20,17 +20,8 @@ use SineMacula\Laravel\Sso\Protocols\Start;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 
 /**
- * The example application's own protocol driver (SSO-2.2), registered as `cas`:
- * a connection is complete once its CAS server is set, a flow starts by sending
- * the browser to the server's login page with the connection's callback as the
- * service, carrying the request's `state`, and a response is correlated by that
- * `state`. Validating the service ticket at the server is left out of the
- * example, so every response is refused; a real driver validates it there, and
- * answers what it verified.
- *
- * It holds nothing between calls (SSO-11.2): the registry keeps one instance
- * per request or job, and the connection, its settings and the request are
- * given to each call.
+ * The application's `cas` protocol driver; it skips ticket validation, so every
+ * response is refused. It holds no state, as the registry shares one instance.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,8 +55,8 @@ final readonly class CasDriver implements ProtocolDriver
     }
 
     /**
-     * Send the browser to the CAS server's login page, with the connection's
-     * callback, carrying the request's `state`, as the service.
+     * Send the browser to the CAS login page, with the callback carrying
+     * `state` as the service.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\StartRequest  $request
@@ -134,8 +125,7 @@ final readonly class CasDriver implements ProtocolDriver
     }
 
     /**
-     * The connection's callback, which the CAS server sends the browser back
-     * to.
+     * The connection's callback, where the CAS server sends the browser back.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return string

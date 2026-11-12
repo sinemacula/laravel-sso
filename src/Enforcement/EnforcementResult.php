@@ -9,16 +9,10 @@ use SineMacula\Laravel\Sso\Enforcement\Enums\EnforcementStatus;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How a change to a tenant's enforcement ended (SSO-4.3, SSO-4.5, SSO-2.11,
- * SSO-2.12): updated or unchanged, each with the tenant's enforcement as it now
- * is; refused, with the reason (`feature_disabled`, `freshness_required` or
- * `completed_sign_in_required`); or invalid, with every violation found and the
- * reason `settings_invalid`.
+ * How a change to a tenant's enforcement ended; a refusal changed nothing.
  *
- * A refusal is a value, never thrown, and changed nothing: no row was written,
- * no session revocation asked for and no event dispatched. A violation names a
- * position in the list of connection ids given and a code, never the id, so an
- * unknown id and another tenant's are refused alike.
+ * A violation names a position in the ids given, never the id, so an unknown id
+ * and another tenant's are refused alike.
  *
  * @api
  *
@@ -27,7 +21,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  */
 final readonly class EnforcementResult implements \JsonSerializable
 {
-    /** @var list<\SineMacula\Laravel\Sso\Events\Enums\FailureReason> The reasons a change to an enforcement is refused for. */
+    /** @var list<\SineMacula\Laravel\Sso\Events\Enums\FailureReason> Reasons a change may be refused for. */
     private const array REFUSALS = [
         FailureReason::FEATURE_DISABLED,
         FailureReason::FRESHNESS_REQUIRED,
@@ -58,7 +52,7 @@ final readonly class EnforcementResult implements \JsonSerializable
     ) {}
 
     /**
-     * The tenant's enforcement was changed, with a new version.
+     * The enforcement was changed, with a new version.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementSummary  $enforcement
      * @return self
@@ -69,8 +63,7 @@ final readonly class EnforcementResult implements \JsonSerializable
     }
 
     /**
-     * The change gave what the tenant's enforcement already held; nothing was
-     * written.
+     * The enforcement already held what was given; nothing was written.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementSummary  $enforcement
      * @return self
@@ -81,8 +74,7 @@ final readonly class EnforcementResult implements \JsonSerializable
     }
 
     /**
-     * The change was refused for the reason given: `feature_disabled`,
-     * `freshness_required` or `completed_sign_in_required`.
+     * The change was refused for one of the refusal reasons.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @return self
@@ -99,7 +91,7 @@ final readonly class EnforcementResult implements \JsonSerializable
     }
 
     /**
-     * The connection ids given were refused, for each of these violations.
+     * The connection ids given were refused for these violations.
      *
      * @param  list<\SineMacula\Laravel\Sso\Connections\SettingViolation>  $violations
      * @return self
@@ -116,7 +108,7 @@ final readonly class EnforcementResult implements \JsonSerializable
     }
 
     /**
-     * Whether the change succeeded: updated or unchanged.
+     * Whether the change was updated or unchanged.
      *
      * @return bool
      */
@@ -126,7 +118,7 @@ final readonly class EnforcementResult implements \JsonSerializable
     }
 
     /**
-     * Whether the change wrote something: updated.
+     * Whether the change wrote something.
      *
      * @return bool
      */
@@ -136,7 +128,7 @@ final readonly class EnforcementResult implements \JsonSerializable
     }
 
     /**
-     * Whether the change was refused, with a reason.
+     * Whether the change was refused.
      *
      * @return bool
      */
@@ -146,7 +138,7 @@ final readonly class EnforcementResult implements \JsonSerializable
     }
 
     /**
-     * Whether the connection ids given were refused, with their violations.
+     * Whether the connection ids given were refused.
      *
      * @return bool
      */
@@ -156,8 +148,7 @@ final readonly class EnforcementResult implements \JsonSerializable
     }
 
     /**
-     * The result, with snake_case keys: the status, the enforcement, the reason
-     * and the violations.
+     * Snake_case keys.
      *
      * @return array{status: string, enforcement: ?array<string, mixed>, reason: ?string, violations: list<array{setting: string, code: string}>}
      */

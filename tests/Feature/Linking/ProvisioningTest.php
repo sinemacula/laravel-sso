@@ -77,13 +77,8 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * The provisioning helper and its grant, through the public completion
- * (SSO-8.6, `docs/design/linking.md`): what a link made through them looks like
- * and how the final continuation resolves it; every way a grant is refused; a
- * listener's exception, its open transaction and its rollback; authority
- * withdrawn during the listener; the deadline at, one second before and one
- * after, at the helper and at the final continuation; subjects held and limits
- * reached; which results are never offered; and the lock order.
+ * Feature tests of the provisioning helper and its grant, through the public
+ * completion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -123,9 +118,8 @@ final class ProvisioningTest extends LinkingTestCase
     private int $offered = 0;
 
     /**
-     * Make the result unmatched by any verified domain, so it reaches the
-     * provisioning boundary; create the application's table of identities and
-     * the enforcement table.
+     * Make the result unmatched by any verified domain, and create the identity
+     * and enforcement tables.
      *
      * @return void
      */
@@ -182,10 +176,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * The helper makes an active link with provisioning as its origin, holding
-     * the subject byte for byte; raises the links version; and answers its
-     * summary. The final continuation resolves it anew, and issues the handoff
-     * bound to the new link's id, which redeems to the new identity.
+     * The helper makes an active provisioned link, and the final continuation
+     * issues a handoff bound to it.
      *
      * @return void
      */
@@ -306,9 +298,7 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Another result object carrying identical fields is refused, whichever way
-     * it was made, writes nothing, and spends the grant's one use: the exact
-     * result then gets no link either, and the completion ends unlinked.
+     * A copy of the result is refused and spends the grant's one use.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Results\VerifiedResult): \SineMacula\Laravel\Sso\Results\VerifiedResult  $copy
      * @return void
@@ -513,9 +503,7 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * A grant kept after a listener threw opens nothing, though the request is
-     * still consumed, unfinished and within its deadline: only the dispatch
-     * gave it authority.
+     * A grant kept after a listener threw is refused.
      *
      * @return void
      */
@@ -541,9 +529,7 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Neither the grant nor the event can be cloned into a second use,
-     * serialised or unserialised, and no dump, export, array cast or JSON of
-     * either shows the result, the subject, an attribute or the request's id.
+     * Neither the grant nor the event can be copied, serialised or shown.
      *
      * @return void
      */
@@ -560,7 +546,7 @@ final class ProvisioningTest extends LinkingTestCase
             self::assertSame('A provisioning grant cannot be serialised.', self::refusalOf(static fn (): string => serialize($grant)));
             self::assertSame('A provisioning grant cannot be unserialised.', self::refusalOf(static fn (): mixed => unserialize(self::emptyPayload($class))));
             self::assertSame(
-                'The unlinked-result event cannot be serialised: a queued listener is too late (SSO-8.6).',
+                'The unlinked-result event cannot be serialised: a queued listener is too late.',
                 self::refusalOf(static fn (): string => serialize($event)),
             );
             self::assertSame('The unlinked-result event cannot be unserialised.', self::refusalOf(static fn (): mixed => unserialize(self::emptyPayload($event::class))));
@@ -585,9 +571,7 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * A queued listener is too late and fails loudly: queuing the event refuses
-     * to serialise it, the completion ends as a server error, and nothing is
-     * issued.
+     * A queued listener fails loudly, ending the completion as a server error.
      *
      * @return void
      */
@@ -621,7 +605,7 @@ final class ProvisioningTest extends LinkingTestCase
 
             self::fail('The event reached the queue.');
         } catch (\Throwable $exception) {
-            self::assertSame('The unlinked-result event cannot be serialised: a queued listener is too late (SSO-8.6).', self::rootCause($exception)->getMessage());
+            self::assertSame('The unlinked-result event cannot be serialised: a queued listener is too late.', self::rootCause($exception)->getMessage());
             self::assertInstanceOf(\LogicException::class, self::rootCause($exception));
         }
 
@@ -629,9 +613,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * A listener throwing before it makes anything ends the completion as a
-     * server error: the request stays consumed and unfinished, no code is kept,
-     * and a replay of the response is `request_unknown`, offering nothing.
+     * A listener throwing before it links ends the completion as a server
+     * error.
      *
      * @return void
      */
@@ -656,9 +639,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * A listener throwing after it committed a link ends the completion too;
-     * the link stays made, nothing resumes it, and only a new flow resolves it,
-     * offering nothing.
+     * A listener throwing after it linked leaves the link for a new flow to
+     * resolve.
      *
      * @return void
      */
@@ -692,9 +674,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * A listener that leaves its transaction open, holding a link, is a
-     * `LogicException`: what it opened rolls back, the grant closes, and the
-     * link's event never comes.
+     * A listener leaving its transaction open is a `LogicException`, and what
+     * it made rolls back.
      *
      * @return void
      */
@@ -719,7 +700,7 @@ final class ProvisioningTest extends LinkingTestCase
 
             self::fail('The completion went on.');
         } catch (\LogicException $exception) {
-            self::assertSame('A provisioning listener must commit or roll back its transaction before it returns (SSO-8.6).', $exception->getMessage());
+            self::assertSame('A provisioning listener must commit or roll back its transaction before it returns.', $exception->getMessage());
         }
 
         self::assertSame(0, DB::connection(StorageConnection::name())->transactionLevel());
@@ -734,9 +715,7 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * A listener's exception inside its transaction rolls that back with the
-     * exception: neither the identity nor the link stays, and nothing leaves a
-     * level open.
+     * A listener throwing inside its transaction keeps nothing.
      *
      * @return void
      */
@@ -868,9 +847,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Authority withdrawn during the listener refuses the helper, which writes
-     * nothing, as `request_unavailable`, and the final continuation refuses in
-     * its turn.
+     * Authority withdrawn during the listener refuses the helper as
+     * `request_unavailable`.
      *
      * @param  string  $how
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $final
@@ -924,9 +902,7 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[whether the listener provisions, whether what it made stands]`:
-     * the final continuation refuses either way, and what the helper committed
-     * survives.
+     * Rows of `[whether the listener provisions, whether what it made stands]`.
      *
      * @return iterable<string, array{0: bool}>
      */
@@ -980,9 +956,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * An application policy that stops allowing the application while the
-     * listener runs is asked by the final continuation: no code is issued, and
-     * a link the helper committed stands.
+     * An application policy withdrawn during the listener refuses the final
+     * continuation, and a committed link stands.
      *
      * @param  bool  $provisions
      * @return void
@@ -1074,10 +1049,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * A trust change refused in the helper is the trust version, not the
-     * connection, that refuses: a receipt naming exactly that transition lets
-     * the helper and the final continuation go on, and a further change does
-     * not.
+     * The response's own trust receipt permits exactly its transition and no
+     * further change.
      *
      * @return void
      */
@@ -1120,9 +1093,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[seconds, status, the final continuation's reason]` of a
-     * listener the clock moves on during: the deadline is exact, passed at its
-     * moment.
+     * Rows of `[seconds, status, final continuation's reason]`: the deadline
+     * passes at its moment.
      *
      * @return iterable<string, array{0: int, 1: \SineMacula\Laravel\Sso\Provisioning\Enums\ProvisioningStatus, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -1284,9 +1256,7 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * A subject linked by a racer before the helper is refused, under the lock,
-     * and the final continuation resolves to the racer's identity with the
-     * racer's link, whichever identity the listener tried.
+     * A subject a racer linked first resolves to the racer's identity.
      *
      * @return void
      */
@@ -1430,9 +1400,7 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Each state of the link that is not genuinely absent, and what it ends
-     * with: a suspended link and a live reservation are never offered, even on
-     * an application allowing unlinked handoffs.
+     * A suspended link or a live reservation is never offered for provisioning.
      *
      * @return void
      */
@@ -1593,10 +1561,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * The lock order of the whole completion from validation on, under no
-     * enforcement: the preparation with the domain claim, the helper's request
-     * by the id it claimed and its links, and a final continuation that selects
-     * no domain.
+     * The lock order across the preparation, the helper and the final
+     * continuation.
      *
      * @return void
      */
@@ -2074,10 +2040,8 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * Arrange a response whose own validation rotated the connection's keys:
-     * the connection stores the key and raises its trust version during
-     * validation, and the validation step answers the receipt naming that
-     * transition.
+     * Arrange a response whose own validation rotates the keys and answers the
+     * receipt.
      *
      * @return void
      *

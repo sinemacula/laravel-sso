@@ -14,20 +14,8 @@ use Tests\Concerns\CapturesLogs;
 use Tests\TestCase;
 
 /**
- * Integration tests, through the container's logger and a real channel, that no
- * verifier, handoff code, protocol state, assertion, provider token or secret
- * reaches a log, while the public reference and the reason code do (SSO-5.7,
- * SSO-9.8, SSO-11.9).
- *
- * Each test logs what a failing flow would: an OIDC token endpoint's error
- * body, a SAML status message, the callback URL, the token request, and an
- * exception. This is the template each flow's own test follows: run the flow
- * with `CapturesLogs`, then assert with `assertNothingLoggedContains()` that
- * none of its secrets appear and with `assertLoggedContains()` that its
- * reference and reason do.
- *
- * Every secret is built at run time, so no secret scanner takes a fixture for a
- * real credential.
+ * Integration tests that nothing secret reaches a log. Secrets are built at run
+ * time so no secret scanner flags a fixture.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -85,9 +73,7 @@ final class NothingSecretIsLoggedTest extends TestCase
     }
 
     /**
-     * An OIDC token endpoint's error body that also carries tokens, logged as
-     * the provider's diagnostic: its error code and description are kept, its
-     * tokens are not.
+     * An OIDC token error body keeps its error and description, not its tokens.
      *
      * @return void
      */
@@ -100,8 +86,8 @@ final class NothingSecretIsLoggedTest extends TestCase
     }
 
     /**
-     * A SAML status message that echoes an assertion: the assertion is redacted
-     * whole, its subject with it, and the status kept.
+     * A SAML status message echoing an assertion has the assertion redacted
+     * whole.
      *
      * @return void
      */
@@ -114,8 +100,7 @@ final class NothingSecretIsLoggedTest extends TestCase
     }
 
     /**
-     * The callback URL, with its code and state in the query, logged as a
-     * message and in the context: the URL is kept, the code and state not.
+     * A callback URL is kept without its code and state.
      *
      * @return void
      */
@@ -128,9 +113,7 @@ final class NothingSecretIsLoggedTest extends TestCase
     }
 
     /**
-     * The token request a failed exchange was for: its form's code, verifier,
-     * client secret and nonce, its authorisation header and a decrypted secret
-     * are all redacted, and its grant type kept.
+     * A token request keeps its grant type and redacts every credential.
      *
      * @return void
      */
@@ -143,9 +126,7 @@ final class NothingSecretIsLoggedTest extends TestCase
     }
 
     /**
-     * An exception whose message holds a handoff code, logged as Laravel logs
-     * one: reduced to its class, its sanitised message and its code, with no
-     * trace and no previous exception.
+     * An exception is reduced to its class, sanitised message and code.
      *
      * @return void
      */
@@ -159,8 +140,7 @@ final class NothingSecretIsLoggedTest extends TestCase
     }
 
     /**
-     * All of the above in one request, as a flow would log them: five records,
-     * and nothing secret in any of them.
+     * Nothing secret appears across a flow's five log records.
      *
      * @return void
      */
@@ -197,8 +177,8 @@ final class NothingSecretIsLoggedTest extends TestCase
     }
 
     /**
-     * Log a SAML status message that echoes a signed assertion, with the
-     * response and relay state it came in.
+     * Log a SAML status message echoing a signed assertion, with its response
+     * and relay state.
      *
      * @return void
      */
@@ -254,8 +234,8 @@ final class NothingSecretIsLoggedTest extends TestCase
     }
 
     /**
-     * Log an exception whose message, and whose previous exception's, holds a
-     * handoff code.
+     * Log an exception whose message, and its previous one's, holds a handoff
+     * code.
      *
      * @return void
      */
@@ -268,8 +248,8 @@ final class NothingSecretIsLoggedTest extends TestCase
     }
 
     /**
-     * The context every failure carries: the public reference and the reason
-     * code, then what the failure adds.
+     * The public reference and reason code every failure carries, plus the
+     * given context.
      *
      * @param  array<string, mixed>  $context
      * @return array<string, mixed>

@@ -27,12 +27,8 @@ use Tests\Fixtures\Fetching\StubHostResolver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the default fetcher's deadline: the timeout is one budget
- * for the whole fetch, spent by every lookup and every hop, redirects included;
- * each transfer is given only what is left of it; and a lookup or hop that
- * leaves none fails the fetch as `timeout`, never fetched (SSO-2.9). Time
- * passes only on the test's own monotonic clock, moved by the lookup and the
- * mock handler, and nothing touches the network.
+ * Feature tests for the default fetcher's single deadline. Time moves only on
+ * the test's monotonic clock; nothing touches the network.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -74,8 +70,8 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     private TestHandler $log;
 
     /**
-     * Start each test at nanosecond zero with an empty log and a one-second
-     * connect timeout under a ten-second timeout.
+     * Start at nanosecond zero with a one-second connect timeout under a
+     * ten-second timeout.
      *
      * @return void
      */
@@ -94,9 +90,8 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * A system lookup that takes longer than the whole timeout, and cannot be
-     * cut short, fails the fetch as `timeout` once it returns: nothing is sent,
-     * whatever it answered.
+     * A system lookup that outlasts the timeout fails the fetch as `timeout`,
+     * sending nothing.
      *
      * @return void
      */
@@ -117,8 +112,8 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * Less than a millisecond left is no time at all: cURL would read a timeout
-     * of `0` as none.
+     * Less than a millisecond left is a timeout, since cURL reads `0` as no
+     * timeout.
      *
      * @return void
      */
@@ -137,10 +132,8 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * Time that passes between the check straight after the lookup and the
-     * transfer, leaving less than a millisecond, fails the fetch as `timeout`:
-     * the transfer is never sent with a cap of `0`, which cURL reads as none,
-     * and never answers `fetched`.
+     * Time passing after the lookup check to under a millisecond is a timeout,
+     * never a `0` cap.
      *
      * @return void
      */
@@ -160,8 +153,7 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * A redirect that finds less than a millisecond left by the time it would
-     * be sent fails the fetch as `timeout` too, without sending it.
+     * A redirect with under a millisecond left is a timeout and is not sent.
      *
      * @return void
      */
@@ -186,8 +178,8 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * Rows of `[lookup nanoseconds, timeout, connect timeout]`: how long the
-     * lookup took and the time caps the transfer is then given, in seconds.
+     * Rows of `[lookup nanoseconds, timeout, connect timeout]`, the caps in
+     * seconds.
      *
      * @return iterable<string, array{int, float, float}>
      */
@@ -202,8 +194,8 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * The transfer is given only what the lookup left of the timeout, and its
-     * connect timeout is capped to the same.
+     * The transfer gets only what the lookup left, with the connect timeout
+     * capped to it.
      *
      * @param  int  $lookup
      * @param  float  $timeout
@@ -228,8 +220,7 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * An IP literal is never resolved, so its transfer is given the whole
-     * timeout.
+     * An IP literal is never resolved, so its transfer gets the whole timeout.
      *
      * @return void
      */
@@ -243,8 +234,7 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * Redirects share the one budget: each hop is given what the hops before it
-     * left, not a fresh timeout of its own.
+     * Redirects share one budget; each hop gets what the hops before it left.
      *
      * @return void
      */
@@ -263,8 +253,8 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * A hop that spends the rest of the budget ends the fetch at its redirect
-     * as `timeout`: the next host is neither resolved nor asked.
+     * A hop that spends the budget ends the fetch as `timeout` before the next
+     * host is resolved.
      *
      * @return void
      */
@@ -283,8 +273,7 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * A redirect's own lookup spends the shared budget too: one that runs past
-     * the deadline fails the fetch as `timeout` without sending the redirect.
+     * A redirect's slow lookup spends the shared budget and fails as `timeout`.
      *
      * @return void
      */
@@ -306,8 +295,8 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * A transfer that fails once the deadline has passed, as cURL's own timeout
-     * does, fails as `timeout`; one that fails within it stays `transfer`.
+     * A transfer failing past the deadline is `timeout`; one failing within it
+     * is `transfer`.
      *
      * @return void
      */
@@ -327,10 +316,8 @@ final class GuzzleFetcherDeadlineTest extends TestCase
     }
 
     /**
-     * Build a fetcher over a mock handler answering with the responses in turn,
-     * each moving the test's clock on by the nanoseconds given, the resolver
-     * given (a stub of the test's hosts by default), a capturing logger and the
-     * test's monotonic clock.
+     * A fetcher over a mock handler whose responses advance the test's clock by
+     * the given nanoseconds.
      *
      * @param  list<\Psr\Http\Message\ResponseInterface|\Throwable>  $responses
      * @param  ?\SineMacula\Laravel\Sso\Contracts\HostResolver  $resolver

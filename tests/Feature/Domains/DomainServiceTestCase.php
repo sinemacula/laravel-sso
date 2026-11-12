@@ -24,10 +24,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Shared set-up for the feature tests of the domain helpers: a fixed clock, a
- * recording freshness contract that answers `fresh`, a fake DNS resolver, the
- * connections, keys, domains and rate limit tables, an OIDC connection of
- * `tenant-1`, an acting identity, and event recording.
+ * Shared set-up for the domain helper feature tests.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,8 +54,8 @@ abstract class DomainServiceTestCase extends TestCase
     protected Caller $actor;
 
     /**
-     * Bind the clock, the freshness contract and the resolver, create the
-     * tables and the tenant's connection, and record events.
+     * Bind the clock, freshness and resolver, create the tables and connection,
+     * and record events.
      *
      * @return void
      */

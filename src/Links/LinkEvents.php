@@ -21,25 +21,9 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Reports a link created, removed, activated, confirmed or suspended (SSO-8.4,
- * SSO-8.8, SSO-10.3): each method builds the event's context through the one
- * projection (`Events\EventContexts`), from the connection's id, tenant and
- * protocol, the identity the link associates and, as the acting identity, the
- * identity of the caller the application passed (`Identities\Caller`; its
- * session is never carried), and hands the event to
- * `Events\AfterCommitDispatcher`, so it reaches listeners once the transaction
- * on the storage connection commits, and never when it rolls back (SSO-10.5).
+ * Reports link lifecycle events after the storage transaction commits.
  *
- * A creation made by a flow adds its application, its purpose and the request's
- * public reference, the only flow identifier an event carries (SSO-9.8).
- * Neither event carries the issuer's subject. A change is reported inside the
- * transaction that made it, after the write (and, for a removal, after the
- * revocation), once; never for a refusal.
- *
- * Every method takes the client the action is taken for (`Http\ClientContext`),
- * whose IP address and user agent the event's context carries; nothing reads
- * the request being served. It holds the projection and the dispatcher, so
- * nothing of one request is kept for the next (SSO-11.2).
+ * Call inside the transaction that made the change, after the write.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,8 +48,7 @@ final readonly class LinkEvents
     ) {}
 
     /**
-     * Report a link created through the connection for the identity, how it was
-     * made, and the flow that made it when there was one.
+     * Report a link created, with the flow that made it when there was one.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -136,10 +119,7 @@ final readonly class LinkEvents
     }
 
     /**
-     * Report a reservation activated by the redemption of its handoff: a link
-     * created by a verified domain, then its activation, which carries what the
-     * application needs to notify the person on their existing channels and
-     * never the email the provider supplied.
+     * Report a reservation activated: `LinkCreated`, then `LinkActivated`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity

@@ -42,14 +42,7 @@ use Tests\Fixtures\Protocols\ExampleDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the management helpers (SSO-1.2, SSO-2.3 to SSO-2.5,
- * SSO-2.10 to SSO-2.12): every outcome of create, update, get, list and enable;
- * tenant scoping; presets; secrets kept, set and cleared; exactly the freshness
- * operations each change asks, with their configured maximum ages; a stale
- * caller refused with nothing written or reported; the event each change
- * reports; and a change to what subjects mean refused while the connection has
- * links (SSO-2.13), after freshness is asked, with what is in flight voided by
- * every trust change it allows.
+ * Feature tests for the connection management helpers.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -97,9 +90,8 @@ final class ConnectionServiceTest extends TestCase
     private RecordingFreshness $freshness;
 
     /**
-     * Bind a fixed clock and a fresh freshness contract, turn both protocols
-     * on, configure a maximum age for trust changes, create the tables, and
-     * record events.
+     * Bind a fixed clock and freshness, enable both protocols, create the
+     * tables and record events.
      *
      * @return void
      */
@@ -124,10 +116,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A connection is created disabled, its settings stored with their defaults
-     * and no secret, its secret encrypted and masked, its mapping over the
-     * protocol's defaults; trust freshness is asked with its configured age,
-     * and the creation reported with the acting identity.
+     * A connection is created disabled, with defaults, a masked secret and the
+     * default mapping.
      *
      * @return void
      */
@@ -197,8 +187,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A connection may be created empty, its settings complete or not, and a
-     * setting or target given as `null` is not set.
+     * A connection may be created incomplete, and a `null` setting or target is
+     * not set.
      *
      * @return void
      */
@@ -218,8 +208,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A preset fills in the settings and the mapping, and what is given
-     * replaces what it fills in, setting by setting.
+     * A preset fills in settings and mapping, and what is given replaces it
+     * setting by setting.
      *
      * @return void
      */
@@ -255,8 +245,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * An unknown preset, or one of another protocol, is refused as a value,
-     * with nothing asked, written or reported.
+     * An unknown preset, or one of another protocol, is refused with nothing
+     * asked or written.
      *
      * @return void
      */
@@ -272,8 +262,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Every violation is collected, in order: the display name, the settings,
-     * the secrets, then the mapping; nothing is asked, written or reported.
+     * Violations are collected in order: name, settings, secrets, mapping.
      *
      * @return void
      */
@@ -312,9 +301,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A secret is a string of 1 to 1024 bytes with no control character, and no
-     * client secret is given to a client that authenticates with
-     * `private_key_jwt`.
+     * A secret is 1 to 1024 bytes with no control character, and none is
+     * allowed under `private_key_jwt`.
      *
      * @return void
      */
@@ -347,8 +335,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Creation asks trust freshness and, for each setting given, the operation
-     * it needs, each once, in the order the operations are listed.
+     * Creation asks trust freshness, then each setting's operation once, in
+     * listed order.
      *
      * @return void
      */
@@ -372,8 +360,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A stale caller is refused with `freshness_required`; nothing is written
-     * or reported.
+     * A stale creation is refused with `freshness_required`, with nothing
+     * written.
      *
      * @return void
      */
@@ -410,8 +398,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A protocol an application registers is created through its own settings,
-     * its secrets taken out of them by name.
+     * An application's protocol is created through its own settings, with its
+     * secrets split out.
      *
      * @return void
      */
@@ -470,8 +458,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A tenant id of exactly 255 bytes, the longest the table holds, is
-     * accepted and stored as given by every helper.
+     * A tenant id of 255 bytes is accepted and stored as given by every helper.
      *
      * @return void
      */
@@ -492,8 +479,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * An update changes what is given, asks trust freshness for a trust
-     * setting, saves through the model and reports the names that changed.
+     * An update saves what is given, asks trust freshness and reports what
+     * changed.
      *
      * @return void
      */
@@ -527,8 +514,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A secret not named in an update is kept as stored (SSO-2.5), and a change
-     * that needs no freshness asks none.
+     * A secret not named in an update is kept, and a change needing no
+     * freshness asks none.
      *
      * @return void
      */
@@ -591,8 +578,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A setting given as `null` is removed, and a default comes back as its
-     * default.
+     * A setting given as `null` is removed, restoring its default.
      *
      * @return void
      */
@@ -612,8 +598,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * The mapping's targets are replaced or removed, as one change that needs
-     * no freshness.
+     * Mapping targets are replaced or removed as one change needing no
+     * freshness.
      *
      * @return void
      */
@@ -637,10 +623,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A custom target the application does not declare in
-     * `sso.mapping.custom_attributes` is refused as `not_allowed` at its
-     * target, on creation and on update, and nothing is stored; once declared,
-     * the same mapping is saved.
+     * A custom target the application has not declared is `not_allowed` until
+     * it is declared.
      *
      * @return void
      */
@@ -663,8 +647,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Changed names come in order: settings as the protocol names them, then
-     * secrets, the display name and the mapping.
+     * Changed names come in order: settings, secrets, display name, mapping.
      *
      * @return void
      */
@@ -683,9 +666,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Each change asks only the operations its changed settings need, each
-     * once, in the order the operations are listed; turning IdP-initiated
-     * sign-in off asks as turning it on does.
+     * Each change asks only the operations its changed settings need, once
+     * each, in listed order.
      *
      * @return void
      */
@@ -733,8 +715,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * An update giving what is stored succeeds as `unchanged`, and asks, writes
-     * and reports nothing.
+     * An update giving what is stored is `unchanged` and asks, writes and
+     * reports nothing.
      *
      * @return void
      */
@@ -763,9 +745,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A map given again in another key order, as a form may send it or a native
-     * JSON column hand it back, is what is stored: the update is `unchanged`,
-     * and asks, writes and reports nothing. A list in another order is a
+     * A map in another key order is `unchanged`; a list in another order is a
      * change.
      *
      * @return void
@@ -801,8 +781,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A change to the tenant or the protocol is `immutable`, any other key
-     * `unknown`, and a change of the wrong type `invalid_type`.
+     * Tenant and protocol are `immutable`, other keys `unknown`, and a wrong
+     * type `invalid_type`.
      *
      * @return void
      */
@@ -857,8 +837,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Another tenant's connection, an unknown one and an id that cannot be one
-     * are not found, and nothing is asked.
+     * Foreign, unknown and impossible ids are not found, with nothing asked.
      *
      * @return void
      */
@@ -896,8 +875,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A stale caller is refused with `freshness_required`; nothing is written
-     * or reported.
+     * A stale update is refused with `freshness_required`, with nothing
+     * written.
      *
      * @return void
      */
@@ -918,8 +897,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A tenant's connection is read, and another tenant's, or an unknown one,
-     * is `null`.
+     * A tenant's connection is read; another tenant's or an unknown one is
+     * `null`.
      *
      * @return void
      */
@@ -958,8 +937,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Enabling asks its freshness, sets the flag, and reports it; it needs no
-     * complete settings, and the connection stays unusable until it is.
+     * Enabling asks freshness, sets the flag and reports it, even for an
+     * incomplete connection.
      *
      * @return void
      */
@@ -988,8 +967,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Enabling an enabled connection asks freshness, then succeeds as
-     * `unchanged`, writing and reporting nothing.
+     * Enabling an enabled connection asks freshness, then is `unchanged`.
      *
      * @return void
      */
@@ -1029,8 +1007,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Another tenant's connection, an unknown one, and one whose protocol is
-     * unavailable are refused before freshness is asked.
+     * Foreign, unknown and unavailable-protocol connections are refused before
+     * freshness is asked.
      *
      * @return void
      */
@@ -1064,9 +1042,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Creation always asks trust freshness, even when no setting given needs
-     * it, and a setting given as `null` neither asks freshness nor stops the
-     * settings after it.
+     * Creation always asks trust freshness, and a `null` setting asks nothing.
      *
      * @return void
      */
@@ -1080,8 +1056,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A SAML update names the settings it removes and adds in the order the
-     * protocol names them, wherever they fall in what is stored.
+     * A SAML update names removed and added settings in protocol order.
      *
      * @return void
      */
@@ -1098,8 +1073,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * An application's protocol is updated through its own settings, which name
-     * no order of their own.
+     * An application's protocol is updated through its own settings.
      *
      * @return void
      */
@@ -1122,8 +1096,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * An update or an enable for a tenant id the table cannot hold is refused
-     * before any transaction is opened.
+     * A tenant id the table cannot hold is refused before a transaction opens.
      *
      * @return void
      *
@@ -1156,8 +1129,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Rows of `[protocol, changes]`: a change to each setting that may alter
-     * what existing subjects mean.
+     * Rows of `[protocol, changes]`: a change that may alter what subjects
+     * mean.
      *
      * @return iterable<string, array{0: string, 1: array<string, mixed>}>
      */
@@ -1173,9 +1146,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A change to a subject setting of a connection with an active link is
-     * refused with `connection_has_links` once freshness is fresh, and nothing
-     * is written, voided or reported.
+     * A subject change on a linked connection is `connection_has_links` once
+     * fresh, with nothing written.
      *
      * @param  string  $protocol
      * @param  array<string, mixed>  $settings
@@ -1202,8 +1174,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A reservation that expires after now counts as a link; one that expired
-     * at now, or before, does not.
+     * A reservation expiring after now counts as a link; one expired at or
+     * before now does not.
      *
      * @return void
      */
@@ -1249,8 +1221,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Freshness is asked before the links are: a stale caller is refused with
-     * `freshness_required`, however many links the connection has.
+     * Freshness is asked before links are counted.
      *
      * @return void
      */
@@ -1269,8 +1240,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A trust change that alters no subject is allowed on a connection with
-     * links, and voids what is in flight through it.
+     * A trust change altering no subject is allowed with links, and voids what
+     * is in flight.
      *
      * @return void
      */
@@ -1293,7 +1264,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A change that alters no subject and asks no trust is allowed with links
+     * A change altering no subject and asking no trust is allowed with links
      * and voids nothing.
      *
      * @return void
@@ -1315,8 +1286,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * A change under a lock its caller holds, as a subject migration makes it,
-     * is applied through the same rules.
+     * A change under a lock the caller holds, as a migration makes it, follows
+     * the same rules.
      *
      * @return void
      */
@@ -1375,8 +1346,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Create a complete OIDC connection named `Acme` with its client secret,
-     * then forget what was asked and reported.
+     * Create a complete OIDC connection named `Acme`, then forget what was
+     * asked and reported.
      *
      * @param  array<string, mixed>  $settings
      * @return string
@@ -1444,8 +1415,7 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * The map, ordered by key, so maps read back from a native JSON column,
-     * which orders keys its own way, compare by content alone.
+     * The map ordered by key, since a native JSON column reorders keys.
      *
      * @param  array<array-key, mixed>  $map
      * @return array<array-key, mixed>

@@ -3,13 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The invitation acceptance of `docs/guides/single-use-store.md` (SSO-11.5,
- * SSO-12.5), as the application's own route does it, given the token presented
- * and the application's invitations: an invitation unknown or closed is not
- * found, and an open one is accepted once, by recording its token in a
- * namespace of the application's own in the package's single-use store until
- * the invitation closes; presented again, it is refused as used.
- * `SingleUseStoreExampleTest` runs it and asserts each answer.
+ * The invitation acceptance route of `docs/guides/single-use-store.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

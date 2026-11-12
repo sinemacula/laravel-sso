@@ -14,11 +14,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for the exact type of every claim an ID token holds that the
- * package reads (SSO-7.4): each type confusion refused, each length at, under
- * and over, each optional claim absent, a `null` being present, nothing
- * coerced, and an object never read as the list a PHP array cannot tell it
- * from.
+ * Unit tests for the exact type of every ID token claim the package reads.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

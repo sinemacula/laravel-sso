@@ -12,13 +12,9 @@ use SineMacula\Laravel\Sso\Database\TableAlreadyExistsException;
 use Tests\TestCase;
 
 /**
- * Integration tests for the shipped links, authorisation requests and handoff
- * codes migrations, on whichever engine the suite runs against: each table's
- * columns and which are nullable, its indexes, its configured name, the guard
- * against an existing table and the rollback.
- *
- * Marked `#[CoversNothing]` because a migration is an anonymous class PHPUnit
- * cannot attribute coverage to.
+ * Integration tests for the links, authorisation requests and handoff codes
+ * migrations. `#[CoversNothing]` because PHPUnit cannot attribute coverage to
+ * an anonymous migration class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +32,7 @@ final class FlowTablesMigrationTest extends TestCase
     ];
 
     /**
-     * Drop the tables an earlier test kept, so each test starts from an empty
-     * database.
+     * Drop the tables an earlier test kept, so each test starts empty.
      *
      * @return void
      */
@@ -67,7 +62,7 @@ final class FlowTablesMigrationTest extends TestCase
 
     /**
      * Rows of `[table, columns, indexes]`: each table's columns, nullable or
-     * not, and its secondary indexes.
+     * not, and its indexes.
      *
      * @return iterable<string, array{0: string, 1: array<string, bool>, 2: array<string, array{columns: list<string>, unique: bool}>}>
      */
@@ -228,8 +223,8 @@ final class FlowTablesMigrationTest extends TestCase
     }
 
     /**
-     * A table that exists already is never touched: the migration fails naming
-     * the key that renames it; rolling back drops the table.
+     * An existing table is never touched and the migration names the renaming
+     * key; rollback drops it.
      *
      * @return void
      */

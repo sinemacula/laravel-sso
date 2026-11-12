@@ -11,11 +11,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeServiceProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\XmlDocument;
 
 /**
- * Unit tests for the service provider the fake identity provider is told of:
- * its entity id and its HTTP-POST assertion consumer service, read from its
- * metadata, the first HTTP-POST service when there are several and never one of
- * another binding; and metadata it cannot read refused with a `LogicException`
- * saying why.
+ * Unit tests for the service provider the fake identity provider reads.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

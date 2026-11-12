@@ -43,22 +43,10 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * What a failure rolls back of TA, an administrative change's one transaction,
- * on every database the suite runs on (SSO-2.11, SSO-4.5, SSO-10.5, SSO-11.4,
- * decision D5, `docs/design/transaction-ownership.md`): the change, what it
- * voids, what it withdraws and the session revocation it needs commit or roll
- * back together, and no event escapes.
+ * Integration tests for what a failure rolls back of TA, an administrative
+ * change's transaction.
  *
- * Each test names TA as what it rolls back, against a connection with a
- * verified domain, a live reservation and its code, a request in flight, an
- * active link and a trusted certificate, comparing every row stored before and
- * after. It adds the failure points `LifecycleRevocationTransactionTest` and
- * `EnforcementRevocationTransactionTest` miss, which pin a revocation that
- * writes and then throws: a statement of the change failing before and after
- * its mutations, the revocation's own statement, and the commit, after every
- * mutation. Then a domain's lapse whose withdrawal fails, and a trust change
- * whose voiding fails. The lease a recheck committed before its transaction is
- * outside TA, and is asserted to stay.
+ * Transaction names follow `docs/design/transaction-ownership.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -97,12 +85,8 @@ final class AdministrationRollbackTest extends LinkingTestCase
     private string $certificate = '';
 
     /**
-     * Bind a fresh caller and a revocation that writes through the storage
-     * connection; create its table and the enforcement table; and give the
-     * connection what a change has to void, withdraw and delete: a reservation
-     * and its code, a request in flight, an active link and a trusted
-     * certificate. The connection has completed a sign-in, as turning
-     * enforcement on needs.
+     * Bind a fresh caller and a writing revocation, and give the connection
+     * everything a change voids, withdraws or deletes.
      *
      * @return void
      */
@@ -152,9 +136,8 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the change, the verb, the table, the occurrence]`, the verb
-     * `null` for the commit: TA failed before and after each mutation, the
-     * revocation's statement and the commit coming after every one.
+     * Rows of `[the change, the verb, the table, the occurrence]`; a `null`
+     * verb fails the commit.
      *
      * @return iterable<string, array{0: string, 1: ?string, 2: ?string, 3: int}>
      */
@@ -193,9 +176,8 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TA. Whichever statement fails, every row stands as it did,
-     * nothing is voided, withdrawn or revoked, and no event is reported; the
-     * change then goes through whole, reporting once.
+     * Rolls back TA whichever statement fails; the change then goes through
+     * whole.
      *
      * @param  string  $change
      * @param  ?string  $verb
@@ -227,8 +209,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key]`, the verb `null` for the commit: TA
-     * failed changing a rule already in force.
+     * Rows of `[the verb, the table's key]`; a `null` verb fails the commit.
      *
      * @return iterable<string, array{0: ?string, 1: ?string}>
      */
@@ -240,9 +221,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TA of a later enforcement change (SSO-4.5): the rule in force,
-     * and the revocation an earlier change committed, stay; that earlier
-     * change's event has been reported, and this one's never is.
+     * Rolls back TA of a later enforcement change; the rule in force stays.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -271,10 +250,10 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key, the occurrence]`, the verb `null`
-     * for the commit: the lapse's transaction failed. The lease's update, and
-     * its commit, are each the first of their kind, so the lapse's are the
-     * second.
+     * Rows of `[the verb, the table's key, the occurrence]`; a `null` verb
+     * fails the commit.
+     *
+     * The lease's update and commit come first, so the lapse's are the second.
      *
      * @return iterable<string, array{0: ?string, 1: ?string, 2: int}>
      */
@@ -287,9 +266,8 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TA of a domain's lapse: the reservation stands, the claim
-     * stays verified and no `DomainLapsed` is reported. The recheck's lease
-     * committed before TA opened, and stays.
+     * Rolls back TA of a domain's lapse; the recheck's lease, committed before,
+     * stays.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -312,8 +290,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TA of a domain's lapse, with the failure after the withdrawal
-     * has deleted the reservation: it comes back.
+     * Rolls back TA of a lapse that failed after withdrawing the reservation.
      *
      * @return void
      *
@@ -367,10 +344,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TA of a trust change, with the failure after the voiding has
-     * done everything it does: what it voided, the version it raised and the
-     * reservations it deleted all come back, with the certificate, and nothing
-     * is reported.
+     * Rolls back TA of a trust change that failed after voiding.
      *
      * @return void
      */
@@ -429,8 +403,8 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key, the occurrence]`, the verb `null`
-     * for the commit: the trust change of a setting failed.
+     * Rows of `[the verb, the table's key, the occurrence]`; a `null` verb
+     * fails the commit.
      *
      * @return iterable<string, array{0: ?string, 1: ?string, 2: int}>
      */
@@ -444,9 +418,8 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TA of a trust change made to a connection's settings: the
-     * setting, what it voided and the version it raised all go back, and
-     * `ConnectionUpdated` is reported only by the change that then commits.
+     * Rolls back TA of a settings trust change; only the retry reports
+     * `ConnectionUpdated`.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -549,7 +522,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * The claim, whose grace has run out now, as a recheck reads it.
+     * The claim, past its grace, as a recheck reads it.
      *
      * @return \SineMacula\Laravel\Sso\Models\Domain
      */
@@ -561,8 +534,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Every row stored, of the package's tables and the revocation's, but for
-     * the table left out.
+     * Every row of the package's and revocation's tables, but the one left out.
      *
      * @param  ?string  $without
      * @return array<string, list<string>>
@@ -599,8 +571,7 @@ final class AdministrationRollbackTest extends LinkingTestCase
     }
 
     /**
-     * A revocation that records the scope through the storage connection,
-     * inside the change's transaction.
+     * A revocation that writes the scope inside the change's transaction.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\SessionRevocation
      */

@@ -37,6 +37,10 @@ classification and gate nothing.
 - Whole flows, on both connections: `FullFlowQueryBudgetTest`.
 - Pruning, on both connections: `OperationsQueryBudgetTest`.
 - The expiry report: `ExpiryReportQueryBudgetTest`.
+- Management helpers: `ConnectionServiceQueryBudgetTest`, `ConnectionLifecycleQueryBudgetTest`,
+  `KeyServiceQueryBudgetTest`, `DomainServiceQueryBudgetTest`, `LinkStoreQueryBudgetTest`.
+- Default stores: `SingleUseStoreQueryBudgetTest`, `AttemptLimiterQueryBudgetTest`.
+- Descriptions and boot: `ServiceProviderDescriptionQueryBudgetTest`, `ServiceProviderQueryBudgetTest`.
 - Growth across many rows and connections: `QueryGrowthTest`.
 
 ### Whole flows

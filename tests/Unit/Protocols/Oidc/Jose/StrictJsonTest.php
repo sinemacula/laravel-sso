@@ -11,11 +11,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\StrictJson;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for the strict JSON decoder (SSO-7.3, SSO-7.4): an object is read
- * whole, and anything else, a repeated member at any depth (compared once its
- * escapes are read) included, is refused, by each of its three readings; only
- * `decodeObject()` keeps a number's digits, and only `decodeAsWritten()` tells
- * an object from a list.
+ * Unit tests for the strict JSON decoder.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -198,9 +194,8 @@ final class StrictJsonTest extends TestCase
     }
 
     /**
-     * Every reading refuses a document when PCRE cannot tokenise it, whether or
-     * not it repeats a member, for the failure itself; with the limit back, the
-     * document is judged on what it holds.
+     * Every reading refuses a document PCRE cannot tokenise; with the limit
+     * restored it is judged on what it holds.
      *
      * @param  string  $json
      * @return void

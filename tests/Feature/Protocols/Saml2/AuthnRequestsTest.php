@@ -33,15 +33,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the SAML `AuthnRequest` and its bindings (SSO-5.3,
- * SSO-5.10, SSO-5.2, SSO-9.8), through the driver's start, each message decoded
- * (inflated for HTTP-Redirect) and parsed with DOM: every field, the `ID`'s
- * shape and uniqueness, `ForceAuthn` for `force_authn` and for a
- * `reauthenticate`, the requested context compared exactly, the NameID policy
- * of each format, the query's order, each binding's signature verified with
- * OpenSSL for each algorithm, `RelayState` as the state and its limit, a single
- * sign-on URL with a query, the refusal with no current signing key, and
- * nothing logged.
+ * Feature tests for the SAML `AuthnRequest` and its bindings, through the
+ * driver's start.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -284,10 +277,8 @@ final class AuthnRequestsTest extends TestCase
     }
 
     /**
-     * A signed HTTP-Redirect request carries `SAMLRequest`, `RelayState`,
-     * `SigAlg` and `Signature` in that order, the signature verifies over the
-     * exact bytes of the first three with the first algorithm allowed, and the
-     * XML carries no signature.
+     * A signed HTTP-Redirect request's signature verifies over the exact bytes
+     * of its ordered query, and the XML carries none.
      *
      * @param  string  $name
      * @return void
@@ -319,10 +310,8 @@ final class AuthnRequestsTest extends TestCase
     }
 
     /**
-     * A signed HTTP-POST request carries an enveloped signature right after its
-     * `Issuer`, referencing its `ID` with only the enveloped and exclusive
-     * canonicalisation transforms, with the algorithm's digest, and both the
-     * digest and the signature verify with OpenSSL.
+     * A signed HTTP-POST request carries an enveloped signature after its
+     * `Issuer` whose digest and signature verify with OpenSSL.
      *
      * @param  string  $name
      * @return void
@@ -399,9 +388,8 @@ final class AuthnRequestsTest extends TestCase
     }
 
     /**
-     * The query is appended after `?`, after `&` when the single sign-on URL
-     * has a query, and directly when it ends with either; the destination is
-     * the URL as configured.
+     * The query is appended after `?`, after `&` when the URL has a query, and
+     * directly when it ends with either.
      *
      * @param  string  $ssoUrl
      * @param  non-empty-string  $prefix

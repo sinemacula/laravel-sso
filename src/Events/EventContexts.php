@@ -8,33 +8,10 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 
 /**
- * The one projection that builds an event's context (SSO-10.4, SSO-9.6):
- * nothing else in the package constructs an `EventContext`.
+ * The only place an `EventContext` is built, cleaning and capping every value.
  *
- * Its parameter list is the admission control. It takes the client context and
- * the fields a context holds, each a string or `null`, and nothing else: no
- * array and no other object, so a verified result, a request, a payload or a
- * set of mapped attributes can never be passed to an event whole, and a field
- * the context does not name cannot reach one. The flow's public reference is
- * the only flow identifier it takes (SSO-9.8). A later part of the package adds
- * typed convenience methods here (from a verified result, from an authorisation
- * request) that pick the fields they may and pass them on to `make()`.
- *
- * It reads the time from the package's clock, and takes the client from the
- * `Http\ClientContext` the action was given, never from the request being
- * served, so a long-lived worker (Octane, a queue) never attributes one
- * request's event to another's client (SSO-11.2), and work with no client
- * records neither its IP address nor its user agent. Every value is cleaned
- * before it is kept, on top of what the client context already made safe: the
- * IP address is kept only when it is a valid IPv4 or IPv6 address; the user
- * agent and every named field have their control characters (C0, DEL, C1) and
- * Unicode bidirectional controls removed and invalid UTF-8 replaced, and are
- * cut to `USER_AGENT_MAX_LENGTH` and `FIELD_MAX_LENGTH` characters, so no value
- * can smuggle a payload, forge a log line or override the direction of the text
- * around it; a value that is empty once cleaned is `null`. The bidirectional
- * marks (U+061C, U+200E, U+200F) are kept in a named field, where right-to-left
- * text uses them; an audit view still isolates and escapes each value it shows,
- * since right-to-left text reorders without any control.
+ * It takes strings only, so a result, request or attribute set never reaches an
+ * event whole.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,7 +26,7 @@ final readonly class EventContexts
     /** @var int Longest named field kept, in characters. */
     public const int FIELD_MAX_LENGTH = 255;
 
-    /** @var string Characters removed from every value: C0 controls, DEL, C1 controls and the Unicode bidirectional embeddings, overrides and isolates. */
+    /** @var string C0, DEL, C1 and bidirectional embeddings, overrides and isolates. */
     private const string UNSAFE_CHARACTERS = '/[\x{0000}-\x{001F}\x{007F}-\x{009F}\x{202A}-\x{202E}\x{2066}-\x{2069}]/u';
 
     /**
@@ -64,9 +41,8 @@ final readonly class EventContexts
     ) {}
 
     /**
-     * Build the context of an event: the time from the clock, the IP address
-     * and user agent of the client given, and the fields given, each cleaned
-     * and capped.
+     * Build an event's context from the given client, never the request being
+     * served, so a long-lived worker cannot misattribute it.
      *
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $connectionId
@@ -129,7 +105,7 @@ final readonly class EventContexts
     }
 
     /**
-     * Keep an IP address only when it is a valid IPv4 or IPv6 address.
+     * Keep an IP address only when it is valid.
      *
      * @param  ?string  $ip
      * @return ?string
@@ -151,9 +127,8 @@ final readonly class EventContexts
     }
 
     /**
-     * Clean a value: invalid UTF-8 replaced, control and bidirectional
-     * characters removed, cut to `$maxLength` characters, and `null` when
-     * nothing is left.
+     * Scrub invalid UTF-8, strip unsafe characters and cap the length; `null`
+     * when nothing is left.
      *
      * @param  ?string  $value
      * @param  int  $maxLength

@@ -37,27 +37,9 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Races a reservation across processes, each with its own database connection,
- * on PostgreSQL and MySQL (SSO-8.8, SSO-8.4, SSO-11.5), with signal files that
- * fail loudly on a timeout, never timing, against each change that takes away
- * what it stands on: a domain withdrawn, a protocol trust change, a linking
- * settings change; against another reservation for one subject, and for one
- * identity under a limit of one; and against an explicit link.
- *
- * A change runs plainly, and inside a `REPEATABLE READ` transaction of its own
- * that read the connection and its links before the race began, in two orders:
- *
- * - while the completion is held once validated, so the reservation finds the
- *   change under the lock and reserves nothing;
- * - after the completion committed its reservation, so the change must delete
- *   it. A change whose snapshot predates the reservation fails to serialise on
- *   PostgreSQL (SQLSTATE `40001`), which raising `links_version` on creation
- *   guarantees, and is accepted only there and only inside a transaction: it
- *   changed nothing, so nothing is missed. No reservation survives a committed
- *   withdrawal.
- *
- * A completion is not run inside a caller's transaction: its consumption
- * commits before validation, by design. Skipped on SQLite and without `pcntl`.
+ * Races a reservation across processes against each change that withdraws it;
+ * skipped on SQLite and without `pcntl`. A stale snapshot may fail to serialise
+ * (`40001`), accepted on PostgreSQL only.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -164,9 +146,7 @@ final class ConcurrentReservationTest extends LinkingTestCase
     }
 
     /**
-     * A trust change while the completion is held refuses it; a change whose
-     * snapshot predates the consumption that voids its request fails to
-     * serialise, changing nothing.
+     * A trust change while the completion is held refuses the reservation.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -273,9 +253,8 @@ final class ConcurrentReservationTest extends LinkingTestCase
     }
 
     /**
-     * An explicit link after the reservation is refused, under the uniqueness
-     * the reservation holds, or fails to serialise, changing nothing: the
-     * reservation stands and the subject is linked to nobody else.
+     * An explicit link after the reservation is refused, and the reservation
+     * stands.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -337,10 +316,8 @@ final class ConcurrentReservationTest extends LinkingTestCase
     }
 
     /**
-     * Race a completion held once validated against the change, and assert it
-     * refused as given with no reservation, unless the change failed to
-     * serialise, which is accepted only on PostgreSQL inside a transaction, and
-     * changed nothing, so the completion reserved.
+     * Race a completion held after validation against the change, and assert it
+     * reserves nothing.
      *
      * @param  \Closure(): string  $change
      * @param  bool  $inTransaction
@@ -383,10 +360,8 @@ final class ConcurrentReservationTest extends LinkingTestCase
     }
 
     /**
-     * Race a change whose snapshot, in a transaction, predates the reservation
-     * against the completion that makes it, and assert no reservation survives
-     * a committed change, and that one predating it fails to serialise rather
-     * than miss it.
+     * Race a change against the completion that reserves, and assert no
+     * reservation survives it.
      *
      * @param  \Closure(): string  $change
      * @param  bool  $inTransaction
@@ -422,9 +397,8 @@ final class ConcurrentReservationTest extends LinkingTestCase
     }
 
     /**
-     * Assert the linking version moved by exactly one when the change committed
-     * and not at all when it failed to serialise, so a change of nothing can
-     * never pass as a change.
+     * Assert the linking version moved by one if the change committed, and not
+     * if it failed to serialise.
      *
      * @return void
      */
@@ -584,9 +558,7 @@ final class ConcurrentReservationTest extends LinkingTestCase
     }
 
     /**
-     * Fork a process for each racer, on a connection of its own, plain or
-     * inside a transaction of its own, and collect what each reported, in
-     * order.
+     * Fork a process per racer and collect what each reported, in order.
      *
      * @param  list<array{0: \Closure(): string, 1: bool}>  $racers
      * @return list<string>
@@ -624,10 +596,8 @@ final class ConcurrentReservationTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: open a connection of its own; inside a transaction,
-     * open one at `REPEATABLE READ` and read the connection and its links; signal
-     * it has read; do its work; commit; report; signal it is done, once its work
-     * is committed or refused; and end without running the parent's shutdown.
+     * Run the work in a forked process on its own connection, optionally in a
+     * `REPEATABLE READ` transaction that read first.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work

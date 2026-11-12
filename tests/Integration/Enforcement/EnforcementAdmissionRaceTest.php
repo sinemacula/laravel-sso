@@ -50,32 +50,10 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Races a redemption, which writes the application's session inside its own
- * transaction, against a change that turns the tenant's enforcement on with
- * another connection, each in a process of its own with its own database
- * connection, on PostgreSQL and MySQL (SSO-4.5, SSO-4.6, SSO-9.9, decision D5).
+ * Integration tests racing a redemption against turning enforcement on.
  *
- * Both orders are forced with signal files and the database's own lock waits,
- * never with timing: the redeemer first, holding the tenant's enforcement lock
- * until the database shows the change waiting on it; and the change first,
- * holding the lock from inside its revocation until the database shows the
- * redemption waiting on it. Each runs for a tenant whose rule is already stored
- * (off) and for one with no row at all, and with each process plain and again
- * inside a transaction of its own that read the tables before the race, so a
- * decision answered from that older snapshot (MySQL's `REPEATABLE READ`) would
- * fail it.
- *
- * Once both transactions end, no committed session may violate the committed
- * rule: the redemption that held the lock first has its session revoked by the
- * change that waited (whose revocation deletes with a current read), and the
- * redemption that waited sees the rule and refuses. The process that holds the
- * lock first always reaches its own outcome. For the process that waited, a
- * PostgreSQL serialisation failure (SQLSTATE 40001) is an accepted, safe
- * outcome; a MySQL deadlock, which MySQL also reports as SQLSTATE 40001, is an
- * error and fails the race.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Orders are forced with signal files and lock waits, never timing. Skipped on
+ * SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -119,10 +97,8 @@ final class EnforcementAdmissionRaceTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock, a
-     * fresh caller, a limiter that allows every attempt, a linker and the
-     * session table's revocation; switch the features on; create the tables,
-     * the two connections, the code and the directory the processes use.
+     * Skip where processes cannot share the database, then set up the features,
+     * the two connections, the code and the signal directory.
      *
      * @return void
      *
@@ -194,8 +170,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Remove the signals and outcomes and drop the application's sessions
-     * table.
+     * Remove the signals and outcomes and drop the sessions table.
      *
      * @return void
      */
@@ -219,10 +194,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Rows of `[order, stored, readFirst]`: which process takes the lock first,
-     * whether the tenant's rule is already stored (off) or it has no row, and
-     * whether each process runs inside a transaction of its own that read the
-     * tables first.
+     * Rows of `[order, stored, readFirst]`.
      *
      * @return iterable<string, array{0: string, 1: bool, 2: bool}>
      */
@@ -238,13 +210,11 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * However the redemption and the change interleave, no committed session
-     * violates the committed rule: a redemption that held the lock first is
-     * redeemed and its session revoked by the change, which waited for it; a
-     * redemption that waited for the change is refused with
-     * `enforcement_unsatisfied` and writes no session. The process that held
-     * the lock reaches its own outcome; a PostgreSQL serialisation failure is
-     * accepted only for the one that waited.
+     * However the two interleave, no committed session violates the committed
+     * rule.
+     *
+     * Only the process that waited may fail with a PostgreSQL serialisation
+     * failure.
      *
      * @param  string  $order
      * @param  bool  $stored
@@ -272,8 +242,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * What the process that waited may report: its own outcome, or, on
-     * PostgreSQL only, a serialisation failure.
+     * What the process that waited may report.
      *
      * @param  string  $outcome
      * @return list<string>
@@ -284,9 +253,8 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * The two racers, the redeemer's and the change's: the one that goes first
-     * signals once it holds the lock and holds it until the other waits on it;
-     * the other waits for that signal before it starts.
+     * The redeemer and the changer, the first holding the lock until the other
+     * waits.
      *
      * @param  bool  $redeemerFirst
      * @param  bool  $readFirst
@@ -307,9 +275,8 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Assert every committed session of the tenant was established through a
-     * connection the committed rule allows, and that a change that committed
-     * left no session through the connection it excludes.
+     * Assert every committed session went through a connection the committed
+     * rule allows.
      *
      * @param  string  $reported
      * @return void
@@ -329,11 +296,8 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: open the redeemer's transaction, read the tables
-     * first when asked, wait for the change's signal when told to, redeem the
-     * code and write the session when it is redeemed, then, when told to,
-     * signal and hold the transaction until the database shows the change
-     * waiting on it; commit, and report.
+     * In a forked process: redeem the code and write the session, holding the
+     * lock when told to.
      *
      * @param  bool  $readFirst
      * @param  ?string  $awaited
@@ -370,11 +334,8 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: inside a transaction of its own that read the tables
-     * first when asked, wait for the redeemer's signal when told to, and turn
-     * the tenant's enforcement on with the other connection; when told to, the
-     * revocation signals and holds the change's transaction until the database
-     * shows the redemption waiting on it. Report the outcome.
+     * In a forked process: turn enforcement on, holding the lock in the
+     * revocation when told to.
      *
      * @param  bool  $readFirst
      * @param  ?string  $awaited
@@ -413,8 +374,8 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Read every table the race touches, plainly, so a transaction's
-     * `REPEATABLE READ` snapshot is taken before the race.
+     * Read every table the race touches, so a `REPEATABLE READ` snapshot is
+     * taken first.
      *
      * @return void
      */
@@ -442,9 +403,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Signal the other process, then poll, on the connection that holds the
-     * lock, until another session waits on a lock it holds, or the deadline
-     * passes; answer whether one did.
+     * Signal the other process, then poll until it waits on this one's lock.
      *
      * @param  \Illuminate\Database\Connection  $database
      * @param  string  $signal
@@ -474,8 +433,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * The query that counts the sessions waiting on a lock the current session
-     * holds.
+     * The query counting sessions waiting on a lock the current session holds.
      *
      * @param  string  $driver
      * @return string
@@ -492,8 +450,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Fork a process per body, have each run its body on a connection of its
-     * own, and collect what each reported, in order.
+     * Fork a process per body and collect what each reported, in order.
      *
      * @param  list<\Closure(): array<string, mixed>>  $bodies
      * @return list<array<string, mixed>>
@@ -532,11 +489,8 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, run the body, report
-     * what it answered, a PostgreSQL serialisation failure, or the error it
-     * threw (a MySQL deadlock, also SQLSTATE 40001, among them), and end
-     * without running the parent's shutdown, which rolls back whatever it left
-     * open.
+     * In a forked process: run the body on a new connection, report its answer,
+     * serialisation failure or error, and exit without the parent's shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): array<string, mixed>  $body
@@ -562,11 +516,10 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure: SQLSTATE 40001 on PostgreSQL, where a deadlock is
-     * 40P01 instead. Inside a caller's transaction, Laravel rethrows it as a
-     * `DeadlockException` whose previous error is the query's. On MySQL, 40001
-     * is a deadlock (error 1213), which the race must never meet.
+     * Whether the error is a PostgreSQL serialisation failure (40001).
+     *
+     * On MySQL 40001 is a deadlock; Laravel wraps it in `DeadlockException`
+     * inside a transaction.
      *
      * @param  \Throwable  $exception
      * @return bool
@@ -583,8 +536,7 @@ final class EnforcementAdmissionRaceTest extends TestCase
     }
 
     /**
-     * Issue a linked `sign_in` code for `web` through the redeemed connection,
-     * bound to the client's verifier.
+     * Issue a linked `sign_in` code for `web` bound to the client's verifier.
      *
      * @return string
      *

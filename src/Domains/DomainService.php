@@ -28,54 +28,10 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * The management helpers of a connection's email domains (SSO-3.1, SSO-3.2,
- * SSO-2.11, SSO-2.12): claim a domain, verify it by its DNS TXT record, remove
- * it, and read one or all of a connection's domains.
+ * The tenant-scoped management helpers of a connection's email domains.
  *
- * Every helper is scoped to a tenant (another tenant's connection is
- * `connection_not_found`, exactly as an unknown one) and goes in a fixed order:
- * find the connection, and the claim, on the write connection; validate what
- * was given; ask the freshness contract (`sso.domain.claim`,
- * `sso.domain.verify`, `sso.domain.remove`); for a verification, take one of
- * the connection's domain checks (SSO-11.8) and look the record up through
- * `Contracts\DnsResolver`, outside any transaction; then, in one transaction on
- * the storage connection, read the connection again locked for update, read
- * again what decides the write with locking reads, write, and report through
- * `Administration\DomainEvents`. A refusal at any step writes nothing and
- * reports nothing.
- *
- * - A claim is exact: a domain covers none of its subdomains. It is normalised
- *   (`DomainName`), refused when it is not a host name that could be
- *   registered, when the record name under it would be too long, or when it is
- *   a refused domain or under one (`DomainSettings::refused()`). It is pending
- *   with a new token of `TOKEN_BYTES` random bytes (lower-case hex) from the
- *   system's CSPRNG until it is verified or expires. A domain the connection
- *   claimed already is `duplicate`, unless that claim expired, which is claimed
- *   again with a new token. A domain verified for another connection, of this
- *   tenant or any other, is `domain_unavailable`, which never says whose.
- * - A verification looks up the claim's record name and verifies the domain
- *   only when one of the TXT records there is exactly the claim's token; a
- *   lookup that failed is `domain_lookup_failed`, never read as a missing
- *   record. The domain is then verified for this connection and no other: the
- *   claims of the domain are locked together, so two verifications of it race
- *   to one winner, and the unique index on `verified_domain` refuses any other.
- *   A verified domain is `unchanged`; an expired claim is
- *   `domain_claim_expired`.
- * - A removal deletes the claim in any state, after withdrawing what depends on
- *   linking by it (`DomainWithdrawal`).
- *
- * The locks are always taken in one order: the connection's row, then the
- * claims of one domain in id order. A deadlock MySQL's gap locks can still
- * cause between claims of neighbouring domains is retried, up to `ATTEMPTS`
- * times, when the helper's transaction is the outermost one; inside the
- * application's own, it propagates. A database error, and a resolver or a
- * limiter that throws, propagate (SSO-11.4); an empty or overlong tenant id is
- * an `InvalidArgumentException`.
- *
- * It holds the lookups, the freshness gate, the limiter, the resolver, the
- * settings, the clock, the reporter and the withdrawal, none of which keeps
- * anything of one request for the next (SSO-11.2). Resolve it from the
- * container per request.
+ * The DNS lookup runs outside any transaction; the write then re-reads under
+ * the connection's lock.
  *
  * @api
  *
@@ -87,7 +43,7 @@ final readonly class DomainService
     /** @var int The random bytes in a verification token, written as lower-case hex. */
     public const int TOKEN_BYTES = 32;
 
-    /** @var int How many times a transaction a deadlock rolled back is tried in all. */
+    /** @var int Attempts in all at a transaction a deadlock rolled back. */
     private const int ATTEMPTS = 3;
 
     /** @var string The domain, as a violation names it. */
@@ -137,8 +93,7 @@ final readonly class DomainService
     ) {}
 
     /**
-     * Claim the domain for the tenant's connection, pending, with a new
-     * verification token.
+     * Claim exactly the domain, not its subdomains, pending with a new token.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -223,8 +178,7 @@ final readonly class DomainService
     }
 
     /**
-     * The tenant's connection's claim of the domain, or `null` when it has
-     * none.
+     * The tenant's connection's claim of the domain, or `null`.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -241,8 +195,8 @@ final readonly class DomainService
     }
 
     /**
-     * Every claim of the tenant's connection, oldest first, or `null` when the
-     * tenant has no such connection.
+     * Every claim of the tenant's connection, oldest first; `null` without the
+     * connection.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -258,8 +212,7 @@ final readonly class DomainService
     }
 
     /**
-     * Why a claim is refused before anything is written, or `null`: no such
-     * connection, a domain refused, or a caller who is not fresh enough.
+     * Why a claim is refused before anything is written, or `null`.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -280,9 +233,7 @@ final readonly class DomainService
     }
 
     /**
-     * What is wrong with claiming the domain given, normalised to the name:
-     * nothing given, not a host name that could be registered, too long for its
-     * record name, or refused.
+     * What is wrong with claiming the domain given, or `null`.
      *
      * @param  string  $given
      * @param  ?string  $name
@@ -306,8 +257,8 @@ final readonly class DomainService
     }
 
     /**
-     * Claim the domain for the locked connection, unless it claimed it already
-     * and the claim is live, or another connection holds it verified.
+     * Claim the domain unless the connection's own claim is live or another
+     * connection holds it verified.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  string  $name
@@ -369,8 +320,7 @@ final readonly class DomainService
     }
 
     /**
-     * The tenant's connection's claim of the domain given, or why there is
-     * none: no such connection, or no such claim of it.
+     * The tenant's connection's claim of the domain, or why there is none.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -393,9 +343,7 @@ final readonly class DomainService
     }
 
     /**
-     * Why the claim cannot be verified before anything is written, or `null`:
-     * it expired, the caller is not fresh enough, it is verified already, or
-     * its record was not proven.
+     * Why the claim cannot be verified before anything is written, or `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $found
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -414,9 +362,8 @@ final readonly class DomainService
     }
 
     /**
-     * Take one of the connection's domain checks and look the claim's record
-     * up; why that did not prove the claim, or `null` when one of its records
-     * is exactly the token.
+     * Take a domain check and look the record up; why it did not prove the
+     * claim, or `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $found
      * @return ?\SineMacula\Laravel\Sso\Domains\DomainResult
@@ -441,12 +388,8 @@ final readonly class DomainService
     }
 
     /**
-     * Verify the locked connection's claim of the domain, which the record
-     * proved with the token given, once every claim of the domain is locked:
-     * unless the claim went, was claimed again with another token, expired, was
-     * verified meanwhile, was verified and lapsed again meanwhile (a newer
-     * check found no record, which the older answer must not overrule), or
-     * another connection holds the domain verified.
+     * Verify the claim with every claim of the domain locked, unless it changed
+     * since the lookup or another connection holds the domain verified.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $seen
@@ -479,8 +422,8 @@ final readonly class DomainService
     }
 
     /**
-     * Mark the claim verified for its connection from now, unless the unique
-     * index finds the domain verified for another.
+     * Mark the claim verified from now, unless the unique index finds the
+     * domain verified for another connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
@@ -517,9 +460,7 @@ final readonly class DomainService
     }
 
     /**
-     * Delete the locked connection's claim of the domain, after withdrawing
-     * what depends on linking by it, and report it removed, answering it as it
-     * was before.
+     * Withdraw what depends on the claim, delete it, and answer it as it was.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  string  $name
@@ -547,9 +488,8 @@ final readonly class DomainService
     }
 
     /**
-     * Run the change in one transaction on the storage connection, against the
-     * connection read again locked for update; retried when a deadlock rolled
-     * back the outermost transaction.
+     * Run the change in one storage transaction against the connection locked
+     * for update, retried on deadlock when outermost.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -570,8 +510,8 @@ final readonly class DomainService
     }
 
     /**
-     * Whether the claim lapsed after it was read for the lookup: it is lapsed
-     * now and was not, or lapsed again since.
+     * Whether the claim lapsed after it was read for the lookup, so the older
+     * answer must not overrule it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $seen
@@ -584,9 +524,8 @@ final readonly class DomainService
     }
 
     /**
-     * Save the claim in a transaction of its own (a savepoint inside the
-     * helper's), unless the unique index on `verified_domain` refuses it.
-     * Returns whether it was saved; any other error propagates.
+     * Save the claim in a savepoint; `false` when the unique index on
+     * `verified_domain` refuses it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @return bool

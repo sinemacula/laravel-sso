@@ -7,18 +7,8 @@ namespace SineMacula\Laravel\Sso\Metadata;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How an import of an identity provider's metadata ended (SSO-2.8, SSO-2.11):
- * proposed, with the settings the metadata proposes; refused, with the reason
- * and, when the metadata itself was refused, the rule that refused it in the
- * package's own words (`schema`, `entity_location`, `signature`, say), never a
- * value of the metadata; or rate limited, with the seconds until another import
- * of the connection may be tried.
- *
- * A refusal is `protocol_unavailable` (the SAML protocol is not available),
- * `connection_not_found` (an unknown connection, another tenant's, or one that
- * is not SAML), `fetch_refused` or `fetch_failed` (the URL, whose detail goes
- * only to the logs), `metadata_invalid`, `metadata_signature_invalid`,
- * `metadata_entity_not_found` or `metadata_expired`.
+ * How an import of an identity provider's SAML metadata ended: proposed,
+ * refused or rate limited.
  *
  * @api
  *
@@ -55,7 +45,7 @@ final readonly class ImportResult
         /** Why it was refused or limited, for one that was. */
         public ?FailureReason $reason = null,
 
-        /** Which rule refused the metadata, in the package's own words, for metadata refused. */
+        /** The rule that refused the metadata, such as `schema`, never a value of it. */
         public ?string $detail = null,
 
         /** Seconds, at least 1, until it may be tried again, for a rate limited one. */
@@ -75,7 +65,7 @@ final readonly class ImportResult
 
     /**
      * The import was refused for the reason, by the rule named when the
-     * metadata itself was refused.
+     * metadata was refused.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  ?string  $detail

@@ -61,13 +61,8 @@ use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
 
 /**
- * The base of a standalone acceptance test (FEATURES "No dependency on a
- * sibling"): the package alone in a Testbench application, with no sibling
- * installed, no package discovered, no session in any middleware group, and no
- * binding beyond what the provider makes. A test that replaces a seam does so
- * on purpose, in the test itself; `assertDefaultBindings()` shows none has been
- * replaced by accident, and `assertStandalone()` shows nothing else has crept
- * in.
+ * Base for acceptance tests of the package alone, with no sibling, package
+ * discovery, session middleware or binding beyond the provider's.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -116,9 +111,8 @@ abstract class StandaloneTestCase extends TestCase
     private const array SESSION_MIDDLEWARE = ['Session', 'VerifyCsrf', 'Forgery', 'ShareErrors'];
 
     /**
-     * Take the skeleton's middleware groups away, from the kernel and from the
-     * router, which keeps its own copy of what the kernel gave it, so that
-     * nothing a test serves can go through a session.
+     * Remove the skeleton's middleware groups from the kernel and the router,
+     * which keeps its own copy, so nothing a test serves has a session.
      *
      * @return void
      */
@@ -140,8 +134,7 @@ abstract class StandaloneTestCase extends TestCase
     }
 
     /**
-     * Assert that no sibling is installed and neither the HTTP kernel nor the
-     * router names a session middleware.
+     * Assert no sibling is installed and no session middleware is registered.
      *
      * @return void
      */
@@ -181,8 +174,7 @@ abstract class StandaloneTestCase extends TestCase
     }
 
     /**
-     * Every middleware of the kernel's global stack and groups, and of the
-     * router's groups, that has to do with the session.
+     * Every session middleware the kernel or the router holds.
      *
      * @return list<string>
      */

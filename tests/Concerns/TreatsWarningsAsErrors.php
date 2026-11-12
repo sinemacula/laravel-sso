@@ -8,10 +8,7 @@ use PHPUnit\Framework\Attributes\After;
 use PHPUnit\Framework\Attributes\Before;
 
 /**
- * Makes any PHP warning or notice the code under test raises an error of the
- * test, for a test that does not boot the framework: PHPUnit only records one,
- * so reading a member that is not there would otherwise pass unnoticed. Hostile
- * input must be refused, never read past with a warning.
+ * Turns PHP warnings and notices into errors for tests that skip the framework.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -19,10 +16,8 @@ use PHPUnit\Framework\Attributes\Before;
 trait TreatsWarningsAsErrors
 {
     /**
-     * Throw on a warning or notice for the rest of the test; one silenced with
-     * `@` stays silent, which shows as a reporting level other than the test's
-     * own (PHPUnit lowers that level while a test runs, so it cannot be read as
-     * the levels that are reported).
+     * Throw on a warning or notice, except one silenced with `@`, which shows
+     * as a reporting level other than the one PHPUnit set for the test.
      *
      * @return void
      */

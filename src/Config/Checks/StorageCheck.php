@@ -10,11 +10,7 @@ use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * `[storage]`: where the package's tables live and what they are called, while
- * the package is in use (SSO-11.10). The storage connection and the counters'
- * connection must each be a connection name `database.connections` configures,
- * or none; every table's name must be a table name; and no two tables on one
- * connection may share a name.
+ * Checks the storage and counter connections and the package's table names.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -33,7 +29,7 @@ final readonly class StorageCheck implements ConfigurationCheck
     ) {}
 
     /**
-     * Storage is checked while the package is in use.
+     * Applies while the package is in use.
      *
      * @return bool
      */
@@ -68,10 +64,8 @@ final readonly class StorageCheck implements ConfigurationCheck
     }
 
     /**
-     * The counters' connection, once it is known to be well formed and, when
-     * `sso.rate_limits.connection` names its own, configured. When it names
-     * none the counters live on the storage connection, which the check before
-     * has already reported, so a missing one is reported once.
+     * The counters' connection; one that falls back to the storage connection
+     * is not checked again, so a missing one is reported once.
      *
      * @return ?string
      *
@@ -86,8 +80,7 @@ final readonly class StorageCheck implements ConfigurationCheck
     }
 
     /**
-     * The connection the setting names, once it is known to be configured in
-     * `database.connections`; `null`, the default connection, always is.
+     * The connection, refused unless configured; `null` is the default.
      *
      * @param  string  $key
      * @param  ?string  $connection
@@ -105,8 +98,8 @@ final readonly class StorageCheck implements ConfigurationCheck
     }
 
     /**
-     * Refuse two tables of one connection with the same name. Settings the
-     * other checks refuse are left to them.
+     * Refuse two tables of one connection with the same name, leaving malformed
+     * settings to the other checks.
      *
      * @return void
      *

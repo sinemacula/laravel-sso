@@ -32,13 +32,7 @@ use Tests\Fixtures\Secrets\CountingSecretEncrypter;
 use Tests\TestCase;
 
 /**
- * Feature tests for consuming the authorisation request a response answers
- * (SSO-5.1, SSO-11.3, SSO-11.5): found by its state or by its SAML request id
- * within the connection, consumed exactly once and recorded in the single-use
- * store until its expiry, and judged once consumed: each status and reason, the
- * SAML request id mismatch, the expiry at its second and either side, a voided
- * request, another connection, an application no longer registered, replays,
- * and the PKCE verifier never in a dump.
+ * Feature tests for consuming the authorisation request a response answers.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -99,9 +93,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A request found by its state is consumed: marked, recorded in the store
-     * until its expiry, and handed on with what the driver is given of it and
-     * the application. Nothing is reported.
+     * A request found by its state is consumed, recorded until its expiry and
+     * handed on, reporting nothing.
      *
      * @return void
      */
@@ -162,8 +155,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * Consuming a request decrypts nothing: the PKCE verifier is decrypted only
-     * when what the driver is given is asked for it, and each time it is.
+     * Consumption decrypts nothing; the verifier is decrypted each time it is
+     * asked for.
      *
      * @return void
      */
@@ -183,8 +176,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A PKCE verifier no key decrypts never stops its request being consumed:
-     * it is consumed and recorded, and only asking for the verifier fails.
+     * A verifier no key decrypts still lets the request be consumed; only
+     * asking for it fails.
      *
      * @return void
      */
@@ -203,10 +196,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A SAML response finds its request by its request id, within the
-     * connection it arrived for and compared exactly, never by its
-     * `RelayState`: an id of another connection, or not exactly the stored one,
-     * is unknown and consumes nothing, whatever the `RelayState` names.
+     * A SAML response finds its request by exact id within its connection,
+     * never by `RelayState`.
      *
      * @return void
      */
@@ -229,8 +220,7 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A response that names no request, by a state no request has, by a SAML
-     * request id none has, or by neither, is unknown, and consumes nothing.
+     * A response naming no known request is unknown, and consumes nothing.
      *
      * @return void
      */
@@ -247,9 +237,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A SAML response whose `RelayState` is not its request's state, or that
-     * gave none, is refused `request_mismatch`, with the application kept so
-     * the completion redirects, and the request is consumed all the same.
+     * A missing or mismatched `RelayState` is `request_mismatch`, and the
+     * request is still consumed.
      *
      * @return void
      */
@@ -270,8 +259,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A SAML response with its request's own `RelayState` is consumed, and an
-     * OIDC response's state alone finds a request whatever it keeps.
+     * A matching `RelayState` is consumed, and an OIDC state alone finds its
+     * request.
      *
      * @return void
      */
@@ -287,8 +276,7 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A SAML request id for a request that keeps none finds nothing, and
-     * consumes nothing.
+     * A SAML request id for a request that keeps none finds nothing.
      *
      * @return void
      */
@@ -301,8 +289,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A request consumed once is replayed after: no redirect target, and its
-     * consumption time unchanged.
+     * A consumed request is replayed after, with no redirect target and its
+     * time unchanged.
      *
      * @return void
      */
@@ -351,8 +339,7 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A request a change to its connection voided is refused
-     * `connection_unavailable`, and consumed.
+     * A voided request is refused `connection_unavailable`, and consumed.
      *
      * @return void
      */
@@ -365,9 +352,7 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * Rows of `[request's trust version, connection's, reason]`: the trust
-     * version the request was started with, the connection's, and what the
-     * consumption comes to.
+     * Rows of `[request's trust version, connection's, reason]`.
      *
      * @return iterable<string, array{0: int, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -381,10 +366,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A request whose trust version is not the connection's (a trust change
-     * since it started that voided nothing it could see) is refused
-     * `connection_unavailable`, as a voided one is, and consumed; one of the
-     * connection's trust version is consumed.
+     * A request of another trust version is refused `connection_unavailable`,
+     * and consumed.
      *
      * @param  int  $started
      * @param  int  $current
@@ -410,8 +393,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A request started through another connection than the response arrived
-     * for is refused `connection_mismatch`, and consumed.
+     * A request of another connection is refused `connection_mismatch`, and
+     * consumed.
      *
      * @return void
      */
@@ -425,8 +408,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * Each moment around the expiry, 09:40:00, what it gives, and until when
-     * the store keeps the request.
+     * Each moment around the 09:40:00 expiry, its reason, and how long the
+     * store keeps the request.
      *
      * @return iterable<string, array{0: int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason, 2: string}>
      */
@@ -438,9 +421,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A request expires at its expiry's second: one second before it is
-     * consumed, at it and after it it is refused `request_expired`. The store
-     * keeps it until its expiry, and at least a second.
+     * A request expires at its expiry's second; the store keeps it at least a
+     * second.
      *
      * @param  int  $offset
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -467,10 +449,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A request whose application is no longer registered is refused
-     * `application_not_allowed`, with no redirect target, ahead of every other
-     * reason, consumed, and completed in the same write, since its completion
-     * goes no further.
+     * A request of an unregistered application is refused first, with no
+     * redirect, and completed at once.
      *
      * @return void
      */
@@ -491,9 +471,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A request whose application is registered is consumed without being
-     * completed, whether the response may go on or is refused: the completion
-     * marks it completed once it ends.
+     * A registered application's request is consumed but completed only when
+     * the completion ends.
      *
      * @return void
      */
@@ -512,9 +491,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * A malformed application's settings propagate from inside the
-     * consumption's transaction: the request is left neither consumed nor
-     * completed, and no single-use key is recorded for it.
+     * A malformed application's settings propagate, leaving the request
+     * unconsumed and unrecorded.
      *
      * @return void
      */
@@ -540,8 +518,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * The reasons are judged in order: the `RelayState`, then the voiding, then
-     * the connection, then the trust version, then the expiry.
+     * Reasons are judged in order: `RelayState`, voiding, connection, trust
+     * version, expiry.
      *
      * @return void
      */
@@ -594,10 +572,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * Neither the result nor what the driver is given shows the PKCE verifier,
-     * the nonce, the state or a digest in a dump. A dumper that shows every
-     * property, as `dump()` does, shows the request's digests, and still never
-     * the PKCE verifier, the nonce or the state.
+     * No dump shows the PKCE verifier, nonce or state, even one showing every
+     * property.
      *
      * @return void
      */
@@ -663,8 +639,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * Assert the request was consumed now and the response refused for the
-     * reason, with the `web` application as its redirect target or none.
+     * Assert the request was consumed now and refused for the reason,
+     * redirecting to `web` or nowhere.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\ConsumptionResult  $result
@@ -683,9 +659,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * Consume the request the correlation names, for a response that arrived
-     * for the connection the requests were started through unless told
-     * otherwise.
+     * Consume the request the correlation names, for the request's connection
+     * unless told otherwise.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $route
@@ -700,8 +675,8 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * Make a `sign_in` request for `web` through the connection, started with
-     * the state given, the nonce and the PKCE verifier, unless told otherwise.
+     * A `sign_in` request for `web` through the connection with the state,
+     * nonce and verifier.
      *
      * @param  array<string, mixed>  $attributes
      * @param  string  $state
@@ -731,8 +706,7 @@ final class RequestConsumptionTest extends TestCase
     }
 
     /**
-     * Every key the single-use store holds: its namespace, its digest and its
-     * expiry, as an ISO 8601 string.
+     * Every key the single-use store holds, with its expiry as ISO 8601.
      *
      * @return list<array{0: string, 1: string, 2: string}>
      */

@@ -30,14 +30,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for re-initiation from an unsolicited SAML response (SSO-5.8,
- * SSO-6.11), with responses from the fake identity provider: a connection that
- * does not allow it refuses before reading anything, and logs only that it
- * did; one that allows it but holds no start URL fails closed; a valid
- * unsolicited response is allowed with the start URL naming the connection,
- * with and without a query of its own, and the replay record of its assertion;
- * the posted `RelayState` is never read; and every rule of a successful
- * response still holds, an `InResponseTo` anywhere refusing it.
+ * Feature tests for re-initiation from an unsolicited SAML response.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -74,10 +67,8 @@ final class UnsolicitedResponsesTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, configure SAML, IdP-initiated sign-in and the
-     * endpoints, capture the logs, and create the tables and a connection that
-     * allows IdP-initiated sign-in, trusts the identity provider and has an
-     * encryption key.
+     * Create a connection that allows IdP-initiated sign-in, trusts the
+     * provider and has an encryption key.
      *
      * @return void
      */
@@ -113,10 +104,8 @@ final class UnsolicitedResponsesTest extends TestCase
     }
 
     /**
-     * A connection that does not allow IdP-initiated sign-in refuses with
-     * `unsolicited_not_allowed` before anything posted is read, so a post with
-     * no response at all is refused the same way, and logs a notice naming the
-     * connection alone.
+     * A connection that does not allow IdP-initiated sign-in refuses before
+     * reading anything, logging only the connection.
      *
      * @return void
      */
@@ -144,9 +133,8 @@ final class UnsolicitedResponsesTest extends TestCase
     }
 
     /**
-     * A connection allowing IdP-initiated sign-in without a start URL is
-     * incomplete: it fails closed with `connection_unavailable` before anything
-     * posted is read, logging nothing.
+     * A connection allowing IdP-initiated sign-in without a start URL fails
+     * closed, logging nothing.
      *
      * @return void
      */
@@ -181,10 +169,8 @@ final class UnsolicitedResponsesTest extends TestCase
     }
 
     /**
-     * A valid unsolicited response is allowed: the start URL with the
-     * connection's id added as its `connection` query parameter, and the replay
-     * record of its assertion, scoped by the connection and the identity
-     * provider, until its last acceptance moment; nothing is logged.
+     * A valid unsolicited response gets the start URL naming the connection and
+     * its assertion's replay record.
      *
      * @param  string  $startUrl
      * @param  string  $expected
@@ -298,9 +284,8 @@ final class UnsolicitedResponsesTest extends TestCase
     }
 
     /**
-     * Every rule of a successful response holds for an unsolicited one, and an
-     * `InResponseTo` anywhere refuses it with `request_unknown`: each refusal
-     * keeps the validator's reason and carries no start URL or replay record.
+     * Every rule of a successful response holds for an unsolicited one, and any
+     * `InResponseTo` refuses it.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse): \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $change
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason

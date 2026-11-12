@@ -30,19 +30,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/keys.md` (SSO-2.5 to SSO-2.7, SSO-12.5), on the
- * shared example harness: an administrator rotates a SAML connection's signing
- * key without downtime (the first key made current at once, the next published
- * beside it, made current, and the old one retired), rotates the identity
- * provider's certificate (the new one trusted beside the old, the old one
- * distrusted), and lists the connection's keys. Each asserts what the change
- * answers, what it reports and what the connection holds after it: the new
- * provider's responses verify once its certificate is trusted, and the old
- * provider's are refused once its certificate is distrusted. The refusals the
- * guide lists are asserted beside them: a second `next` key, the current key
- * retired, a key retired twice, a certificate given twice or with its private
- * key, a stale caller and another tenant's connection, none of which writes or
- * reports anything.
+ * The examples of `docs/guides/keys.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -58,7 +46,7 @@ final class KeysExampleTest extends ExampleTestCase
     /** @var string The administrator's key. */
     private const string ADMINISTRATOR = 'admin-1';
 
-    /** @var \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider The tenant's identity provider, signing with its first certificate. */
+    /** @var \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider The tenant's identity provider. */
     private FakeSamlIdentityProvider $idp;
 
     /** @var string The SAML connection that trusts it. */
@@ -71,8 +59,7 @@ final class KeysExampleTest extends ExampleTestCase
     private IdentityReference $person;
 
     /**
-     * Make the tenant's SAML connection, trusting the provider's certificate,
-     * and the administrator.
+     * Make the SAML connection and the administrator.
      *
      * @return void
      */
@@ -88,12 +75,8 @@ final class KeysExampleTest extends ExampleTestCase
     }
 
     /**
-     * The first signing key is generated and made current at once; the next is
-     * added as `next` and published after the current one, and a second `next`
-     * is refused; making it current leaves the old key retiring until the
-     * overlap ends, and retiring that removes it. The current key is never
-     * retired, and a key retired is gone. Each change asks `sso.keys.rotate`
-     * and reports the administrator.
+     * A signing key rotates through next, current and retiring without
+     * downtime.
      *
      * @return void
      */
@@ -165,11 +148,8 @@ final class KeysExampleTest extends ExampleTestCase
     }
 
     /**
-     * The provider's new certificate is trusted beside the old one, and the old
-     * one then distrusted: the new provider's responses verify, and the old
-     * provider's are refused for their signature. Trusting the same certificate
-     * again, or one given with its private key, is invalid, and a certificate
-     * distrusted is gone.
+     * The provider's new certificate is trusted beside the old, which is then
+     * distrusted.
      *
      * @return void
      *
@@ -218,9 +198,7 @@ final class KeysExampleTest extends ExampleTestCase
     }
 
     /**
-     * The connection's keys are listed by use, then current, next and the
-     * certificates; none carries a private key, and another tenant's connection
-     * answers `null`.
+     * The connection's keys are listed without private keys.
      *
      * @return void
      */
@@ -245,9 +223,8 @@ final class KeysExampleTest extends ExampleTestCase
     }
 
     /**
-     * A change asked by a caller who did not authenticate recently enough, or
-     * of another tenant's connection, is refused before anything is generated
-     * or written, and reports nothing.
+     * A stale caller's or another tenant's change is refused and writes
+     * nothing.
      *
      * @return void
      */
@@ -276,8 +253,7 @@ final class KeysExampleTest extends ExampleTestCase
     }
 
     /**
-     * Record each key event the package dispatches, as its short name and the
-     * key of the administrator it names.
+     * Record each key event as its short name and the acting identity's key.
      *
      * @return \ArrayObject<int, array{0: string, 1: ?string}>
      */
@@ -294,8 +270,7 @@ final class KeysExampleTest extends ExampleTestCase
     }
 
     /**
-     * The ids of the identity provider certificates the connection trusts, in
-     * the order the package lists them.
+     * The ids of the provider certificates the connection trusts.
      *
      * @return list<string>
      */
@@ -305,7 +280,7 @@ final class KeysExampleTest extends ExampleTestCase
     }
 
     /**
-     * The ids of the summaries, in order, of the use when one is given.
+     * The ids of the summaries, of the use when one is given.
      *
      * @param  list<\SineMacula\Laravel\Sso\Keys\KeySummary>  $summaries
      * @param  ?\SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
@@ -319,7 +294,7 @@ final class KeysExampleTest extends ExampleTestCase
     }
 
     /**
-     * The summary a result or another summary carries, which must be there.
+     * The summary, asserted present.
      *
      * @param  ?\SineMacula\Laravel\Sso\Keys\KeySummary  $key
      * @return \SineMacula\Laravel\Sso\Keys\KeySummary
@@ -332,7 +307,7 @@ final class KeysExampleTest extends ExampleTestCase
     }
 
     /**
-     * Each violation of the result, as its setting and its code.
+     * Each violation of the result as `[setting, code]`.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\KeyResult  $result
      * @return list<array{0: string, 1: string}>

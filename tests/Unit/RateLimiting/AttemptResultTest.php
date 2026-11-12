@@ -10,8 +10,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 
 /**
- * Unit tests for the limiter's answer: allowed, or rate limited with a wait of
- * at least a second.
+ * Unit tests for the attempt limiter's answer.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

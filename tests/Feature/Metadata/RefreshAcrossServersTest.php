@@ -31,14 +31,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * The audit of `sso:metadata:refresh` for SSO-11.12 across SAML and OIDC, in
- * what the existing suites leave out (the races of the claim and of the write
- * are in `ConcurrentMetadataRefreshTest`, `ConcurrentOidcRefreshTest` and
- * `ConcurrentJwksRefetchTest`, and an administrator's change while a refresh
- * fetches is there too): overlapping commands queue duplicate jobs, as they
- * may, and the duplicates fetch and apply nothing; a worker that died holding a
- * claim holds its connection to the very second the claim runs out, and not a
- * second after; and a second run over what a first refreshed does nothing.
+ * Feature tests for `sso:metadata:refresh` across servers, beyond the
+ * concurrency suites.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,8 +62,8 @@ final class RefreshAcrossServersTest extends TestCase
     private FakeFetcher $fetcher;
 
     /**
-     * Bind a fixed clock and a fake fetcher serving both providers, switch both
-     * protocols and the refresh on, and create the tables.
+     * Bind a fixed clock and a fetcher serving both providers, enable both
+     * protocols and refresh, and create the tables.
      *
      * @return void
      */
@@ -96,9 +90,8 @@ final class RefreshAcrossServersTest extends TestCase
     }
 
     /**
-     * Overlapping commands each queue every due connection, since neither has
-     * claimed anything; the first job of each connection refreshes it, once,
-     * and its duplicates are `skipped`, fetching nothing and changing nothing.
+     * Overlapping commands queue duplicate jobs; the first refreshes once and
+     * the rest are `skipped`.
      *
      * @return void
      */
@@ -138,8 +131,7 @@ final class RefreshAcrossServersTest extends TestCase
             self::assertNull(Connection::query()->findOrFail($connection->id)->metadata_claim_token);
         }
 
-        // The SAML document once, and the OIDC discovery document and keys once
-        // each.
+        // The SAML document once, and the OIDC document and keys once each
         self::assertCount(3, $this->fetcher->requests());
     }
 
@@ -175,9 +167,8 @@ final class RefreshAcrossServersTest extends TestCase
     }
 
     /**
-     * A worker that died holding a claim keeps its connection from being
-     * listed, queued or refreshed until the claim runs out, to the second, and
-     * then the connection is taken over and refreshed, the dead claim gone.
+     * A dead worker's claim holds its connection until it runs out, to the
+     * second, then it is taken over.
      *
      * @param  string  $protocol
      * @return void

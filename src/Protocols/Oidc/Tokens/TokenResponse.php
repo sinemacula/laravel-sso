@@ -5,16 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc\Tokens;
 
 /**
- * What a token endpoint answered an authorisation code with, once the callback
- * read it (SSO-7.2, SSO-7.6): the ID token, the access token and the token
- * type. A refresh token, and anything else the response carried, is never kept.
- *
- * The provider's tokens are used only during the completion that received them:
- * they are held in `\SensitiveParameterValue`, given only through `idToken()`
- * and `accessToken()` to the ID token validation and the UserInfo request, and
- * never stored, returned, logged or put in an event. A dump and JSON encoding
- * show the token type and nothing of a token, and the response refuses to be
- * serialised or unserialised.
+ * The tokens a token endpoint returned for an authorisation code, redacted from
+ * dumps and JSON and never serialisable; a refresh token is never kept.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,15 +30,15 @@ final readonly class TokenResponse implements \JsonSerializable
      */
     public function __construct(
 
-        // The ID token, compact; held wrapped
+        // Not promoted: held wrapped
         #[\SensitiveParameter]
         string $idToken,
 
-        // The access token; held wrapped
+        // Not promoted: held wrapped
         #[\SensitiveParameter]
         string $accessToken,
 
-        /** The token type, as the provider gave it (`Bearer`, in any case). */
+        /** The token type as the provider gave it, `Bearer` in any case. */
         public string $tokenType = 'Bearer',
     ) {
         $this->idToken     = new \SensitiveParameterValue($idToken);
@@ -54,7 +46,7 @@ final readonly class TokenResponse implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the token type, never a token.
+     * Show the token type and never a token.
      *
      * @return array<string, string>
      */
@@ -64,7 +56,7 @@ final readonly class TokenResponse implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: the provider's tokens are never kept (SSO-7.6).
+     * Refuse to be serialised; the provider's tokens are never kept.
      *
      * @return array<string, mixed>
      *
@@ -94,7 +86,7 @@ final readonly class TokenResponse implements \JsonSerializable
     }
 
     /**
-     * What JSON encoding shows: the same as a dump, never a token.
+     * Encode the same redacted view as a dump.
      *
      * @return array<string, string>
      */
@@ -105,7 +97,7 @@ final readonly class TokenResponse implements \JsonSerializable
     }
 
     /**
-     * The ID token, compact, for its validation and nothing else.
+     * The compact ID token, for its validation only.
      *
      * @return string
      */
@@ -116,8 +108,7 @@ final readonly class TokenResponse implements \JsonSerializable
     }
 
     /**
-     * The access token, for `at_hash` and the UserInfo request and nothing
-     * else.
+     * The access token, for `at_hash` and the UserInfo request only.
      *
      * @return string
      */

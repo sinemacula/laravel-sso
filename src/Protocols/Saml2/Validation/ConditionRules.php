@@ -10,26 +10,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlConditions;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
 
 /**
- * The rules of a SAML assertion's `Conditions` and of the response's and the
- * assertion's `IssueInstant` (SSO-6.4, SSO-6.5, SAML 2.0 Core §2.5), in this
- * order, the first broken answering:
- *
- * 1. `NotBefore`, when present, is not after now plus the skew, and now is
- *    before `NotOnOrAfter`, when present, plus the skew, or
- *    `assertion_expired`;
- * 2. every `AudienceRestriction` names the connection's service provider
- *    entity id, compared exactly, since each is a condition of its own that
- *    must hold; an empty one names nothing, so it is refused; or
- *    `audience_mismatch`;
- * 3. `OneTimeUse` and `ProxyRestriction` are accepted, since the package never
- *    keeps or passes on an assertion; any other condition is one the package
- *    does not understand, and is `condition_unsupported`;
- * 4. the response's and the assertion's `IssueInstant` are each not after now
- *    plus the skew, and no older than `sso.saml2.issue_instant_max_age_seconds`
- *    plus the skew, or `assertion_expired`.
- *
- * An assertion without `Conditions` holds the first three. Nothing here keeps
- * anything.
+ * The `Conditions` and `IssueInstant` rules, checked in order with the first
+ * broken one answering.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,8 +26,8 @@ final class ConditionRules
     private function __construct() {}
 
     /**
-     * Why the assertion's conditions or either `IssueInstant` refuse the
-     * response, or `null` when every rule holds.
+     * Why the conditions or either `IssueInstant` refuse the response, or
+     * `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
@@ -61,7 +43,8 @@ final class ConditionRules
     }
 
     /**
-     * Why the conditions refuse the assertion, or `null`.
+     * Why the conditions refuse the assertion, or `null`. `OneTimeUse` and
+     * `ProxyRestriction` pass, as no assertion is kept or passed on.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlConditions  $conditions
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -78,8 +61,8 @@ final class ConditionRules
     }
 
     /**
-     * Whether now is within the conditions' `NotBefore` and `NotOnOrAfter`,
-     * each with the skew, a bound that is absent holding.
+     * Whether now is within `NotBefore` and `NotOnOrAfter`; an absent bound
+     * holds.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlConditions  $conditions
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -97,7 +80,8 @@ final class ConditionRules
     }
 
     /**
-     * Whether every audience restriction names the service provider.
+     * Whether every audience restriction names the service provider; an empty
+     * one names nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlConditions  $conditions
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -115,8 +99,7 @@ final class ConditionRules
     }
 
     /**
-     * Why the response's or the assertion's `IssueInstant` refuses the
-     * response, or `null`.
+     * Why either `IssueInstant` refuses the response, or `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion

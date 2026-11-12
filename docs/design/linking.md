@@ -19,13 +19,12 @@ a link by the connection's row, and a verified domain link of an identity, in an
 A reservation's domain and identity are found by a plain read of the reservation, and confirmed under the lock by its
 immutable binding.
 
-This amends the order first frozen here, which began at the enforcement guard. A principal mutation, which knows only an
-identity, could not take connections in order without knowing which it needed, and a check made after its write inverted
-the locks and needed `READ COMMITTED` on PostgreSQL; it also missed a link activated and then suspended. So principal
-widening, reservation creation, activation and confirmation now share `Linking\IdentityLock`: a row keyed by a digest of
-the identity's type and id, materialised by insert-unless-exists on the storage connection, like the enforcement guard,
-and never deleted. Holding it, nothing else can change the identity's verified domain links, in any connection, and a
-row that does not exist yet is protected too.
+The identity guard comes first because a principal mutation knows only an identity: it cannot take connections in order
+without knowing which it needs, and a check made after its write would invert the locks. So principal widening,
+reservation creation, activation and confirmation share `Linking\IdentityLock`: a row keyed by a digest of the
+identity's type and id, materialised by insert-unless-exists on the storage connection, like the enforcement guard, and
+never deleted. Holding it, nothing else can change the identity's verified domain links, in any connection, and a row
+that does not exist yet is protected too.
 
 Each of the four discovers what it needs by plain reads first, locks in order, and judges again under the locks; when
 the candidates changed it refuses, and a caller's transaction is retried only whole:
@@ -44,14 +43,14 @@ it reads the connection's tenant before its transaction opens, so for a `link` t
 and every plain read after it sees what the guard's previous holder committed; should it reach `LinkCandidatesChanged`
 all the same, it restarts once from its transaction, and a second time propagates.
 
-The guard's cost falls only on flows that touch linking. An ordinary linked sign-in reads its row where it used to lock
-the claim, takes no guard and locks no claim; a sign-in with the feature or the connection's linking off reads neither.
-A transaction holds one identity's guard; one that changes several takes them in ascending order of
-`IdentityLock::digest()`. A widening of several identities, such as a subtree of tenants moved, is one `widened()` call
-given them all: it takes every guard, then locks the union of their connections in one statement, so a confirmation or
-a reservation of any of them never holds a guard the widening waits on while waiting on a connection it holds. The call
-takes one tenant, whose connections it spares for every identity given, so it suits identities that all gain a principal
-in the same tenant; identities gaining principals in different tenants are not one call.
+The guard's cost falls only on flows that touch linking. An ordinary linked sign-in reads its row, takes no guard and
+locks no claim; a sign-in with the feature or the connection's linking off reads neither. A transaction holds one
+identity's guard; one that changes several takes them in ascending order of `IdentityLock::digest()`. A widening of
+several identities, such as a subtree of tenants moved, is one `widened()` call given them all: it takes every guard,
+then locks the union of their connections in one statement, so a confirmation or a reservation of any of them never
+holds a guard the widening waits on while waiting on a connection it holds. The call takes one tenant, whose connections
+it spares for every identity given, so it suits identities that all gain a principal in the same tenant; identities
+gaining principals in different tenants are not one call.
 
 An application's guards come after the package's locks, in every path: its writers of verified emails, principals,
 memberships and sessions take them in the same relative order, or they will deadlock against an admission. Every
@@ -187,10 +186,11 @@ No isolation level is required, and the application's guard never meets a packag
 wrapper delegates to it. The `link` purpose, the provisioning helper and linking by a verified domain each validate the
 pairing through `Links\LinkStorageBinding` and refuse before writing anything, with a `LogicException` naming the
 problem, so no row is ever written that the resolver ignores; a `Linker` without it only resolves. An alternative issuer
-stores reservation bindings and takes part in decision D5, or the completion rolls back. Link suspension blocks new
-admission and reauthentication. Widening a person's scope also revokes the sessions established through the affected
-domain links, through the adapter, in the principal-change transaction. A provisioned identity can survive a later
-completion failure; that is the accepted consequence of provisioning outside the package's locks.
+stores reservation bindings and writes inside the completion's transaction on the same Laravel connection, or the
+completion rolls back. Link suspension blocks new admission and reauthentication. Widening a person's scope also revokes
+the sessions established through the affected domain links, through the adapter, in the principal-change transaction. A
+provisioned identity can survive a later completion failure; that is the accepted consequence of provisioning outside
+the package's locks.
 
 That an identity offered to the provisioning helper is new is the adapter's obligation: a grant proves authority to
 provision for this result, not when an application identity was created.

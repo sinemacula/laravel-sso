@@ -10,26 +10,8 @@ use PHPUnit\Framework\TestCase;
 use Tests\Concerns\ScansLibraryNames;
 
 /**
- * Holds the package to the conditions its SAML library was chosen under
- * (`docs/design/saml-library.md`, conditions 1 and 2):
- *
- * - only the SAML adapter's namespace (`Protocols\Saml2\Library`) names
- *   `simplesamlphp/saml2` or `simplesamlphp/xml-security`, so every library
- *   call goes through the adapter;
- * - nothing names the library's high-level `Response\Processor`, its
- *   `Signature\Validator` chain, its assertion validators or its bindings,
- *   which skip the package's checks or keep state the package does not set;
- * - `verify()` is never called without a verifier, and the one class that calls
- *   a signed element's `verify()` is the pinned verifier, which builds its
- *   verifier only from the connection's trusted certificates;
- * - only the adapter's container sets the library's process-wide container.
- *
- * The source is tokenised, not parsed: a name is seen however it is written
- * (qualified, fully qualified, as a member of a group `use`, or quoted), and a
- * `use` of a namespace that holds a forbidden part is itself forbidden, since
- * the part could then be named relative to it; a name built at run time is not
- * seen. The test is a backstop for the rules, not a proof of them; the
- * adversarial fixtures prove the behaviour.
+ * Architecture tests for the SAML library conditions in
+ * `docs/design/saml-library.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,7 +35,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     /** @var string A name in the library's namespaces. */
     private const string LIBRARY = '/\\\?SimpleSAML\\\/';
 
-    /** @var list<string> The parts of the library the package never names, as a namespace prefix of each. */
+    /** @var list<string> Namespace prefixes of the library the package never names. */
     private const array FORBIDDEN = [
         'SimpleSAML\SAML2\Response\Processor',
         'SimpleSAML\SAML2\Signature\Validator',
@@ -95,8 +77,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * The adapter names the library, so the rule above holds over the files
-     * that do.
+     * The adapter names the library, so the rule above holds over something.
      *
      * @return void
      */
@@ -130,8 +111,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * No file calls `verify()` with no argument, and only the pinned verifier
-     * calls a `verify()` method at all.
+     * Only the pinned verifier calls `verify()`, and never without an argument.
      *
      * @param  string  $path
      * @return void
@@ -165,8 +145,8 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * The pinned verifier calls `verify()` once, with the verifier it builds
-     * from a trusted certificate, so the rule above holds over something.
+     * The pinned verifier calls `verify()` once, with an argument, so the rule
+     * above holds over something.
      *
      * @return void
      */
@@ -180,9 +160,8 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * The scans find what they look for: a library name however it is written,
-     * a forbidden part however it is reached, and a `verify()` call's argument
-     * count.
+     * The scans find library names however written, forbidden parts and each
+     * `verify()` call's argument count.
      *
      * @return void
      */
@@ -234,9 +213,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * Every name in the source that is in the library's namespaces: as written,
-     * a group `use`'s members each joined to its prefix, and a quoted name
-     * unquoted, a doubled backslash read as one.
+     * Every name in the source in the library's namespaces.
      *
      * @param  string  $source
      * @return list<string>
@@ -247,8 +224,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * Every library name in the source that names a forbidden part, or that a
-     * `use` imports as a namespace holding one.
+     * Every library name that is a forbidden part or a namespace holding one.
      *
      * @param  string  $source
      * @return list<string>
@@ -261,8 +237,8 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * Whether the name is a forbidden part, or, imported by a `use`, a
-     * namespace holding one.
+     * Whether the name is a forbidden part or an imported namespace holding
+     * one, through which the part could be named relatively.
      *
      * @param  string  $name
      * @param  bool  $imported
@@ -286,8 +262,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * The number of arguments of each `->verify(` call in the source, a call
-     * with none counted as zero.
+     * The number of arguments of each `->verify(` call in the source.
      *
      * @param  string  $source
      * @return list<int>
@@ -311,8 +286,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * Whether the token at the index is the name of a `verify()` method call:
-     * `verify` after an object operator and before an opening parenthesis.
+     * Whether the token at the index names a `->verify(` method call.
      *
      * @param  list<array{0: int, 1: string, 2: int}|string>  $tokens
      * @param  int  $index
@@ -331,8 +305,7 @@ final class SamlLibraryBoundaryTest extends TestCase
     }
 
     /**
-     * The number of top-level arguments of the call whose opening parenthesis
-     * is at the index.
+     * The number of top-level arguments of the call opening at the index.
      *
      * @param  list<array{0: int, 1: string, 2: int}|string>  $tokens
      * @param  int  $open

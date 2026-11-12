@@ -7,14 +7,10 @@ namespace SineMacula\Laravel\Sso\Links;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How a link's removal ended (SSO-8.4, SSO-4.5): `removed`, with the summary of
- * the link as it was; or `refused`, with `link_not_found` or
- * `freshness_required`.
+ * How a link's removal ended; a refusal is returned, never thrown, and changed
+ * nothing.
  *
- * A refusal is a value, never thrown, and changed nothing: no link was deleted,
- * no session revocation asked for and no event dispatched. `link_not_found` is
- * the same for a link that does not exist and for another identity's, so a
- * caller learns nothing of links that are not its own.
+ * `link_not_found` covers another identity's link too, so nothing leaks.
  *
  * @api
  *
@@ -57,8 +53,7 @@ final readonly class LinkResult implements \JsonSerializable
     }
 
     /**
-     * The removal was refused for the reason given: `link_not_found` or
-     * `freshness_required`.
+     * The removal was refused for the reason given.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @return self
@@ -95,8 +90,7 @@ final readonly class LinkResult implements \JsonSerializable
     }
 
     /**
-     * The result, with snake_case keys: whether the link was removed, the link
-     * and the reason.
+     * The result with snake_case keys.
      *
      * @return array{removed: bool, link: ?array<string, mixed>, reason: ?string}
      */

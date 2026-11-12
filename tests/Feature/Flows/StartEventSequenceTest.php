@@ -35,13 +35,7 @@ use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
 
 /**
- * The events a start reports (SSO-10.1, SSO-10.2, SSO-10.4, SSO-9.8): exactly
- * `AuthorizationRequestStarted` for a request stored, with its whole context;
- * exactly one `FlowFailed` for each refusal, with its reason and as much
- * context as the start had established; exactly one
- * `FlowFailed(connection_unavailable)` for a start answered with the discovery
- * fallback; nothing for a misbound start; and never the protocol state, the
- * nonce, a verifier, a challenge or a digest.
+ * Feature tests for the events a start reports.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,9 +70,8 @@ final class StartEventSequenceTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, a freshness contract that answers `fresh` and a
-     * request from the client, register the applications and the driver, create
-     * the tables and a usable connection, and record events.
+     * Bind a fixed clock, fresh freshness and a client request, register the
+     * applications and driver, and record events.
      *
      * @return void
      */
@@ -120,9 +113,8 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * A started `sign_in` reports exactly `AuthorizationRequestStarted`, with
-     * the connection, its tenant and protocol, the application, the purpose and
-     * the public reference, and no failure.
+     * A started `sign_in` reports only `AuthorizationRequestStarted`, with its
+     * full context.
      *
      * @return void
      */
@@ -174,9 +166,8 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * A full limit reports one `rate_limited`, with the purpose and the
-     * identity the application gave, before any application is admitted; a
-     * `link` binds no session, so the caller's is not reported.
+     * A full limit reports one `rate_limited` before admission; a `link`
+     * reports no session.
      *
      * @return void
      */
@@ -200,7 +191,7 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * An application that is not allowed reports one failure that names no
+     * An application that is not allowed reports one failure naming no
      * application.
      *
      * @return void
@@ -234,8 +225,7 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * An unknown connection reports one failure that names no connection; a
-     * disabled one reports one that names it.
+     * An unknown connection's failure names none; a disabled one's names it.
      *
      * @return void
      */
@@ -268,8 +258,8 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * A start answered with the discovery fallback reports exactly one
-     * `connection_unavailable`, and nothing started.
+     * The discovery fallback reports exactly one `connection_unavailable` and
+     * nothing started.
      *
      * @return void
      */
@@ -290,8 +280,8 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * A stale `link` reports one `freshness_required`, with the connection and
-     * not the session the caller gave to freshness.
+     * A stale `link` reports one `freshness_required` with the connection and
+     * no session.
      *
      * @return void
      */
@@ -317,8 +307,8 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * An ineligible session reports one `session_ineligible`, with the identity
-     * and the session.
+     * An ineligible session reports one `session_ineligible` with the identity
+     * and session.
      *
      * @return void
      */
@@ -337,8 +327,8 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * A driver that cannot start reports one failure with its reason and the
-     * reference it was given.
+     * A driver that cannot start reports one failure with its reason and
+     * reference.
      *
      * @return void
      */
@@ -364,8 +354,7 @@ final class StartEventSequenceTest extends TestCase
 
     /**
      * A connection disabled while the driver started reports one
-     * `connection_unavailable`, with the connection and the reference, and
-     * nothing started.
+     * `connection_unavailable`.
      *
      * @return void
      */
@@ -409,9 +398,8 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * Assert nothing secret the start made is in any event recorded: not the
-     * protocol state, the nonce, the PKCE verifier, the client's verifier, the
-     * challenge or a digest.
+     * Assert no recorded event holds the state, nonce, verifiers, challenge or
+     * a digest.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $result
      * @return void
@@ -439,8 +427,8 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * The whole context an event carries: the time and the client, the fields
-     * given, and `null` for every other.
+     * An event's full context: time, client, the fields given, and `null` for
+     * the rest.
      *
      * @param  array<string, ?string>  $fields
      * @return array<string, ?string>
@@ -587,8 +575,7 @@ final class StartEventSequenceTest extends TestCase
     }
 
     /**
-     * The client every action of the test is taken for: the browser's IP
-     * address and user agent, which its events carry.
+     * The browser client every action is taken for.
      *
      * @return \SineMacula\Laravel\Sso\Http\ClientContext
      */

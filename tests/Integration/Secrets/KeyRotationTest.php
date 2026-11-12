@@ -13,11 +13,7 @@ use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use Tests\TestCase;
 
 /**
- * Integration tests, on a real database, of rotating `app.key` (SSO-2.5): a
- * secret stored encrypted under the old key still decrypts once the key is
- * rotated, while the old key is listed in `app.previous_keys`, with no
- * migration of what is stored; once it is no longer listed, decryption is a
- * server error.
+ * Integration tests of rotating `app.key` with stored secrets.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -40,8 +36,8 @@ final class KeyRotationTest extends TestCase
     private const string SECRET = 'the-client-secret-value';
 
     /**
-     * A secret stored under the old key decrypts after rotation while the old
-     * key is a previous one, and not once it is dropped.
+     * A stored secret decrypts while the old key is a previous one, and not
+     * once it is dropped.
      *
      * @return void
      */
@@ -83,8 +79,7 @@ final class KeyRotationTest extends TestCase
     }
 
     /**
-     * A secret encrypted after rotation is under the new key: the old key alone
-     * does not decrypt it.
+     * A secret encrypted after rotation is under the new key.
      *
      * @return void
      */
@@ -102,8 +97,8 @@ final class KeyRotationTest extends TestCase
     }
 
     /**
-     * Set the application key and its previous keys, and forget Laravel's
-     * encrypter and the scoped instances, so the next resolution reads them.
+     * Set the application key and previous keys, and forget the resolved
+     * encrypters.
      *
      * @param  string  $key
      * @param  list<string>  $previous

@@ -5,11 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Enforcement;
 
 /**
- * The key one row per tenant is kept by in the enforcement table: the
- * lower-case hex SHA-256 of the tenant's opaque id, so a column collation that
- * counts `acme` and `Acme`, or `acme` and `acme `, as equal cannot merge two
- * tenants' rows. A query by the hash still checks the row's tenant id byte for
- * byte.
+ * Enforcement table key: SHA-256 of the tenant id, so a lenient column
+ * collation cannot merge two tenants' rows.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -24,7 +21,7 @@ final class TenantHash
     private function __construct() {}
 
     /**
-     * The hash of the tenant id.
+     * Lower-case hex SHA-256 of the tenant id.
      *
      * @param  string  $tenantId
      * @return string

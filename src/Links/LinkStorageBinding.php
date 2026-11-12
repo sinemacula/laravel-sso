@@ -9,13 +9,9 @@ use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\LinkStorage;
 
 /**
- * Whether the bound `Contracts\Linker` is backed by `Contracts\LinkStorage`
- * (SSO-8.8, `docs/design/linking.md`), the one place the pairing is judged.
- * Whatever writes a link asks here before it writes, so no row is ever written
- * that the resolver ignores.
+ * Whether the bound `Contracts\Linker` is backed by `Contracts\LinkStorage`.
  *
- * It resolves the linker from the container on each call, keeping nothing of
- * one call for the next (SSO-11.2).
+ * Ask before writing a link, so no row is written that the resolver ignores.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

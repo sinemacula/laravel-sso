@@ -18,10 +18,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\PssSignature;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for the fake provider's ID tokens and their hand-made signatures
- * (SSO-12.4): every knob answers a new token and leaves the old one alone, and
- * each algorithm's signature is made and checked with OpenSSL alone, PSS built
- * by hand.
+ * Unit tests for the fake ID tokens and their hand-made signatures.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -224,9 +221,8 @@ final class FakeIdTokenTest extends TestCase
     }
 
     /**
-     * A JWE is exactly the unsigned form with its three other members after it,
-     * and a signature taken from another keeps the token's own header and
-     * payload.
+     * A JWE is the unsigned form plus three more members, and a borrowed
+     * signature keeps the token's own header and payload.
      *
      * @return void
      */
@@ -285,9 +281,8 @@ final class FakeIdTokenTest extends TestCase
     }
 
     /**
-     * A signature OpenSSL made under PSS with a salt of the hash's length is
-     * accepted, and refused once its message or signature changes or it is
-     * judged under another key.
+     * A PSS signature OpenSSL made with a hash-length salt verifies, and fails
+     * once the message, signature or key changes.
      *
      * @return void
      */
@@ -403,9 +398,8 @@ final class FakeIdTokenTest extends TestCase
     }
 
     /**
-     * A key's default size, type and curve; each coordinate of an elliptic
-     * curve key exactly OpenSSL's, its private member too, and an RSA key's
-     * members with no padding.
+     * A key's defaults, and its JWK members: EC coordinates exactly OpenSSL's,
+     * RSA members unpadded.
      *
      * @return void
      *
@@ -451,9 +445,8 @@ final class FakeIdTokenTest extends TestCase
     }
 
     /**
-     * An encoding whose digest fits but whose padding does not separate its
-     * salt with `0x01` is not an encoding of anything; the same encoding with
-     * that byte is.
+     * Only an encoding whose padding separates its salt with `0x01` is
+     * accepted.
      *
      * @param  string  $separator
      * @param  bool  $accepted

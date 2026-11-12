@@ -7,16 +7,7 @@ namespace SineMacula\Laravel\Sso\Flows;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * The S256 challenge of a client's handoff verifier (RFC 7636 §4.2, SSO-5.1,
- * SSO-9.2): `BASE64URL(SHA-256(verifier))` without padding, 43 characters. A
- * start takes it from the client, or makes it from the verifier the package
- * generates; the authorisation request and the handoff code keep it, and a
- * redemption is accepted only with the verifier it was made from.
- *
- * It is public by design, so it may be stored and shown, but it is never logged
- * or put in an event; it is a type of its own, never accepted as a verifier, a
- * handoff code or a request reference (SSO-9.2). Matching a verifier recomputes
- * its challenge and compares the two in constant time (SSO-11.9).
+ * The S256 challenge of a client's handoff verifier (RFC 7636 section 4.2).
  *
  * @api
  *
@@ -82,8 +73,8 @@ final readonly class S256Challenge
     }
 
     /**
-     * Whether the verifier is the one the challenge was made from, compared in
-     * constant time.
+     * Whether the challenge was made from the verifier, compared in constant
+     * time.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Verifier  $verifier
      * @return bool

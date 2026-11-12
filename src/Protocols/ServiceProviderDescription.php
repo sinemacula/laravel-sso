@@ -7,12 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * What an administrator registers at the identity provider for a connection
- * (SSO-5.9): a document and its content type (SAML service provider metadata as
- * `application/samlmetadata+xml`, an OIDC connection's client metadata as
- * `application/json`, the body of its public JWKS URL as
- * `application/jwk-set+json`), or why it cannot be given. It never holds a
- * secret.
+ * The document an administrator registers at the identity provider for a
+ * connection, or why there is none. It never holds a secret.
  *
  * @api
  *

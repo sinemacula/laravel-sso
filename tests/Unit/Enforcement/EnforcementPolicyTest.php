@@ -10,10 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 
 /**
- * Unit tests for the enforcement contract's answer (SSO-4.1, SSO-4.2, SSO-4.6):
- * not required, satisfied by any connection; required, satisfied only by one of
- * its connections, compared byte for byte; the connections de-duplicated and in
- * id order; and its encoding.
+ * Unit tests for the enforcement policy.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -24,8 +21,7 @@ use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 final class EnforcementPolicyTest extends TestCase
 {
     /**
-     * A policy that requires nothing is satisfied by any connection, holds
-     * none, and keeps the version it was given.
+     * A policy that requires nothing is satisfied by any connection.
      *
      * @return void
      */
@@ -43,9 +39,7 @@ final class EnforcementPolicyTest extends TestCase
     }
 
     /**
-     * A required policy is satisfied only by one of its connections, exactly;
-     * its connections are de-duplicated and in id order, and one with none left
-     * is satisfied by none.
+     * A required policy is satisfied only by one of its connections.
      *
      * @return void
      */
@@ -62,8 +56,7 @@ final class EnforcementPolicyTest extends TestCase
     }
 
     /**
-     * Rows of `[build]`: a policy without its tenants or a required one without
-     * a version.
+     * Rows of `[build]`: a policy missing its tenants or its required version.
      *
      * @return iterable<string, array{\Closure(): \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy}>
      */

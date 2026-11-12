@@ -14,29 +14,8 @@ use SineMacula\Laravel\Sso\Links\LinkResolution;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 
 /**
- * What a `reauthenticate` requires at completion (SSO-5.10), the first refusal
- * answering:
- *
- * 1. the result must resolve to the identity the request was started for: a
- *    suspended link blocks reauthentication (`link_suspended`), and a subject
- *    resolving to nobody, to a reservation or to another identity is
- *    `identity_mismatch`, naming nobody. Whether the link is the exact one that
- *    established the session is judged at redemption, under the session's lock
- *    (`Handoffs\Redemption\ReauthenticationBranch`);
- * 2. the result must state when the provider authenticated, no earlier than the
- *    request's start less the skew, or `authentication_expired`, and no later
- *    than now plus the skew, or `assertion_expired`.
- *
- * The OpenID Connect and SAML drivers have refused such a response already
- * (`Protocols\Oidc\IdTokens\AuthenticationTimeRules`,
- * `Protocols\Saml2\Validation\AuthenticationRules`). The second rule is what
- * keeps SSO-5.10 true of any other driver registered through
- * `Protocols\ProtocolManager::extend()`, whose claims nothing else judges: a
- * code issued from such a result would renew a session from an authentication
- * that never happened, or that happened before the flow started.
- *
- * It holds the clock, which keeps nothing of one completion for the next
- * (SSO-11.2), and reads the skew on each call.
+ * What a `reauthenticate` requires at completion: the flow's identity and a
+ * plausible authentication time.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -74,8 +53,7 @@ final readonly class ReauthenticationRules
     }
 
     /**
-     * Why the link as resolved is not the identity's to reauthenticate through,
-     * or `null`.
+     * Why the resolved link is not the identity's, or `null`.
      *
      * @param  ?\SineMacula\Laravel\Sso\Links\LinkResolution  $resolution
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -92,8 +70,8 @@ final readonly class ReauthenticationRules
     }
 
     /**
-     * Why the provider's authentication time is not one this flow can renew a
-     * session from, or `null`.
+     * Why the authentication time cannot renew a session, or `null`; the
+     * built-in drivers check this already, a driver added by extend() may not.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request

@@ -27,80 +27,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 use SineMacula\Laravel\Sso\Results\LinkingEmail;
 
 /**
- * The management helper for a connection's linking by a verified domain
- * (SSO-8.8, SSO-2.12, SSO-2.13), for the application's own administration
- * screens: who may call it is the application's authorisation, never the
- * package's. It is off by default, per connection.
+ * Manages a connection's linking by a verified domain, which is off by default.
  *
- * `change()` takes any of these, by name, and leaves what it does not name:
- *
- * - `enabled`: whether linking is on, `true` or `false`;
- * - `issuer_class`: `shared` or `single_organization`, or `null`;
- * - `organization_claim`: the claim, or for SAML the attribute's `Name`,
- *   telling a shared issuer's organisations apart, or `null`;
- * - `organization_value`: the value this connection's organisation holds there,
- *   compared exactly, or `null`;
- * - `saml_attribute` and `saml_attribute_format`: the exact `Name` and
- *   `NameFormat` of the one attribute a SAML connection reads the linking email
- *   from, or `null`; on another protocol they are `unsupported`;
- * - `acknowledged`: that the administrator states the provider decides which
- *   subject holds each of the domain's addresses, and for a single organisation
- *   that it is one, `true` or `false`.
- *
- * It goes in one order, as `ConnectionLifecycle` does, so nothing slow runs
- * under a lock:
- *
- * 1. the connection is found by a plain read on the write connection; none is
- *    `connection_not_found`;
- * 2. the freshness contract is asked with `sso.connection.trust`; `stale` is
- *    `freshness_required`;
- * 3. in one transaction on the storage connection, the connection's row is read
- *    again locked; gone is `connection_not_found`, and a protocol no longer
- *    available `protocol_unavailable`;
- * 4. what was given is judged, and, while the merged settings have linking on,
- *    the settings as a whole, on the locked row, with every violation answered
- *    as `settings_invalid`;
- * 5. a change of nothing is `unchanged`, and writes and reports nothing;
- * 6. the settings are written and `linking_version` raised by one;
- *    `Links\ReservationWithdrawal::ofConnection()` deletes the connection's
- *    open reservations, and `ConnectionUpdated` is reported after commit,
- *    naming what changed as `linking.*`, never a value.
- *
- * This is no protocol trust change: `trust_version` stays, and no request or
- * code is voided. A flow in flight goes on, but its response's linking evidence
- * no longer authorises a reservation, and a code bound to a reservation meets
- * `reservation_invalid`. A change that also alters protocol trust is
- * `ConnectionService`'s, which voids flows.
- *
- * Linking can be on only under the `domain_linking` feature (`unsupported` at
- * `enabled`), and with an explicit classification, since an unset one never
- * means single organisation (`required` at `issuer_class`). An issuer the
- * package knows to be shared (`DomainLinkEligibility::requiredClaim()`: what a
- * preset with an organisation claim names, or else what
- * `Linking\LinkingSettings` lists) can only be `shared` (`not_allowed` at
- * `issuer_class`) and only under that very claim (`not_allowed` at
- * `organization_claim`). Configuration may add such an issuer and never
- * downgrade one. A `shared` issuer needs its claim and value. A
- * `single_organization` issuer and any SAML connection need the
- * acknowledgement, recorded with its time. SAML needs the attribute's `Name`
- * and `NameFormat`. An acknowledgement stands for what it was given about:
- * changing the classification or the SAML attribute without giving it again
- * clears it. Changing the issuer itself is `ConnectionService`'s, which clears
- * the classification and the acknowledgement and turns linking off with it
- * (`LinkingPolicyReset`). On OIDC an organisation claim cannot be a protocol
- * value or a token (`AttributeMapping::RESERVED_OIDC_SOURCES`), nor the email
- * itself (`reserved`).
- *
- * Linking on over a bound `Contracts\Linker` not backed by
- * `Contracts\LinkStorage` is a `LogicException`, with nothing written: the
- * reservations it would make are rows the resolver ignores.
- *
- * The organisation's value is never logged, reported or echoed by a violation.
- * An empty or overlong tenant id is an `InvalidArgumentException`; a database
- * error propagates (SSO-11.4). It holds the lookup, the freshness gate, the
- * reporter, the registry, the secrets, the eligibility, the clock and the
- * storage binding, none of which keeps anything of one request for the next
- * (SSO-11.2). Resolve it from the container per request.
+ * Not a trust change: no request or code is voided, but open reservations are.
  *
  * @api
  *
@@ -130,10 +59,7 @@ final readonly class LinkingPolicyService
     /** @var string The administrator's acknowledgement, as a change names it. */
     private const string ACKNOWLEDGED = 'acknowledged';
 
-    /** @var string What `ConnectionUpdated` names each change under. */
-    private const string CHANGED_PREFIX = 'linking.';
-
-    /** @var array<string, string> The column each setting is stored in, but for the acknowledgement. */
+    /** @var array<string, string> The column of each setting but the acknowledgement. */
     private const array COLUMNS = [
         self::ENABLED               => 'linking_enabled',
         self::ISSUER_CLASS          => 'linking_issuer_class',
@@ -143,7 +69,7 @@ final readonly class LinkingPolicyService
         self::SAML_ATTRIBUTE_FORMAT => 'linking_saml_attribute_format',
     ];
 
-    /** @var list<string> The settings an acknowledgement stands for: changing one needs it given again. */
+    /** @var list<string> The settings whose change needs the acknowledgement again. */
     private const array ACKNOWLEDGES = [self::ISSUER_CLASS, self::SAML_ATTRIBUTE, self::SAML_ATTRIBUTE_FORMAT];
 
     /** @var list<string> The settings a change may clear with `null`. */
@@ -200,9 +126,8 @@ final readonly class LinkingPolicyService
     ) {}
 
     /**
-     * The tenant's connection's linking settings, as
-     * `Contracts\SsoConnection::getLinkingSettings()` answers them, or `null`
-     * when it has none.
+     * The connection's linking settings, or `null` when the tenant has no such
+     * connection.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -216,7 +141,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * Change the tenant's connection's linking settings.
+     * Change the named settings and keep the rest; freshness is asked before
+     * the lock so nothing slow runs under it.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -268,9 +194,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * The code of an organisation claim: on SAML an attribute's `Name`, which
-     * may hold whitespace; on OIDC a claim's name, which may not, and which is
-     * never a protocol value, a token or the email.
+     * The code of an organisation claim; an OIDC claim may not hold whitespace
+     * or name a protocol value, token or the email.
      *
      * @param  mixed  $value
      * @param  string  $protocol
@@ -288,8 +213,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * The code of a SAML attribute's `Name` or `NameFormat`: `unsupported` on a
-     * protocol that reads no SAML attribute.
+     * The code of a SAML attribute's `Name` or `NameFormat`; `unsupported` off
+     * SAML.
      *
      * @param  mixed  $value
      * @param  string  $protocol
@@ -303,9 +228,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * The settings as the change leaves them, with whether the acknowledgement
-     * still stands: given as `true`, or not given and nothing it stands for
-     * changed.
+     * The settings as the change leaves them; an acknowledgement not given
+     * again stands only if nothing it covers changed.
      *
      * @param  array<string, bool|int|string|null>  $current
      * @param  array<array-key, mixed>  $changes
@@ -342,8 +266,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * What the classification requires, whether shared or not: an issuer the
-     * package knows to be shared can be nothing else.
+     * What the classification requires; an issuer known to be shared can be
+     * nothing else.
      *
      * @param  array<string, mixed>  $merged
      * @param  ?string  $required
@@ -365,8 +289,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * What a shared issuer requires: the claim, the very one the package knows
-     * when it knows the issuer, and the value.
+     * What a shared issuer requires: the claim, the known one if any, and the
+     * value.
      *
      * @param  array<string, mixed>  $merged
      * @param  ?string  $required
@@ -403,8 +327,7 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * The names, for the event and the result, of the settings the change
-     * changes.
+     * The reported names of the settings the change changes.
      *
      * @param  array<string, bool|int|string|null>  $current
      * @param  array<string, mixed>  $merged
@@ -420,15 +343,14 @@ final readonly class LinkingPolicyService
                 continue;
             }
 
-            $names[] = self::CHANGED_PREFIX . $name;
+            $names[] = 'linking.' . $name;
         }
 
         return $names;
     }
 
     /**
-     * Under the connection's lock: refuse what no longer stands or is invalid,
-     * and write what changes.
+     * Under the connection's lock, refuse what no longer stands or is invalid.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -479,8 +401,7 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * Every violation of linking being on with the merged settings: the
-     * feature, the classification, the acknowledgement and the SAML attribute.
+     * Every violation of linking being on with the merged settings.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $merged
@@ -506,8 +427,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * Write what the change changes, raise the linking version, delete the open
-     * reservations and report it, or answer `unchanged`.
+     * Write the change, raise the linking version and withdraw open
+     * reservations, or answer `unchanged`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, bool|int|string|null>  $current
@@ -548,9 +469,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * When the acknowledgement that stands was given: kept when it stands for
-     * what it was given about, and now when it was given again for something
-     * else; `null` when none stands.
+     * The acknowledgement time: kept while it still covers the same settings,
+     * now when given again for changed ones, `null` when none stands.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, bool|int|string|null>  $current

@@ -7,17 +7,8 @@ namespace SineMacula\Laravel\Sso\Events;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * A verified domain lapsed (SSO-3.3, SSO-10.3): its record was missing or
- * changed for longer than the grace period, so it no longer routes discovery,
- * marks an email as its connection's or allows linking, and its open link
- * reservations are void. It can be verified again, and then counts from its new
- * verification time.
- *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol; a scheduled check has no acting identity (SSO-10.4). It reports
- * only, and never holds the verification token or a record's value; it crosses
- * a queue as it is.
+ * A verified domain's record was missing or changed past the grace period, so
+ * the domain lapsed and its open link reservations are void.
  *
  * @api
  *

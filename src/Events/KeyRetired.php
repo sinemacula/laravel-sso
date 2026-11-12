@@ -8,16 +8,7 @@ use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 
 /**
- * A key or certificate was retired and removed from a connection (SSO-2.6,
- * SSO-2.7, SSO-10.3): a key of the service provider's own that was retiring or
- * next, or a signing certificate of the identity provider the connection no
- * longer trusts.
- *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol, and the acting identity as the application passed it (SSO-10.4),
- * and the key's public identifiers. It reports only, and holds no secret,
- * private key or setting value; it crosses a queue as it is.
+ * A key or certificate was retired and removed from a connection.
  *
  * @api
  *
@@ -42,10 +33,10 @@ final readonly class KeyRetired implements SsoEvent
         /** The id of the key or certificate. */
         public string $keyId,
 
-        /** What it is for: one of the service provider's own key pairs, or a trusted identity provider certificate. */
+        /** What the key or certificate is for. */
         public KeyUse $use,
 
-        /** Its lower-case hex SHA-256 fingerprint, the public identifier an administrator compares. */
+        /** Its lower-case hex SHA-256 fingerprint. */
         public string $fingerprint,
     ) {}
 

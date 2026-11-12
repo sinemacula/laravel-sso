@@ -15,17 +15,10 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\TestCase;
 
 /**
- * Tests of the element the pinned verifier answers with a verified signed
- * element (SSO-6.3, `saml-library.md` condition 3): parsed from exactly the
- * bytes the library digested, the signature removed, in a document of its own,
- * so a change to the document it was read from after verification never reaches
- * it; nothing answered for an element no trusted certificate verifies; and a
- * reference listing any transform but the enveloped-signature and exclusive
- * canonicalisation ones, or one of them twice, refused before verifying
- * (SSO-6.2), though the trusted key signed it.
+ * Tests of the element the pinned verifier answers for a verified signed
+ * element.
  *
- * The library is named here only to build the signed elements the verifier
- * takes, as the adapter builds them.
+ * The library is named here only to build signed elements as the adapter does.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,10 +38,8 @@ final class PinnedVerifierTest extends TestCase
     private static ?FakeSamlIdentityProvider $idp = null;
 
     /**
-     * A signed assertion's verified element is its digested bytes: the
-     * assertion without its signature, canonicalised, in a document of its own,
-     * and the object verified with it is the assertion; removing a child from
-     * the document it was read from afterwards leaves it whole.
+     * A signed assertion's verified element is its digested bytes in a document
+     * of its own, unaffected by later changes.
      *
      * @return void
      *
@@ -133,9 +124,8 @@ final class PinnedVerifierTest extends TestCase
     }
 
     /**
-     * A reference listing a transform the policy does not allow, or an allowed
-     * one twice, is refused by policy before its signature is verified, while
-     * the same signature with the allowed transforms verifies.
+     * A reference with a disallowed or repeated transform is refused before its
+     * signature is verified.
      *
      * @param  list<string>  $transforms
      * @return void

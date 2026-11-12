@@ -5,11 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\Logging;
 
 /**
- * The example application's key management service client (SSO-2.5), in place
- * of a cloud provider's SDK: it keeps each secret it encrypts under its key and
- * answers it for the ciphertext it issued, and once its access is revoked it
- * refuses every call, naming in its message the API key the call carried, as
- * such an SDK's errors do.
+ * A stand-in KMS client whose refusals name the API key, as SDK errors do.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -21,7 +17,7 @@ final class KmsClient
     /** @var int The code the service refuses a call with. */
     public const int ACCESS_DENIED = 403;
 
-    /** @var array<string, string> Each secret the service keeps, by the ciphertext it issued for it. */
+    /** @var array<string, string> Each secret kept, by its ciphertext. */
     private array $secrets = [];
 
     /** @var bool Whether the client's access to the key is revoked. */

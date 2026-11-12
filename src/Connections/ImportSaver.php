@@ -18,43 +18,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 
 /**
- * Saves what a fetched import proposes (SSO-2.8, SSO-2.11), so that what it
- * saved counts from the fetch it came from: the stale limit applies to every
- * validated fetched resource, and a proposal is one, whether a refresh has run
- * since or not (`Metadata\MetadataExpiry`).
- *
- * `save()` follows one order, in one transaction on the storage connection:
- * find the connection, locked, on the write connection; refuse an unavailable
- * protocol; ask `sso.connection.trust` freshness, since this renews how long
- * the connection is trusted even when it changes no setting, so `stale` is
- * `freshness_required` before anything is validated; then make the change as
- * `ConnectionService::update()` does, whose every rule and refusal applies.
- * Unless that refused, it stamps the fetch as `metadata_fetched_at` and
- * `metadata_valid_until`, overwriting a later refresh's, since these settings
- * are now what the connection holds. A change that changed nothing still
- * stamps, voids nothing and reports `ConnectionUpdated` naming
- * `metadata_fetched_at`, so saving a new import of the same settings recovers
- * an expired connection on the record. The next refresh's due date is left as
- * it is.
- *
- * A SAML connection that, as the change leaves it, has not opted in to
- * following its metadata URL holds no stale deadline
- * (`Metadata\SamlRefreshRule`), and nothing would refresh it before one passed,
- * so the save starts no clock: the import counts as certificates entered by
- * hand, and any stamp from before is cleared, on the record when that is all
- * the save changed. An explicit `metadata_refresh` of `false` on an anchored
- * connection still stamps, the validated fetch counting as it does with any
- * schedule turned off.
- *
- * Metadata given as XML came from no fetch: it has no `ValidatedFetch`, and is
- * saved through `ConnectionService::update()`, as by hand. So is anything an
- * administrator typed in place of a proposal.
- *
- * Every event is dispatched after the transaction commits (SSO-10.5). A
- * database error propagates (SSO-11.4). It holds the lookup, the registry, the
- * freshness gate, the management helpers and the reporter, none of which keeps
- * anything of one request for the next (SSO-11.2). Resolve it from the
- * container per request.
+ * Saves what a fetched import proposes and stamps the fetch it came from, so
+ * the stale limit counts from that fetch.
  *
  * @api
  *
@@ -63,7 +28,7 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
  */
 final readonly class ImportSaver
 {
-    /** @var array<string, null> What a connection that holds no deadline keeps of a fetch. */
+    /** @var array<string, null> The stamp of a connection that holds no deadline. */
     private const array NOTHING_STAMPED = ['metadata_fetched_at' => null, 'metadata_valid_until' => null];
 
     /**
@@ -89,13 +54,13 @@ final readonly class ImportSaver
         /** Validates, asks freshness for, writes and reports the change. */
         private ConnectionService $connections,
 
-        /** Reports a save that changed only when the connection was validated. */
+        /** Reports a save that changed only the stamp. */
         private AdministrationEvents $events,
     ) {}
 
     /**
-     * Make the change to the tenant's connection and stamp the fetch it came
-     * from.
+     * Asks `sso.connection.trust` freshness even for an unchanged import, since
+     * the stamp renews how long the connection is trusted.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -139,8 +104,8 @@ final readonly class ImportSaver
     }
 
     /**
-     * Stamp the fetch on the locked connection, or clear what is stamped where
-     * it holds no deadline, and report it when it is all the save changed.
+     * Stamp the fetch, or clear the stamp of a SAML connection that does not
+     * follow its metadata URL and so holds no deadline.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Metadata\ValidatedFetch  $fetch

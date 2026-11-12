@@ -11,20 +11,9 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Identities\Caller;
 
 /**
- * What every operation SSO-2.12 lists calls before it writes: it reads the
- * operation's maximum age from `MaximumAges` and asks the bound `Freshness`
- * contract with the operation's stable name, that age and the caller the action
- * is taken for, `null` when there is none (SSO-2.12).
+ * Asks the bound freshness contract about an operation before it writes.
  *
- * The contract is resolved from the container on each call, never held, so a
- * binding made per request or swapped in a test is the one asked, and nothing
- * of one caller is kept for the next (SSO-11.2). A malformed maximum age fails
- * closed with an `InvalidArgumentException` before the contract is asked.
- *
- * An operation that is several of the listed ones at once (a change that is a
- * trust change and turns IdP-initiated sign-in on, say) asks `checkAll()`,
- * which asks each operation once, in the order given, and stops at the first
- * `stale`.
+ * The contract is resolved on each call, so a per-request binding is honoured.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,8 +36,7 @@ final readonly class FreshnessGate
     ) {}
 
     /**
-     * Ask the freshness contract about the operation, with its maximum age, for
-     * the caller.
+     * Ask the freshness contract about the operation for the caller.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -65,9 +53,8 @@ final readonly class FreshnessGate
     }
 
     /**
-     * Ask about each operation once, in the order given, and answer `stale` at
-     * the first that is; `fresh` when every one is, or none is given. Each is
-     * asked for the caller.
+     * Ask about each distinct operation in order, stopping at the first
+     * `stale`.
      *
      * @param  list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation>  $operations
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller

@@ -11,24 +11,11 @@ return [
     |
     | The connection every package table lives on (`null` for the default),
     | and the rate limit counters too unless `rate_limits.connection` names
-    | their own. The models read and write the tables there, and the published
-    | migrations create them there. They share one connection because a
-    | completion, a redemption, a connection's lifecycle change and a link's
-    | activation each write several of them in one transaction, which two
-    | connections cannot commit as one; an adapter that must commit with the
-    | package (a session revocation, a handoff redeemed by the application's
-    | sign-in) writes through this same connection, inside the transaction the
-    | package opens. A value that is neither a connection name nor `null` or
-    | empty fails closed when a model is built, and `sso:check` reports it, as
-    | it does a name `database.connections` does not configure. Keep it fixed
-    | while the application runs: moving the tables is a deploy, with a
-    | migration the application performs and a worker restart.
-    |
-    | Each table's name is set in its own section (`connections.table`,
-    | `keys.table`, `domains.table`, `enforcement.table`, `links.table`,
-    | `identity_guards.table`, `authorization_requests.table`, `handoff_codes.table`,
-    | `single_use.table`, `rate_limits.table`), each defaulting to an `sso_`
-    | prefix.
+    | their own. The tables share one connection because several flows write
+    | more than one of them in a single transaction. A name that is not
+    | configured fails closed and `sso:check` reports it. Keep it fixed while
+    | the application runs: moving the tables is a deploy, with a migration
+    | and a worker restart. Each table's name is set in its own section.
     |
     */
 
@@ -41,19 +28,13 @@ return [
     | Features
     |---------------------------------------------------------------------------
     |
-    | Every feature is off until the application turns it on, but for
-    | `metadata_refresh`, the scheduled refresh, which is on: it does nothing
-    | until a protocol is, and turning it off stops the schedule, never the
-    | stale limit. A protocol (`saml2`, `oidc`) is the package in use: with
-    | neither on, nothing runs and nothing but these switches is checked.
-    | `discovery`, `enforcement`, `domain_linking` and the rest need a protocol
-    | on, and `encrypted_assertions` and `idp_initiated` need `saml2`. A
-    | feature that is on lets an application or a connection opt into it; it
-    | never opts in for them, and the security checks of a feature that is on
-    | are always on, with no setting to turn them off.
-    |
-    | Each switch is true or false (`1` and `0` are read the same); anything
-    | else, or a switch the package does not have, fails the boot check.
+    | Every feature is off by default except `metadata_refresh`, which does
+    | nothing until a protocol is on. `saml2` and `oidc` are the protocols;
+    | every other feature needs one, and `encrypted_assertions` and
+    | `idp_initiated` need `saml2`. A feature that is on lets an application
+    | or connection opt in, and its security checks cannot be turned off.
+    | Each switch is true or false (`1` and `0` too); anything else, or an
+    | unknown switch, fails the boot check.
     |
     */
 
@@ -73,15 +54,11 @@ return [
     | Endpoints
     |---------------------------------------------------------------------------
     |
-    | What the default endpoint resolver builds each connection's assertion
-    | consumer service, OIDC callback, metadata URL, service provider entity
-    | id and public JWKS URL from: the base URL (`https`, or `http` on
-    | 127.0.0.1 or [::1] for development; no query or fragment) and a path
-    | pattern holding `{connection}` once. Nothing is ever built from the
-    | request's host or headers. Required while a protocol is on; an
-    | application with another layout binds its own resolver. The package adds
-    | no route: the application serves these URLs, the JWKS URL with the body
-    | `ServiceProviderDescriptions::publicKeys()` answers.
+    | The base URL and path patterns each connection's service provider URLs
+    | are built from, never the request's host or headers. The base URL is
+    | `https` (or `http` on 127.0.0.1 or [::1]) with no query or fragment, and
+    | is required while a protocol is on. Each path holds `{connection}` once.
+    | The package adds no routes: the application serves these URLs.
     |
     */
 
@@ -101,37 +78,14 @@ return [
     | Applications
     |---------------------------------------------------------------------------
     |
-    | The applications people sign into through a connection (the suite's own
-    | front ends, web and mobile), a fixed set deployed with the code, by a
-    | lower-case name. Each client's connections are rows in the database, not
-    | entries here. Nothing in a request chooses among these values.
-    |
-    | - `redirect_uri`: required. The one URI the completion redirects to,
-    |   compared as an exact string, with no wildcard, pattern or added path:
-    |   `https`, `http` on a loopback address, or a private-use scheme a native
-    |   application registers (`com.example.app:/sso`). The exact URI is
-    |   answered by the `RedirectUriResolver` contract, which defaults to this
-    |   setting; bind your own to answer a per-client address without a schema
-    |   change.
-    | - `external_sign_in`: whether the application allows sign-in through an
-    |   external provider (default false). An adapter may answer it from the
-    |   per-application sign-in methods of your authentication instead.
-    | - `delivery`: where the handoff code goes on the redirect URI, the
-    |   `fragment` (default) or the `query`.
-    | - `discovery`: whether the application offers discovery by email domain
-    |   (`enabled`, default false, and only while the `discovery` feature is
-    |   on) and the `fallback_url` a miss leads to, required while it does.
-    | - `unlinked_handoffs`: whether a sign-in that resolves to no identity is
-    |   still handed off, for an application that resolves identities itself
-    |   on redemption (default false).
-    | - `handoff_ttl_seconds`: the handoff code's lifetime, 1 to 300 (default
-    |   60).
-    |
-    | An application named `web` that allows external sign-in and takes every
-    | other default is `'web' => ['redirect_uri' => '<its URI>',
-    | 'external_sign_in' => true]`. The start URL an unsolicited SAML response
-    | is sent to for re-initiation is a connection's setting, since such a
-    | response names no application.
+    | The applications people sign into through a connection, by lower-case
+    | name: a fixed set deployed with the code. Each needs a `redirect_uri`,
+    | matched exactly (`https`, `http` on a loopback address, or a native
+    | application's private-use scheme), and may set `external_sign_in`
+    | (default false), `delivery` (`fragment` or `query`), `discovery`
+    | (`enabled` and `fallback_url`), `unlinked_handoffs` (default false) and
+    | `handoff_ttl_seconds` (1 to 300, default 60). For example:
+    | `'web' => ['redirect_uri' => '<its URI>', 'external_sign_in' => true]`.
     |
     */
 
@@ -144,7 +98,6 @@ return [
     |
     | The clock skew, in seconds (0 to 300), every protocol time check allows
     | (SAML `NotBefore` and `NotOnOrAfter`, OIDC `exp`, `iat` and `auth_time`).
-    | Every time check reads the one bindable clock.
     |
     */
 
@@ -157,15 +110,11 @@ return [
     | SAML 2.0
     |---------------------------------------------------------------------------
     |
-    | The caps and windows every SAML connection is held to; every check is
-    | always on. A posted `SAMLResponse` longer than `max_response_bytes` is
-    | refused before it is decoded (16 KiB to 1 MiB, default 256 KiB), a
-    | decoded one longer than `max_xml_bytes` before it is parsed (16 KiB to
-    | 1 MiB, default 192 KiB), and an assertion decrypted from an
-    | `EncryptedAssertion` longer than `max_decrypted_bytes` before it is
-    | parsed (4 KiB to 1 MiB, default 128 KiB). A response's and an assertion's
-    | `IssueInstant` may be at most `issue_instant_max_age_seconds` old (30 to
-    | 3600, default 300), with the clock skew on top.
+    | The size caps and `IssueInstant` window every SAML response is held to;
+    | each check is always on. Sizes are in bytes: `max_response_bytes` for
+    | the posted response and `max_xml_bytes` once decoded (16 KiB to 1 MiB
+    | each), and `max_decrypted_bytes` for a decrypted assertion (4 KiB to
+    | 1 MiB). `issue_instant_max_age_seconds` is 30 to 3600, plus the skew.
     |
     */
 
@@ -181,34 +130,12 @@ return [
     | OpenID Connect
     |---------------------------------------------------------------------------
     |
-    | The caps, windows and timeouts every OIDC connection is held to; every
-    | check is always on, and a cap can be lowered, never raised past its
-    | ceiling. An ID token longer than `max_id_token_bytes` (2 KiB to 16 KiB,
-    | default 16 KiB) is refused before it is read. A JWKS larger than
-    | `max_jwks_bytes` (4 KiB to 64 KiB, default 64 KiB) or holding more than
-    | `max_jwks_keys` keys (1 to 50, default 50) is refused whole. A discovery
-    | document, token response or UserInfo response larger than its
-    | `max_*_bytes` (4 KiB to 1 MiB, default 64 KiB) fails as it arrives.
-    |
-    | A callback is refused before anything in it is read when a parameter is
-    | repeated or given as an array, when a name or value is longer than
-    | `max_callback_parameter_bytes` (256 bytes to 2 KiB, default 2 KiB), when
-    | the raw query is longer than `max_callback_query_bytes` (1 KiB to 16 KiB,
-    | default 8 KiB), or when it holds more than `max_callback_parameters`
-    | parameters (4 to 32, default 16).
-    |
-    | An ID token whose `kid` the stored JWKS does not hold refetches the JWKS
-    | once, at most once per `jwks_refetch_cooldown_seconds` per connection (a
-    | minute to an hour, default 300), whether the refetch succeeds or not, so
-    | a flood of unknown `kid`s cannot make the package fetch. An ID token's
-    | `iat` may be at most `id_token_max_age_seconds` old (30 to 3600, default
-    | 300), with the clock skew on top. A token request and a UserInfo request
-    | each take at most `token_timeout_seconds` and `userinfo_timeout_seconds`
-    | (1 to 60, default 10) and are never retried.
-    |
-    | The scheduled refresh of a connection's discovery document and JWKS
-    | follows the `metadata` section's cadence, backoff, claim, queue and stale
-    | limit.
+    | The size caps, windows and timeouts every OIDC connection is held to;
+    | each check is always on, and a cap can be lowered but never raised past
+    | its ceiling. Sizes are in bytes and times in seconds. An unknown `kid`
+    | refetches the JWKS at most once per `jwks_refetch_cooldown_seconds` per
+    | connection. Token and UserInfo requests are never retried. The scheduled
+    | refresh of discovery documents and JWKS follows the `metadata` section.
     |
     */
 
@@ -233,53 +160,18 @@ return [
     | Metadata
     |---------------------------------------------------------------------------
     |
-    | How large a SAML identity provider's metadata may be, imported or
-    | refreshed, given as XML or fetched: `max_bytes`, 64 KiB to a hard ceiling
-    | of 256 MiB (default 1 MiB), in place of `fetcher.max_response_bytes`,
-    | which every other request keeps. A fetch stops reading past it and a
-    | document over it is never parsed. Raising it for a federation aggregate
-    | means the whole file is loaded and its signature checked in one piece:
-    | expect memory of several times the file's size and seconds of
-    | processing, and size the queue worker's memory limit and `timeout_seconds`
-    | for it. Where the federation publishes a URL per entity, use that
-    | instead. An import from a URL fetches while it is called, so import a
-    | large aggregate from the console or a queued job, never a web request.
+    | The SAML metadata size cap, and how the scheduled refresh of SAML
+    | metadata and OIDC discovery documents and JWKS runs. `max_bytes` (64 KiB
+    | to 256 MiB) replaces `fetcher.max_response_bytes` for SAML metadata; a
+    | federation aggregate needs worker memory and a timeout to match, so
+    | import one from the console or a queued job, never a web request.
     |
-    | How the scheduled refresh runs of a SAML connection's metadata, and of an
-    | OIDC connection's discovery document and JWKS, while
-    | `features.metadata_refresh` is on: every OIDC connection refreshes unless
-    | its `metadata_refresh` setting is off, and a SAML connection with a
-    | `metadata_url` refreshes when its setting is `true`, or is unset and it
-    | has a metadata signing anchor. After a success the next refresh is due
-    | `refresh_interval_seconds` later (an hour to a week, default a day);
-    | after a failure it waits `backoff_initial_seconds` (a minute to an hour,
-    | default 5 minutes), doubling with each failure in a row up to
-    | `backoff_max_seconds` (from `backoff_initial_seconds` to a day, default
-    | 6 hours).
-    |
-    | Whatever was fetched and validated stops being used `stale_limit_seconds`
-    | after its own last validated fetch (a day to a year, default 30 days, or
-    | 0 for no limit, which you must set explicitly), or at its metadata's
-    | `validUntil`, whichever comes first, scheduled or not: turning the
-    | schedule off never means unlimited trust. An expired connection recovers
-    | through the schedule or an administrator's refresh, never by itself.
-    | Settings saved from a fetched import count from that fetch. Settings and
-    | keys saved by hand, with nothing fetched, have no deadline.
-    | A server's claim on a refresh holds for `claim_seconds` (30 to 3600,
-    | default 300), so racing servers refresh a connection once. Run the
-    | refresh command more often than the initial backoff.
-    |
-    | The command queues one job per connection due (`--sync` refreshes them
-    | in the command instead): on `queue.connection` and `queue.name` (`null`
-    | for the application's default connection and its default queue), each
-    | allowed `queue.timeout_seconds` (30 to 3600, default 60, at most
-    | `claim_seconds`) and `queue.tries` attempts (1 to 10, default 1; a failed
-    | refresh is retried by the backoff). The timeout must be shorter than the
-    | queue connection's `retry_after` (90 in Laravel's stock queue config),
-    | or a refresh still running is reserved by a second worker and recorded
-    | as failed; the boot check refuses one that is not. Send large aggregates
-    | to a queue whose workers have the memory and the timeout for them, and
-    | raise that connection's `retry_after` above the timeout.
+    | Times are in seconds. Fetched metadata stops being trusted
+    | `stale_limit_seconds` after its last validated fetch (0 for no limit,
+    | set explicitly), even with the schedule off. Run the refresh command
+    | more often than `backoff_initial_seconds`. `queue.timeout_seconds` must
+    | be below the queue connection's `retry_after`; the boot check refuses
+    | one that is not.
     |
     */
 
@@ -304,11 +196,9 @@ return [
     | Connections
     |---------------------------------------------------------------------------
     |
-    | The table each tenant's connections are kept in, on the storage
-    | connection: one row per trust in one identity provider over one
-    | protocol, with its settings, its secrets (encrypted), its attribute
-    | mapping and whether it is enabled. Connections are rows, managed through
-    | the package's helpers, never entries here.
+    | The table connections are kept in: one row per trust in an identity
+    | provider over one protocol, with its secrets encrypted. Connections are
+    | managed through the package's helpers, never configured here.
     |
     */
 
@@ -321,19 +211,12 @@ return [
     | Keys and certificates
     |---------------------------------------------------------------------------
     |
-    | The table each connection's own key pairs and trusted identity provider
-    | certificates are kept in, on the storage connection, and how the package
-    | generates and rotates its keys. A generated RSA key has a modulus of
-    | `rsa_bits`, 3072 or 4096 bits, and an elliptic curve key is always on
-    | P-256. A generated self-signed certificate is valid for
-    | `certificate_days`, from one day to ten years; its dates are reported,
-    | never enforced. A key replaced as current is still accepted for
-    | decryption for `overlap_seconds`, from none to 90 days. A key or
-    | certificate is warned of as it reaches each of `expiry_thresholds`, days
-    | before its validity ends: distinct integers from 0 to 365, always
-    | including 0, for one that has ended. `sso:keys:expiring` sends each
-    | warning at least once, one reporter holding the key for
-    | `expiry_claim_seconds` (1 to 3600) as it does.
+    | The table connection key pairs and trusted certificates are kept in, and
+    | how keys are generated and rotated. `rsa_bits` is 3072 or 4096 (EC keys
+    | are P-256), `certificate_days` 1 to 3650 (reported, never enforced),
+    | and `overlap_seconds` how long a replaced key still decrypts, up to 90
+    | days. `expiry_thresholds` are the days before expiry
+    | `sso:keys:expiring` warns at, 0 to 365 and always including 0.
     |
     */
 
@@ -351,14 +234,12 @@ return [
     | Attribute mapping
     |---------------------------------------------------------------------------
     |
-    | What a connection's attribute mapping may carry. Mapped values are
-    | profile data, never used to select an identity: the longest value kept
-    | (`max_value_length`, 64 to 65535 characters), the most values one
-    | attribute keeps (`max_values`, 1 to 10000, a list of groups say), and the
-    | custom keys your application declares and reads (`custom_attributes`, at
-    | most 100, each a lower-case letter then up to 63 lower-case letters,
-    | digits or underscores, none a standard or reserved key). A connection's
-    | mapping names the standard keys and these alone; none by default.
+    | Limits on a connection's attribute mapping, whose values are profile
+    | data and never select an identity. `max_value_length` is in characters
+    | (64 to 65535) and `max_values` caps one attribute's values (1 to 10000).
+    | `custom_attributes` lists up to 100 extra keys your application reads,
+    | each a lower-case letter then up to 63 lower-case letters, digits or
+    | underscores.
     |
     */
 
@@ -373,30 +254,12 @@ return [
     | Domains
     |---------------------------------------------------------------------------
     |
-    | The table each connection's claimed email domains are kept in, on the
-    | storage connection, and how a claim is verified and kept verified. A
-    | domain is claimed exactly as given (a verified domain covers none of its
-    | subdomains), pending until a DNS TXT record at `record_name` under it
-    | (`_sso-verification.example.com`) carries the claim's token, and verified
-    | for at most one connection at a time.
-    |
-    | - `record_name`: the name the TXT record is looked up at under the
-    |   domain, one to four labels of lower-case letters, digits, `-` and `_`,
-    |   at most 63 characters. Each claim keeps the name it was made with, so
-    |   changing it affects new claims only.
-    | - `refused`: domains no tenant may claim, added to the public mailbox
-    |   providers the package always refuses (`gmail.com`, `outlook.com` and
-    |   the like); it never removes one. A listed domain's subdomains are
-    |   refused too.
-    | - `pending_expiry_seconds`: how long a claim waits to be verified, an
-    |   hour to 30 days (default 7 days). An expired claim is claimed again
-    |   for a new token.
-    | - `recheck_grace_seconds`: how long a verified domain whose record has
-    |   gone keeps routing discovery before it lapses, none to 30 days (default
-    |   3 days). Linking by the domain stops at once.
-    | - `linking_max_age_seconds`: how recent a domain's last successful check
-    |   must be for it to allow linking by email, 60 seconds to 24 hours, the
-    |   default and the ceiling, so a stopped scheduler cannot extend it.
+    | The table claimed email domains are kept in, and how a claim is
+    | verified: by a DNS TXT record at `record_name` under the domain
+    | (`_sso-verification.example.com`); changing it affects new claims only.
+    | A verified domain covers none of its subdomains. `refused` adds to the
+    | public mailbox domains the package always refuses. Times are in
+    | seconds; `linking_max_age_seconds` is at most a day.
     |
     */
 
@@ -414,11 +277,9 @@ return [
     | Enforcement
     |---------------------------------------------------------------------------
     |
-    | The table each tenant's enforcement is kept in, on the storage
-    | connection: whether sessions active in the tenant must be established
-    | through one of its own connections, which connections satisfy it, and
-    | the version that changes with every change. Enforcement is off for every
-    | tenant until `features.enforcement` is on and a tenant turns it on.
+    | The table each tenant's enforcement is kept in. Enforcement is off for
+    | every tenant until `features.enforcement` is on and the tenant turns it
+    | on.
     |
     */
 
@@ -431,11 +292,9 @@ return [
     | Links
     |---------------------------------------------------------------------------
     |
-    | The table links are kept in, on the storage connection: each
-    | connection's issuer and subject (stored byte for byte) associated with
-    | an identity, unique on the connection, issuer and subject. How many links
-    | an identity may hold in one connection is the `LinkLimit` contract's
-    | answer, one by default.
+    | The table linking a connection's issuer and subject to an identity. How
+    | many links an identity may hold per connection is the `LinkLimit`
+    | contract's answer, one by default.
     |
     */
 
@@ -448,10 +307,8 @@ return [
     | Identity guards
     |---------------------------------------------------------------------------
     |
-    | The table each identity's linking guard is kept in, on the storage
-    | connection: a row holding only a digest of the identity, which a principal
-    | widening, a reservation, an activation and a confirmation lock first, so
-    | none of them overlaps another for that identity.
+    | The table of per-identity lock rows that serialise linking changes for
+    | an identity.
     |
     */
 
@@ -464,23 +321,12 @@ return [
     | Linking, provisioning and evidence
     |---------------------------------------------------------------------------
     |
-    | - `verified_result_max_age_seconds`: how long a verified response may keep
-    |   finishing, across a provisioning listener, 5 to 300 seconds (default
-    |   120). It never extends the authorisation request's own expiry.
-    | - `evidence_max_age_seconds`: the longest time since the provider's
-    |   authentication that a connection's evidence may be accepted, 60 to 3600
-    |   seconds (default 900). A connection's evidence policy may only tighten
-    |   it (`max_age_seconds`), and lowering this later still wins.
-    | - `shared_issuers`: issuers shared by many organisations, each mapped to
-    |   the claim naming the organisation. Linking by a verified domain through
-    |   one needs that claim and its expected value. It adds to the issuers the
-    |   package knows, and can never change or remove one of those. Microsoft
-    |   Entra's `common` and `organizations` are authorities and no issuer: the
-    |   real issuer names its tenant, and explicit classification applies to it.
-    |
-    | Whether linking by a verified domain is on at all is the `domain_linking`
-    | feature and each connection's own setting; how recent a domain's check must
-    | be is `domains.linking_max_age_seconds`.
+    | How long a verified response may keep finishing across a provisioning
+    | listener (5 to 300 seconds), and the longest time since the provider's
+    | authentication a connection's evidence is accepted (60 to 3600 seconds;
+    | a connection may only tighten it). `shared_issuers` maps issuers shared
+    | by many organisations to the claim naming the organisation, adding to
+    | those the package knows.
     |
     */
 
@@ -495,11 +341,8 @@ return [
     | Authorisation requests
     |---------------------------------------------------------------------------
     |
-    | The table each attempt at a flow is kept in, on the storage connection,
-    | until its response consumes it, and how long it waits for that response:
-    | `ttl_seconds`, 60 to 900 seconds (default 600). Its protocol state and
-    | nonce are kept only as digests, and the PKCE verifier the package uses
-    | with the identity provider only encrypted.
+    | The table each flow attempt is kept in until its response consumes it,
+    | and how long it waits for that response, in seconds (60 to 900).
     |
     */
 
@@ -513,10 +356,8 @@ return [
     | Handoff codes
     |---------------------------------------------------------------------------
     |
-    | The table the package's own handoff store keeps its codes in, on the
-    | storage connection, each only as a digest, with the verified result it
-    | carries encrypted. A code's lifetime is each application's
-    | `handoff_ttl_seconds`.
+    | The table the default handoff store keeps its codes in. A code's
+    | lifetime is each application's `handoff_ttl_seconds`.
     |
     */
 
@@ -529,13 +370,11 @@ return [
     | Discovery
     |---------------------------------------------------------------------------
     |
-    | The least time a discovery start takes, in milliseconds (50 to 2000,
-    | default 250): a timing mitigation, so a domain that routes to a
-    | connection and one that does not answer after the same time when both
-    | finish within it. Work that outlasts it (a slow provider or database)
-    | still shows. Every start sleeps out the rest of it, so plan worker
-    | capacity for it. It cannot be turned off; raise it if starting a flow
-    | through any of your connections takes longer.
+    | The least time a discovery start takes, in milliseconds (50 to 2000),
+    | so a domain that routes to a connection and one that does not answer
+    | alike. Every start sleeps out the rest, so plan worker capacity for it,
+    | and raise it if starting a flow through any connection takes longer. It
+    | cannot be turned off.
     |
     */
 
@@ -548,14 +387,11 @@ return [
     | Fresh authentication
     |---------------------------------------------------------------------------
     |
-    | Before each operation that could widen or redirect access, or destroy
-    | it, the package asks the bound freshness contract whether the caller
-    | authenticated within the operation's maximum age, in seconds (1 to
-    | 3600). The default contract refuses every operation: bind your own, or
-    | let an adapter bind your authentication's freshness check, before using
-    | the management helpers. Each key is the operation's stable name after
-    | `sso.`, with the dots as underscores (`sso.connection.trust` is
-    | `connection_trust`).
+    | How recently, in seconds (1 to 3600), the caller must have authenticated
+    | before each sensitive management operation. The default freshness
+    | contract refuses every operation: bind your own, or let an adapter bind
+    | one, before using the management helpers. Each key is the operation's
+    | name after `sso.` with dots as underscores.
     |
     */
 
@@ -581,9 +417,8 @@ return [
     | Single-use keys
     |---------------------------------------------------------------------------
     |
-    | The table the default single-use store records assertion ids,
-    | authorisation requests and handoff codes in, on the storage connection,
-    | each until its expiry, under a unique index.
+    | The table the default single-use store records consumed assertion ids,
+    | authorisation requests and handoff codes in until each expires.
     |
     */
 
@@ -596,17 +431,12 @@ return [
     | Outbound requests
     |---------------------------------------------------------------------------
     |
-    | Every request to an identity provider (metadata, discovery, JWKS, token
-    | and UserInfo) goes through one fetcher: `https` only, to a checked
-    | address that is never loopback, private, link-local, unique-local,
-    | multicast or a cloud metadata address, pinned so a second resolution
-    | cannot change it. `refused_ranges` adds CIDR ranges (IPv4 or IPv6) to the
-    | ones always refused; it never removes one. A response larger than
-    | `max_response_bytes` (SAML metadata has its own cap,
-    | `metadata.max_bytes`) or slower than `timeout_seconds` fails, and a
-    | request that carries no credential follows at most `max_redirects`
-    | redirects, each checked again (one that carries a credential follows
-    | none).
+    | Every request to an identity provider goes through one fetcher: `https`
+    | only, to a pinned public address (never loopback, private, link-local,
+    | multicast or a cloud metadata address). `refused_ranges` adds CIDR
+    | ranges to those always refused. Times are in seconds and sizes in
+    | bytes; SAML metadata uses `metadata.max_bytes` instead. A request that
+    | carries a credential follows no redirects.
     |
     */
 
@@ -623,12 +453,10 @@ return [
     | Logging
     |---------------------------------------------------------------------------
     |
-    | Where the package logs (`null` for the default channel), and how much of
-    | an identity provider's diagnostic text it keeps: at most
-    | `max_diagnostic_length` characters (64 to 4096), with control characters
-    | removed. Verifiers, handoff codes, protocol state, assertions, provider
-    | tokens and secrets are always redacted from every log call and its
-    | context; `redacted_keys` adds key names to redact, never removes one.
+    | The log channel (`null` for the default) and the longest provider
+    | diagnostic text kept, in characters (64 to 4096). Secrets, tokens,
+    | codes and protocol state are always redacted; `redacted_keys` adds key
+    | names to redact.
     |
     */
 
@@ -644,11 +472,9 @@ return [
     |---------------------------------------------------------------------------
     |
     | Limits on each flow, counted in `table` on `connection` (`null` for the
-    | storage connection), so they hold across servers without a cache. Each is
-    | `max` attempts (1 to 1000000) per window of `decay_seconds` (1 to 86400).
-    | Every limit is always on: a missing or malformed one fails the boot
-    | check, never turns the limit off. Every attempt counts, successful or
-    | not, and a full limit refuses with the seconds until its window ends.
+    | storage connection) so they hold across servers without a cache. Each
+    | is `max` attempts (1 to 1000000) per `decay_seconds` (1 to 86400). Every
+    | limit is always on: a missing or malformed one fails the boot check.
     |
     */
 
@@ -684,14 +510,11 @@ return [
     | Pruning
     |---------------------------------------------------------------------------
     |
-    | What `sso:prune` keeps and how much it does at a time. An authorisation
-    | request or a handoff code is kept for `retention_seconds` (0 to 90 days)
-    | past its expiry, for diagnosis: a flow is safe because it checks expiry
-    | and locks what it writes, never because a row is still there. Every other
-    | kind goes as soon as it expires. One statement names at most `batch_size`
-    | rows (1 to 10000). One run looks at no more than `max_rows_per_kind` rows
-    | of each kind (1 to 100000000), so each kind gets its turn, and says
-    | `incomplete` when more was eligible; `sso:prune --drain` goes past it.
+    | What `sso:prune` keeps and how much it does at a time. Authorisation
+    | requests and handoff codes are kept `retention_seconds` (0 to 90 days)
+    | past expiry for diagnosis; everything else goes when it expires.
+    | `batch_size` caps the rows per statement and `max_rows_per_kind` the
+    | rows of each kind per run; `sso:prune --drain` goes past it.
     |
     */
 
@@ -706,15 +529,12 @@ return [
     | Operations
     |---------------------------------------------------------------------------
     |
-    | What `Operations\OperationsSchedule` registers on the application's
-    | schedule: each command's cadence, a cron expression, or `null` or empty
-    | to leave that command to the application. Every command is safe to run on
-    | several servers at once, so by default the schedule runs them on each and
-    | never touches the cache. `cache_mutexes` opts in to Laravel's
-    | `withoutOverlapping()` and `onOneServer()`, a saving of work and never a
-    | requirement, which need a cache every server shares; a mutex a dead
-    | process leaves behind holds for `mutex_minutes` (1 to 1440), and until
-    | then that command does not run.
+    | What `Operations\OperationsSchedule` registers: each command's cron
+    | cadence, or `null` or empty to schedule it yourself. Every command is
+    | safe to run on several servers at once. `cache_mutexes` opts in to
+    | `withoutOverlapping()` and `onOneServer()`, which need a cache every
+    | server shares; a mutex a dead process leaves behind blocks that command
+    | for `mutex_minutes` (1 to 1440).
     |
     */
 

@@ -11,20 +11,8 @@ use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 use Tests\Concerns\ScansLibraryNames;
 
 /**
- * Holds the package to comparing every secret, code (a handoff code above all),
- * state, verifier, token, nonce and digest in constant time (SSO-11.9): only
- * `Secrets\ConstantTime` calls `hash_equals()`, no class calls a string
- * comparison function whose time depends on the bytes compared (`strcmp()` and
- * its kin) but where it compares no secret, and no class compares a value whose
- * name says it is one with `===`, `!==`, `==` or `!=`, unless the other side is
- * `null`, a boolean, a literal or a constant, which only asks whether the value
- * is there. Each exception is listed, with the reason it compares no secret.
- *
- * The testing helpers are left out: they play the identity provider's side, and
- * never compare a value for the package. The source is tokenised, not parsed,
- * and a value is known by the name of the variable, property or method that
- * holds it, so the scan is a backstop for the rule, not a proof of it:
- * `Secrets\ConstantTimeTest` proves the comparison itself.
+ * Architecture tests holding every secret comparison to constant time. A value
+ * is known as a secret only by the name that holds it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,13 +30,13 @@ final class ConstantTimeComparisonTest extends TestCase
     /** @var list<string> The comparison functions whose time depends on the bytes compared, and `hash_equals()`. */
     private const array COMPARISONS = ['hash_equals', 'strcmp', 'strcasecmp', 'strncmp', 'strncasecmp', 'strnatcmp', 'strnatcasecmp', 'substr_compare'];
 
-    /** @var array<string, list<string>> The comparison functions each file may call, in order: the helper itself, and the address policy's prefix match of two packed IP addresses, which are no secret. */
+    /** @var array<string, list<string>> The comparisons each file may call, in order; packed IP addresses are no secret. */
     private const array ALLOWED = [
         'src/Secrets/ConstantTime.php'   => ['hash_equals', 'hash_equals'],
         'src/Fetching/AddressPolicy.php' => ['strncmp'],
     ];
 
-    /** @var array<string, list<string>> The operator comparisons each file may make of a value named as a secret: the log reader's lexer comparing one of its own character tokens with a quote, which is no credential. */
+    /** @var array<string, list<string>> The operator comparisons allowed of a secret-named value; a lexer token is no credential. */
     private const array ALLOWED_OPERATORS = [
         'src/Logging/KeyedValues.php' => ['$token === $quote'],
     ];
@@ -56,12 +44,12 @@ final class ConstantTimeComparisonTest extends TestCase
     /** @var list<int> The comparison operators. */
     private const array OPERATORS = [T_IS_IDENTICAL, T_IS_NOT_IDENTICAL, T_IS_EQUAL, T_IS_NOT_EQUAL];
 
-    /** @var list<int> The tokens a member chain is made of: a variable, a name, and the operators between them. */
+    /** @var list<int> The tokens a member chain is made of. */
     private const array CHAIN = [T_VARIABLE, T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED, T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR, T_DOUBLE_COLON];
 
     /**
-     * Rows of `[path]`: every PHP file the package ships but the testing
-     * helpers.
+     * Rows of `[path]`: every shipped PHP file but the testing helpers, which
+     * play the provider's side.
      *
      * @return iterable<string, array{0: string}>
      */
@@ -78,9 +66,8 @@ final class ConstantTimeComparisonTest extends TestCase
     }
 
     /**
-     * Only `Secrets\ConstantTime` calls `hash_equals()`, and nothing calls a
-     * comparison whose time depends on the bytes compared but where the
-     * allow-list says it compares no secret.
+     * Only `Secrets\ConstantTime` calls `hash_equals()`, and variable-time
+     * comparisons appear only where allowed.
      *
      * @param  string  $path
      * @return void
@@ -92,8 +79,7 @@ final class ConstantTimeComparisonTest extends TestCase
     }
 
     /**
-     * No class compares a secret, code, state, verifier, token, nonce or digest
-     * with an operator.
+     * No class compares a secret-named value with an operator.
      *
      * @param  string  $path
      * @return void
@@ -117,12 +103,8 @@ final class ConstantTimeComparisonTest extends TestCase
     }
 
     /**
-     * The scans catch a comparison function, called alone or by its fully
-     * qualified name, and a secret compared with each operator, by a variable,
-     * a property or a method's name, on either side, a handoff code and an OIDC
-     * or SAML state among them; and pass over a check that a value is there, a
-     * comparison with a constant or a literal (a status code with a number), a
-     * method of a comparison's name, and a value whose name says no secret.
+     * The scans catch comparison functions and operator comparisons of secrets,
+     * and skip presence checks, constants, literals and lookalikes.
      *
      * @return void
      */
@@ -161,8 +143,7 @@ final class ConstantTimeComparisonTest extends TestCase
     }
 
     /**
-     * The comparison functions the source calls, in order: never a method or a
-     * function of the same name being declared.
+     * The comparison functions the source calls, in order.
      *
      * @param  string  $source
      * @return list<string>
@@ -187,9 +168,8 @@ final class ConstantTimeComparisonTest extends TestCase
     }
 
     /**
-     * The comparisons with an operator the source makes of a value named as a
-     * secret, each written as its two operands' chains around the operator,
-     * unless the other side is `null`, a boolean, a literal or a constant.
+     * Each operator comparison of a secret-named value with anything but a
+     * fixed value, written as its two chains around the operator.
      *
      * @param  string  $source
      * @return list<string>
@@ -219,8 +199,7 @@ final class ConstantTimeComparisonTest extends TestCase
     }
 
     /**
-     * Whether one side names a secret and neither is a value that only asks
-     * whether the other is there.
+     * Whether one side names a secret and neither is a fixed value.
      *
      * @param  list<string>  $left
      * @param  list<string>  $right
@@ -248,8 +227,7 @@ final class ConstantTimeComparisonTest extends TestCase
     }
 
     /**
-     * The member chain that ends right before the operator, its text in order,
-     * a call's arguments left out.
+     * The member chain ending right before the operator, without arguments.
      *
      * @param  list<array{0: int, 1: string, 2: int}|string>  $tokens
      * @param  int  $index
@@ -273,8 +251,7 @@ final class ConstantTimeComparisonTest extends TestCase
     }
 
     /**
-     * The member chain that starts right after the operator, its text in order,
-     * up to a call's opening parenthesis.
+     * The member chain starting right after the operator, up to any call.
      *
      * @param  list<array{0: int, 1: string, 2: int}|string>  $tokens
      * @param  int  $index

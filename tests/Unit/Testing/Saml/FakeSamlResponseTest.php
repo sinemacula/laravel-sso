@@ -13,10 +13,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Concerns\OutlinesSamlDocuments;
 
 /**
- * Unit tests for the fake SAML identity provider's response: every default
- * option, exactly, with identifiers sharing one random suffix; what `signed()`
- * and `encryptedFor()` default to; and which element carries a signature, or
- * whether the assertion is encrypted, as the options say.
+ * Unit tests for the fake SAML identity provider's response.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,9 +32,9 @@ final class FakeSamlResponseTest extends TestCase
     private static ?FakeSamlIdentityProvider $idp = null;
 
     /**
-     * The defaults are a successful response to the service provider, every
-     * option as the class describes, the identifiers and session index sharing
-     * one suffix of sixteen hex digits, and every instant relative to now.
+     * The defaults are a successful response to the service provider, its
+     * identifiers sharing one 16-hex-digit suffix and its instants relative to
+     * now.
      *
      * @return void
      */

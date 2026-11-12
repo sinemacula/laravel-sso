@@ -13,9 +13,7 @@ use Tests\Unit\Config\Fixtures\InapplicableCheck;
 use Tests\Unit\Config\Fixtures\PassingCheck;
 
 /**
- * Unit tests for the configuration checks registry: it starts with the checks
- * it is given (the package's own), adds a check after them in the order added,
- * and refuses a subject already registered or an empty one.
+ * Unit tests for the configuration checks registry.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,7 +23,7 @@ use Tests\Unit\Config\Fixtures\PassingCheck;
 #[CoversClass(ConfigurationChecks::class)]
 final class ConfigurationChecksTest extends TestCase
 {
-    /** @var array<string, class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>> The checks it starts with, standing in for the package's own. */
+    /** @var array<string, class-string<\SineMacula\Laravel\Sso\Contracts\ConfigurationCheck>> Stand-ins for the package's own checks. */
     private const array OWN = ['features' => PassingCheck::class, 'storage' => InapplicableCheck::class];
 
     /**
@@ -57,8 +55,7 @@ final class ConfigurationChecksTest extends TestCase
     }
 
     /**
-     * Each subject that cannot be added: the package's own, one added before,
-     * and an empty one.
+     * The package's own subject, one added before, and an empty one.
      *
      * @return iterable<string, array{string, string}>
      */
@@ -71,8 +68,7 @@ final class ConfigurationChecksTest extends TestCase
     }
 
     /**
-     * A subject already registered, even for the same class, and an empty one
-     * are refused, and leave the checks as they were.
+     * A taken or empty subject is refused and leaves the checks unchanged.
      *
      * @param  string  $subject
      * @param  string  $message

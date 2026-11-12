@@ -5,10 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Linking\Enums;
 
 /**
- * Whether the caller's current authentication stands apart from the links of
- * verified domain provenance its identity holds (SSO-8.8).
- *
- * Backed, and stable once released: a value is never renamed or reused.
+ * Whether the caller's authentication stands apart from its identity's
+ * domain-made links.
  *
  * @api
  *
@@ -20,8 +18,7 @@ enum LinkConfirmationVerdict: string
     // The caller authenticated by something none of those links can assert
     case INDEPENDENT = 'independent';
 
-    // It authenticated through one of them, or the contract cannot tell; the
-    // default answer
+    // Through one of them, or the contract cannot tell; the default answer
     case DEPENDENT = 'dependent';
 
     /**

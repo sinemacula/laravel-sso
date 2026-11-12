@@ -11,27 +11,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * What a handoff code is issued for (SSO-9.2, SSO-9.9, SSO-9.10, SSO-2.13): the
- * verified result, which names the purpose, the application, the connection
- * and the request's public reference; the S256 challenge of the client's
- * verifier; the code's expiry; the connection's trust version, read from its
- * locked row as the code is issued, which the redemption compares with the
- * locked row's then, so a trust change between the two refuses the code
- * whichever store holds it; the identity the result's link resolved to, if
- * any; the identity a `link` or `reauthenticate` flow was started for, and the
- * session a `reauthenticate` flow was started on; the latest end of the
- * application's session the provider's deadline sets, where the deadline
- * contract says it limits the session, and `null` where it ignores it; the link
- * the result resolved to, so a link removed and made again is told apart; and
- * the reservation a result holding no link is bound to (SSO-8.8), which expires
- * exactly when the code does.
- *
- * The completion pipeline builds one and hands it to `Contracts\HandoffIssuer`;
- * the code is bound to every part of it. A grant whose identity or session does
- * not fit its purpose is the pipeline's mistake (`InvalidArgumentException`): a
- * `sign_in` grant names neither, a `link` grant names the identity only, and a
- * `reauthenticate` grant names both; a reservation belongs only to a `sign_in`
- * grant whose result resolved to no identity.
+ * What a handoff code is issued for; the code is bound to every part of it.
  *
  * @api
  *
@@ -70,7 +50,7 @@ final readonly class HandoffGrant
         /** When the code expires. */
         public CarbonImmutable $expiresAt,
 
-        /** The connection's trust version, read from its locked row at issuance. */
+        /** The connection's trust version, from its locked row at issuance. */
         public int $trustVersion,
 
         /** The identity the result's link resolved to at completion, if any. */
@@ -82,10 +62,10 @@ final readonly class HandoffGrant
         /** The session a `reauthenticate` flow was started on. */
         public ?string $sessionId = null,
 
-        /** The latest end of the application's session the provider's deadline sets. */
+        /** The session's latest end, set by the provider's deadline. */
         public ?CarbonImmutable $sessionNotAfter = null,
 
-        /** The link the result resolved to at completion, active or suspended, if any. */
+        /** The link the result resolved to at completion, if any. */
         public ?string $linkId = null,
 
         /** The reservation the code is bound to, if any. */

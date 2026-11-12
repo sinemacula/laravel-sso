@@ -12,35 +12,9 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 
 /**
- * The lock on a tenant's enforcement row (SSO-4.5, SSO-4.6): the first lock of
- * the package's order, which every change to the rule and every admission it
- * judges (a redemption's recheck, a completion's enforcement step) takes first,
- * so a session is never admitted against a rule that is changing.
+ * Locks a tenant's enforcement row, the first lock in the package's lock order.
  *
- * `acquire()` runs, on the storage connection, inside the transaction the
- * caller has open there, an insert of an unconfigured row for the tenant unless
- * it has one, keyed by `tenant_hash`, which leaves an existing row's values
- * exactly as they are; and then a locking read of the row. A tenant that never
- * had a rule thus still has a row to lock, and racing first lockers queue on
- * it: a locking read of a row that does not exist would take a gap lock on
- * MySQL, and racers would deadlock on each other's gap locks, while the upsert
- * locks the row exclusively at once (`ON DUPLICATE KEY UPDATE`, `ON CONFLICT
- * ... DO UPDATE`). Both statements are current reads, so a caller's older
- * `REPEATABLE READ` snapshot never answers. On PostgreSQL under `REPEATABLE
- * READ`, a locker that waited on a change may instead fail to serialise: that
- * error propagates, and the caller retries its whole transaction.
- *
- * The unconfigured row (no version, no `changed_at`, off, with no connection)
- * reads everywhere exactly as no row: `EnforcementFinder::find()` answers none
- * for it, the policy carries no version, and its first change reports no
- * previous version. It is never deleted, since another transaction may be
- * waiting to lock it.
- *
- * Called with no transaction open on the storage connection it is a
- * `LogicException`, since the lock would end with the statement. An empty or
- * overlong tenant id is an `InvalidArgumentException`; a database error
- * propagates (SSO-11.4). It holds the finder and the clock, neither of which
- * keeps anything of one call for the next (SSO-11.2).
+ * Call inside the caller's transaction on the storage connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,8 +39,7 @@ final readonly class EnforcementLock
     ) {}
 
     /**
-     * The tenant's row, configured or not, locked for update until the caller's
-     * transaction ends; inserted unconfigured first when the tenant has none.
+     * The tenant's row locked for update, inserted unconfigured if missing.
      *
      * @param  string  $tenantId
      * @return \SineMacula\Laravel\Sso\Models\TenantEnforcement
@@ -86,8 +59,7 @@ final readonly class EnforcementLock
     }
 
     /**
-     * Whether the row holds a rule: one with a version, which every change
-     * writes. An unconfigured row is the same as none.
+     * Whether the row holds a rule; every change writes a version.
      *
      * @param  \SineMacula\Laravel\Sso\Models\TenantEnforcement  $enforcement
      * @return bool
@@ -98,8 +70,7 @@ final readonly class EnforcementLock
     }
 
     /**
-     * Refuse to lock with no transaction open on the storage connection, where
-     * the lock would end with its statement.
+     * Without a transaction the lock would end with its statement.
      *
      * @return void
      *
@@ -115,7 +86,7 @@ final readonly class EnforcementLock
     }
 
     /**
-     * Refuse to go on without the row the upsert has just made sure of.
+     * Fail when the row the upsert made sure of cannot be read.
      *
      * @return never
      *
@@ -127,9 +98,8 @@ final readonly class EnforcementLock
     }
 
     /**
-     * Insert the tenant's row unconfigured (off, with no connection, no version
-     * and no time of change), unless the tenant has one: then the row is left
-     * as it is, and locked.
+     * Insert an unconfigured row unless one exists; racing locking reads of a
+     * missing row would deadlock on MySQL gap locks.
      *
      * @param  string  $tenantId
      * @return void

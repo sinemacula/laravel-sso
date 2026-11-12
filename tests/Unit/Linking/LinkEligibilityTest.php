@@ -13,9 +13,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Pins the default link eligibility (SSO-8.5, SSO-5.11): the container's
- * binding refuses every identity through every connection until the application
- * binds its own, and the verdict's values are the stable ones.
+ * Unit tests for the default link eligibility, which refuses everyone.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,8 +35,7 @@ final class LinkEligibilityTest extends TestCase
     }
 
     /**
-     * It refuses whichever identity asks, through whichever connection, enabled
-     * or not.
+     * The default refuses any identity through any connection.
      *
      * @return void
      */
@@ -67,8 +64,7 @@ final class LinkEligibilityTest extends TestCase
     }
 
     /**
-     * The verdict's values are stable once released, and only one of them lets
-     * an identity link.
+     * The verdict values are fixed and only one lets an identity link.
      *
      * @return void
      */

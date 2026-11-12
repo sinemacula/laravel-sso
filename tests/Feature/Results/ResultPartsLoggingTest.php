@@ -25,12 +25,7 @@ use Tests\Concerns\CapturesLogs;
 use Tests\TestCase;
 
 /**
- * Feature tests for what the parts of a verified result show when they leave
- * the code that holds them by JSON (SSO-9.8, SSO-11.9): `json_encode()`, a
- * Monolog formatter's normaliser, which falls back to JSON for an object, and
- * the package's own `SanitizingLogger` never show the subject or a value the
- * provider asserted, while a verified result's storage form keeps every value
- * and restores exactly.
+ * Feature tests for what a verified result's parts show when encoded or logged.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,8 +55,7 @@ final class ResultPartsLoggingTest extends TestCase
     ];
 
     /**
-     * `json_encode()` of the claims, the context and the linking email shows
-     * none of the provider's values.
+     * `json_encode()` of the parts shows none of the provider's values.
      *
      * @return void
      */
@@ -77,9 +71,7 @@ final class ResultPartsLoggingTest extends TestCase
     }
 
     /**
-     * Logged as context through Monolog, whose formatters normalise an object
-     * by its JSON, the parts show none of the provider's values, whatever the
-     * formatter.
+     * Logged through Monolog, the parts show none of the provider's values.
      *
      * @return void
      */
@@ -98,8 +90,8 @@ final class ResultPartsLoggingTest extends TestCase
     }
 
     /**
-     * Logged as context through the package's own logger, the parts show none
-     * of the provider's values.
+     * Logged through the package's logger, the parts show none of the
+     * provider's values.
      *
      * @return void
      */
@@ -122,9 +114,7 @@ final class ResultPartsLoggingTest extends TestCase
     }
 
     /**
-     * A verified result built from the parts keeps every value in its storage
-     * form, which `json_encode()` and `serialize()` write and which restores
-     * exactly: the parts' redacted JSON never reaches it.
+     * A verified result's storage form keeps every value and restores exactly.
      *
      * @return void
      */
@@ -198,8 +188,7 @@ final class ResultPartsLoggingTest extends TestCase
     }
 
     /**
-     * Claims, an authentication context and a linking email with every part
-     * set, each value distinct, by name.
+     * Claims, a context and a linking email with every part set, by name.
      *
      * @return array<string, object>
      */

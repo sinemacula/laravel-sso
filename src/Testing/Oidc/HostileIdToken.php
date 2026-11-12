@@ -7,21 +7,8 @@ namespace SineMacula\Laravel\Sso\Testing\Oidc;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * One hostile ID token of the adversarial suite (SSO-7.3, SSO-7.4, SSO-12.4):
- * the token, the JWKS the provider publishes beside it, the allow-list the
- * connection has, how far the package's JOSE adapter lets it go before it is
- * refused, and the failure reason a completion through the callback must end
- * with.
- *
- * The stages, in the order the adapter reaches them:
- *
- * - `malformed`: `CompactToken::parse()` refuses it;
- * - `jwks_refused`: the JWKS beside it is refused whole;
- * - `refused`: the key selection refuses it, with no refetch;
- * - `unknown`: no stored key is its key, so the JWKS is refetched once, and
- *   the refetched JWKS still holds none;
- * - `unverified`: the key chosen does not verify its signature;
- * - `expired`: its signature verifies, and its time claims fail.
+ * One case of the hostile ID token suite: the token, its JWKS and allow-list,
+ * the adapter stage that refuses it and the expected failure reason.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,7 +35,7 @@ final readonly class HostileIdToken
         /** The connection's ID token algorithm allow-list. */
         public array $algorithms,
 
-        /** How far the adapter lets it go before it is refused. */
+        /** The refusing stage: malformed, jwks_refused, refused, unknown, unverified or claims. */
         public string $stage,
 
         /** The reason a completion through the callback must end with. */

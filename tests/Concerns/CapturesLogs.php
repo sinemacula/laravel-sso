@@ -9,15 +9,7 @@ use Monolog\Logger;
 use Monolog\LogRecord;
 
 /**
- * Captures what the package logs, in memory, so a test can run a flow and
- * assert that no verifier, code, state, assertion or token reached a log
- * (SSO-9.8, SSO-11.9).
- *
- * `captureLogs()` configures a channel backed by a Monolog `TestHandler` and
- * points `sso.logging.channel` at it, so everything the package logs through
- * `SanitizingLogger` lands there, as it would on a real channel: after
- * sanitising and redaction, and after Laravel's own processing. A test of which
- * channel is used captures several, each under its own name.
+ * Captures what the package logs, after sanitising and redaction, in memory.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -30,8 +22,7 @@ trait CapturesLogs
     private array $logCaptures = [];
 
     /**
-     * Capture the channel: configure it, backed by an in-memory handler, and
-     * point the package's logging at it.
+     * Back the channel with an in-memory handler and point the package at it.
      *
      * @param  string  $channel
      * @return \Monolog\Handler\TestHandler
@@ -55,8 +46,7 @@ trait CapturesLogs
     }
 
     /**
-     * What was logged to the captured channel named, or to every captured
-     * channel, in the order each channel received it.
+     * What was logged to the channel named, or to every captured channel.
      *
      * @param  ?string  $channel
      * @return list<array{channel: string, level: string, message: string, context: array<array-key, mixed>}>
@@ -80,10 +70,7 @@ trait CapturesLogs
     }
 
     /**
-     * Assert that no captured record's message or context contains any of the
-     * needles. The context is searched JSON-encoded, with slashes and Unicode
-     * left unescaped, and value by value, so a needle is found however it was
-     * nested.
+     * Assert that no captured record's message or context contains a needle.
      *
      * @param  string  ...$needles
      * @return void
@@ -104,8 +91,7 @@ trait CapturesLogs
     }
 
     /**
-     * Assert that each needle is in some captured record's message or context,
-     * so a flow test shows what may be logged was.
+     * Assert that each needle is in some captured record's message or context.
      *
      * @param  string  ...$needles
      * @return void
@@ -137,9 +123,8 @@ trait CapturesLogs
     }
 
     /**
-     * Everything searchable in the record: its message, its context
-     * JSON-encoded, and each scalar value in its context, joined by NUL so a
-     * line break in a value is still found.
+     * The record's message, JSON context and scalar context values, so a needle
+     * is found however it was nested or escaped.
      *
      * @param  array{channel: string, level: string, message: string, context: array<array-key, mixed>}  $record
      * @return string

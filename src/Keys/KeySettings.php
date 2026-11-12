@@ -8,32 +8,15 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The settings of the keys the package generates and rotates (SSO-2.6,
- * SSO-2.7), read from `sso.keys` on each call (SSO-11.2), each failing closed
- * with an `InvalidArgumentException` naming its key when it is malformed;
- * `[keys]` reports the same at boot.
- *
- * - `rsa_bits`: the modulus of a generated RSA key, 3072 (default) or 4096.
- *   Elliptic curve keys are always generated on P-256 (`EC_CURVE`).
- * - `certificate_days`: how long a generated self-signed certificate is valid
- *   for, 1 to 3650 days (default 730). Its dates are reported, never enforced.
- * - `overlap_seconds`: how long a key replaced as current is kept `retiring`,
- *   accepted for decryption, 0 to 7776000 seconds (90 days; default 604800, a
- *   week).
- * - `expiry_thresholds`: how many days before its end of validity a key or
- *   certificate is warned of: distinct integers from 0 to 365, in any order,
- *   always including 0, for one that has ended (default 30, 14, 7, 1 and 0).
- *   The largest is also how far ahead the report looks by default.
- * - `expiry_claim_seconds`: how long one reporter holds a key while it sends a
- *   warning, 1 to 3600 seconds (default 300). A reporter that dies holding one
- *   delays that warning by this long, and loses it never.
+ * The `sso.keys` settings, read on each call; a malformed one fails closed
+ * naming its key.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class KeySettings
 {
-    /** @var string The elliptic curve every generated elliptic curve key is on: P-256, by OpenSSL's name. */
+    /** @var string The curve of every generated EC key: P-256, by OpenSSL's name. */
     public const string EC_CURVE = 'prime256v1';
 
     /** @var list<int> The RSA moduli a generated key may have, in bits. */

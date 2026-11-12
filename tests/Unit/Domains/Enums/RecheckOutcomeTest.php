@@ -9,9 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome;
 
 /**
- * Unit tests for the outcome of a domain's scheduled check: each value is
- * stable once released, and the failures are a record gone, a lapse, a failed
- * lookup and a resolver that threw.
+ * Unit tests for the domain recheck outcome enum.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,9 +33,7 @@ final class RecheckOutcomeTest extends TestCase
     }
 
     /**
-     * A suspension, a record still gone, a lapse, a failed lookup and a
-     * resolver that threw are failures; a confirmation, a restoration and a
-     * skip are not.
+     * Every outcome but confirmed, restored and skipped is a failure.
      *
      * @return void
      */

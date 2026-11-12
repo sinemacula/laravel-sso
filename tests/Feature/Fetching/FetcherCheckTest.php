@@ -13,10 +13,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[fetcher]`: checked while the package is in use, each
- * setting reported with the message the fetcher would fail closed with, a
- * malformed refused range named by its key, a connect timeout longer than the
- * timeout, and a missing cURL transport (SSO-2.9).
+ * Feature tests for the `[fetcher]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,8 +26,8 @@ final class FetcherCheckTest extends TestCase
     use RunsConfigurationChecks;
 
     /**
-     * Not checked while the package is not in use, however malformed; the
-     * shipped defaults pass once it is.
+     * Not checked while the package is not in use; the shipped defaults pass
+     * once it is.
      *
      * @return void
      */
@@ -49,8 +46,8 @@ final class FetcherCheckTest extends TestCase
     }
 
     /**
-     * A malformed protocol switch counts as the package in use, so the
-     * fetcher's settings are checked rather than skipped.
+     * A malformed protocol switch counts as the package in use, so the settings
+     * are checked.
      *
      * @return void
      */
@@ -94,9 +91,8 @@ final class FetcherCheckTest extends TestCase
     }
 
     /**
-     * Each setting reports exactly its problems, every one in a run, and a
-     * malformed timeout is not reported a second time as a connect timeout past
-     * it.
+     * Each setting reports exactly its problems, and a malformed timeout is
+     * reported once.
      *
      * @param  array<string, mixed>  $settings
      * @param  list<string>  $problems
@@ -144,8 +140,8 @@ final class FetcherCheckTest extends TestCase
     }
 
     /**
-     * A missing `ext-curl`, or a missing cURL handler, is reported with why the
-     * fetcher needs it, rather than letting it fall back to PHP streams.
+     * A missing `ext-curl` or cURL handler is reported instead of falling back
+     * to PHP streams.
      *
      * @param  bool  $curlLoaded
      * @param  bool  $handlerExists

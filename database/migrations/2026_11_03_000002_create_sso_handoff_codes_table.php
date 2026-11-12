@@ -9,8 +9,7 @@ use SineMacula\Laravel\Sso\Database\MigrationCollisionGuard;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * Create the handoff codes table: the codes the package's own store issued,
- * each only as a digest.
+ * Create the handoff codes table.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,57 +35,42 @@ return new class extends Migration {
         $schema->create($table, static function (Blueprint $blueprint) use ($table): void {
             $blueprint->char('id', 26)->primary();
 
-            // The lower-case hex SHA-256 of the code: the code itself is never
-            // stored.
+            // SHA-256 of the code, which is never stored.
             $blueprint->char('code_digest', 64);
 
-            // What the code is bound to: the purpose, the application, the
-            // connection, the request's public reference and the S256 challenge
-            // of the client's verifier. No foreign key: deleting a connection
-            // deletes its codes in the same transaction, whatever the engine.
+            // No foreign key: deleting a connection deletes its codes in the
+            // same transaction, whatever the engine.
             $blueprint->string('purpose', 16);
             $blueprint->string('application', 64);
             $blueprint->char('connection_id', 26);
             $blueprint->string('request_reference', 64);
             $blueprint->char('handoff_challenge', 43);
 
-            // The identity a link or reauthenticate flow was started for, the
-            // session a reauthenticate flow was started on, and the identity
-            // the result's link resolved to at completion.
             $blueprint->string('identity_type', 255)->nullable();
             $blueprint->string('identity_id', 255)->nullable();
             $blueprint->string('session_id', 255)->nullable();
             $blueprint->string('linked_identity_type', 255)->nullable();
             $blueprint->string('linked_identity_id', 255)->nullable();
 
-            // The link the result resolved to at completion, so a link removed
-            // and made again is told apart from the one observed; and the
-            // reservation a result holding no link was bound to.
+            // The link id tells a link removed and made again from the one
+            // observed at completion.
             $blueprint->string('link_id', 255)->nullable();
             $blueprint->char('reservation_id', 26)->nullable();
 
             // The verified result, serialised and encrypted.
             $blueprint->longText('result');
 
-            // The connection's trust version when the code was issued, which a
-            // redemption compares with the connection's under its lock.
             $blueprint->unsignedBigInteger('trust_version');
 
-            // The latest end of the application's session the provider's
-            // deadline sets.
+            // The latest session end the provider's deadline allows.
             $blueprint->dateTime('session_not_after', 0)->nullable();
 
-            // Whole seconds in UTC, from the package's clock: when it expires,
-            // was redeemed, and was voided by a change to its connection.
             $blueprint->dateTime('expires_at', 0);
             $blueprint->dateTime('redeemed_at', 0)->nullable();
             $blueprint->dateTime('voided_at', 0)->nullable();
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);
 
-            // A redemption finds its code by digest; a change to a connection
-            // voids its unredeemed codes; pruning pages codes by expiry, by
-            // keyset.
             $blueprint->unique(['code_digest'], self::indexName($table, 'code_unique'));
             $blueprint->index(['connection_id', 'redeemed_at'], self::indexName($table, 'connection_index'));
             $blueprint->index(['expires_at', 'id'], self::indexName($table, 'expiry_index'));
@@ -107,8 +91,7 @@ return new class extends Migration {
     }
 
     /**
-     * The connection the table lives on, the one the model reads and writes it
-     * on: the storage connection (see `StorageConnection::connectionFor()`).
+     * The storage connection, which the model uses too.
      *
      * @return ?string
      *
@@ -135,8 +118,7 @@ return new class extends Migration {
     }
 
     /**
-     * An index name built from the table's, as Laravel builds one: lower case,
-     * with a schema's dot as an underscore.
+     * An index name built from the table's the way Laravel builds one.
      *
      * @param  string  $table
      * @param  string  $suffix

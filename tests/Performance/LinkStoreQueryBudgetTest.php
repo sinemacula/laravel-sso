@@ -28,20 +28,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Query budgets for the link store and helper (SSO-8.2 to SSO-8.4, SSO-11.3). A
- * resolution is one locking read, and one conditional update when it finds a
- * link, whether or not a minute has passed since its last use; a creation locks
- * the connection and the identity's links, inserts and raises the connection's
- * links version; a removal reads the link, then locks the connection and the
- * link and deletes it:
- *
- * - `resolve()` that finds a link: 1 read and 1 write; that finds none: 1 read;
- * - `create()`: 2 reads (the connection, the identity's links, both locked) and
- *   2 writes (the insert and the links version); refused by the unique index:
- *   the 2 reads and the insert; at the limit: the 2 reads alone;
- * - `remove()`: 3 reads (the link; then, locked, the connection and the link)
- *   and 1 write (the delete); a link not found: 1 read; a stale caller: 1 read;
- * - `list()`: 2 reads (the links, then their connections); with no link: 1.
+ * Query budgets for the link store and link helper.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -67,7 +54,7 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
     private IdentityReference $identity;
 
     /**
-     * Bind a freshness contract that answers `fresh` and make a connection.
+     * Answer `fresh` to every freshness check and make a connection.
      *
      * @return void
      */
@@ -85,8 +72,8 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A resolution that finds a link is one locking read and one conditional
-     * update, again within the minute; one that finds none is the read alone.
+     * One locking read and one conditional update, again within the minute; a
+     * miss is the read alone.
      *
      * @return void
      */
@@ -104,9 +91,8 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A creation is two locking reads, the insert and the raise of the links
-     * version; one refused by the unique index is the reads and the insert; one
-     * at the limit is the reads alone.
+     * The connection, links and reservation locked, the insert and links
+     * version; a duplicate stops at the insert, a full identity at two reads.
      *
      * @return void
      */
@@ -122,8 +108,8 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A removal is three reads and the delete; a link not found and a stale
-     * caller stop at the first read.
+     * The link, then the connection and link locked, the delete and the links
+     * version; a link not found and a stale caller stop at the first read.
      *
      * @return void
      */
@@ -147,8 +133,7 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A list is two reads, the links and their connections; with no link, the
-     * first alone.
+     * The links, then their connections; with no link, the first alone.
      *
      * @return void
      */

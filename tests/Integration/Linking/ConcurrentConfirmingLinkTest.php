@@ -43,30 +43,9 @@ use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Races a `link` redemption across processes, each with its own database
- * connection, on MySQL and PostgreSQL (SSO-5.11, SSO-8.5, SSO-8.8,
- * `docs/design/linking.md`), against what can change the link under it: its
- * removal, a second confirmation of it, its suspension by a resolution or by a
- * widened scope, another identity's link of the same subject, a disable of the
- * connection, and an activation of the person's reservation in another
- * connection, which the redemption must see once it holds the guard.
- *
- * The order is fixed by signal files, never by time, and a barrier that times
- * out fails the racer loudly: each process opens its connection and, racing in
- * a transaction, begins one at `REPEATABLE READ` and reads the connection, the
- * links and the codes; once both have signalled that, the first does its work
- * and signals before it commits; only then does the second start. So in a
- * transaction, the second's snapshot predates everything the first wrote, and
- * its locking reads either wait for the first to commit or find it committed;
- * on MySQL they must answer what is committed rather than the snapshot, and on
- * PostgreSQL its lock of the connection's row, which every one of these writes
- * raises a version on, fails to serialise (SQLSTATE `40001`, possibly wrapped
- * in a `DeadlockException`), which rolls it back whole and is accepted there
- * alone. Each race also runs both ways round where the order matters.
- *
- * A process reports how its work ended, then how many `LinkConfirmed` it
- * reported once it committed. Skipped on SQLite, whose in-memory database each
- * process would have to itself, and where `pcntl` is not available.
+ * Races a `link` redemption across processes against what can change its link;
+ * skipped on SQLite and without `pcntl`. A stale snapshot may fail to serialise
+ * (`40001`), accepted on PostgreSQL only.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -94,10 +73,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     private string $signals;
 
     /**
-     * Bind an eligibility that lets every identity link, a fresh caller and a
-     * limiter that allows every attempt, whose counters a racer's transaction
-     * would otherwise hold locked, and make the directory the processes report
-     * in.
+     * Bind an eligibility that lets every identity link, a fresh caller and an
+     * allow-all limiter, whose counters a racer would otherwise hold locked.
      *
      * @return void
      *
@@ -246,10 +223,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * A confirmation then a suspension of the link: the person's scope has
-     * widened, so the confirmation suspends and confirms it itself; the racing
-     * sign-in then finds a confirmed link, which is no longer judged by scope,
-     * and goes on.
+     * A confirmation then a suspension: the confirmed link is no longer judged
+     * by scope.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -270,9 +245,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * A suspension then a confirmation of the link: the sign-in latches the
-     * suspension and is refused; the confirmation finds it suspended on the
-     * bound identity, and clears it for good.
+     * A suspension then a confirmation: the confirmation clears the suspension
+     * for good.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -302,9 +276,7 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * A confirmation then a principal change widening the person's scope: the
-     * link has left its verified domain, so the widening finds nothing to
-     * suspend under its lock, whatever its snapshot showed.
+     * A confirmation then a widening: the widening finds nothing to suspend.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -379,9 +351,7 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * Two redemptions of one subject for two identities going at once, once
-     * both have read: whichever wins, there is one link, for that identity, and
-     * the other is `subject_already_linked`.
+     * Two redemptions of one subject for two identities leave one link.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -462,13 +432,9 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[whether each racer runs inside its own transaction that read
-     * first, how the `link` ends on PostgreSQL, how on MySQL]`. Plainly, the
-     * standalone redemption takes the guard before any read, so it sees the
-     * activation it waited on, locks that link's connection and asks the
-     * contract. In a transaction that read first, its snapshot holds the
-     * reservation: on PostgreSQL its guard, written since, fails to serialise;
-     * on MySQL it finds the link in a connection it did not lock, for a retry.
+     * Rows of `[in a transaction, PostgreSQL outcome, MySQL outcome]`: a stale
+     * snapshot fails to serialise on PostgreSQL and finds an unlocked
+     * connection on MySQL.
      *
      * @return iterable<string, array{0: bool, 1: string, 2: string}>
      */
@@ -481,11 +447,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * An activation of the person's reservation in one connection, holding the
-     * guard, then a `link` of the person through another, which reaches the
-     * guard while the activation holds it: the activation commits, and the
-     * `link` judges the domain link it made, refused without independent
-     * authentication, never a server error from a snapshot it took itself.
+     * A `link` reaching the guard an activation holds judges the new domain
+     * link, refused without independent authentication.
      *
      * @param  bool  $inTransaction
      * @param  string  $onPostgres
@@ -531,9 +494,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * Bind a principal scope that answers `within_tenant`: it marks `holding`,
-     * since it is asked only once its caller holds the identity's guard, then
-     * stops until the signal exists.
+     * Bind a `within_tenant` scope that marks `holding` and stops until the
+     * signal exists.
      *
      * @param  string  $signal
      * @return void
@@ -580,9 +542,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * Touch the signal just before this process sends the statement that takes
-     * an identity's guard, on its own connection, once the other racer marks
-     * `holding`, so this process always reaches the guard while it is held.
+     * Touch the signal just before this process takes an identity's guard, once
+     * the other holds it.
      *
      * @param  string  $signal
      * @return void
@@ -607,9 +568,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * A verified domain link with a `sign_in` code and a `link` code each bound
-     * to it at completion, and then the person's scope widened, so the next
-     * resolution of the link suspends it.
+     * A domain link with `sign_in` and `link` codes bound to it, then the
+     * person's scope widened.
      *
      * @return array{0: array{0: \SineMacula\Laravel\Sso\Flows\StartResult, 1: string, 2: string}, 1: array{0: \SineMacula\Laravel\Sso\Flows\StartResult, 1: string, 2: string}}
      */
@@ -729,9 +689,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * What a process widening the person's scope does: report a principal of
-     * another tenant, in a transaction of its own, a savepoint when it has one
-     * open already, and say how many links it suspended.
+     * Widen the person's scope in a transaction and report how many links were
+     * suspended.
      *
      * @return \Closure(): string
      */
@@ -799,10 +758,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * Fork a process for each racer on a connection of its own, plain or inside
-     * a transaction of its own, and collect what each reported, in the racers'
-     * order. In turn, the first signals once it has done its work and the
-     * second starts only then; otherwise both start once both have read.
+     * Fork a process per racer and collect what each reported; in turn, the
+     * second starts once the first has worked.
      *
      * @param  \Closure(): string  $first
      * @param  \Closure(): string  $second
@@ -839,11 +796,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: open a connection of its own and, in a transaction,
-     * begin one at `REPEATABLE READ` and read; signal that; wait for the
-     * other's signal; wait for the first's work, when the second in turn; do
-     * its work, signalling before it commits; report how it ended and what it
-     * confirmed; and end without running the parent's shutdown.
+     * Run the work in a forked process on its own connection, ordered by signal
+     * files.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work
@@ -931,9 +885,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error, so a race whose
-     * racers ran one after the other never passes as one that overlapped.
+     * Wait for the signal for at most `SIGNAL_SECONDS`, failing loudly so a
+     * serial run never passes as a race.
      *
      * @param  string  $signal
      * @return void
@@ -956,9 +909,8 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure (SQLSTATE `40001`), accepted only there: a
-     * `DeadlockException` wraps it, so every previous error is walked.
+     * Whether the error chain holds PostgreSQL's serialisation failure, which
+     * `DeadlockException` may wrap.
      *
      * @param  \Throwable  $exception
      * @return bool

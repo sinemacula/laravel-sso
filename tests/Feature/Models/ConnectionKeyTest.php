@@ -14,9 +14,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the keys and certificates model (SSO-2.6, SSO-2.7): its
- * table and connection, its ULID key and clock timestamps, its casts, and its
- * hidden private key.
+ * Feature tests for the keys and certificates model.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,8 +55,8 @@ final class ConnectionKeyTest extends TestCase
     }
 
     /**
-     * A row reads back with its enums, sizes and times cast, is keyed by a ULID
-     * and stamped by the clock, and hides its private key.
+     * A row casts its columns, is keyed by a ULID, clock-stamped and hides its
+     * private key.
      *
      * @return void
      */

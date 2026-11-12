@@ -10,18 +10,8 @@ use SineMacula\Laravel\Sso\Contracts\DnsResolver;
 use SineMacula\Laravel\Sso\Domains\DnsLookup;
 
 /**
- * The example application's own DNS resolver (SSO-3.2): it asks a DNS over
- * HTTPS service for the TXT records at a name, through its JSON interface, with
- * a deadline of its own, in place of the package's default, which asks the
- * system resolver with none.
- *
- * It asks for the name as absolute (with a trailing dot), so no search domain
- * answers for it. An answer of `NOERROR` is the TXT records it holds, each
- * record's character-strings joined (`absent` when it holds none); `NXDOMAIN`
- * is `absent`; any other answer, an error status, a body it cannot read or a
- * request that could not be made, a failed connection among them, is
- * `lookupFailed()`, since it proves nothing either way. It keeps nothing of one
- * lookup for the next, and logs no record.
+ * A DNS over HTTPS resolver with its own deadline; any answer but `NOERROR` or
+ * `NXDOMAIN` is `lookupFailed()`, since it proves nothing either way.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -46,7 +36,8 @@ final readonly class DohResolver implements DnsResolver
     private const int TXT = 16;
 
     /**
-     * The TXT records at the name, asked of the service.
+     * The TXT records at the name, asked as absolute so no search domain
+     * answers.
      *
      * @param  string  $name
      * @return \SineMacula\Laravel\Sso\Domains\DnsLookup
@@ -95,8 +86,8 @@ final readonly class DohResolver implements DnsResolver
     }
 
     /**
-     * The answer's TXT record, its character-strings joined, or `null` when it
-     * is not a TXT record.
+     * The answer's TXT record with its strings joined, or `null` for another
+     * type.
      *
      * @param  mixed  $answer
      * @return ?string
@@ -113,8 +104,8 @@ final readonly class DohResolver implements DnsResolver
     }
 
     /**
-     * The record's character-strings, each quoted in the answer, joined and
-     * unescaped; the data as given when it quotes none.
+     * The record's quoted character-strings, joined and unescaped; the data as
+     * given when it quotes none.
      *
      * @param  string  $data
      * @return string

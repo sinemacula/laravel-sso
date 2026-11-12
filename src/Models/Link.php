@@ -11,33 +11,11 @@ use SineMacula\Laravel\Sso\Models\Casts\BinaryString;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 
 /**
- * One link (SSO-8.2 to SSO-8.4): a connection's issuer and subject, and for
- * SAML the subject's `NameID` format, associated with an identity, held as an
- * opaque reference (a type and an id).
+ * A connection's issuer and subject linked to an identity, with the subject
+ * stored byte for byte.
  *
- * The subject is stored exactly as received, byte for byte, in a binary column
- * (`Casts\BinaryString`), never trimmed or normalised (SSO-6.9); the issuer and
- * format are kept as received too. `subject_key` is the lower-case hex SHA-256
- * of the issuer, the format and the subject, each length-prefixed, unique with
- * the connection: one subject in one connection is linked to one identity at
- * most, however two creations race, and lookups compare it exactly, whatever
- * the engine's collation.
- *
- * It holds its state (`Links\Enums\LinkState`, SSO-8.8): active; reserved by a
- * completion that matched it by a verified domain, with the reservation's
- * binding (`Links\LinkReservations`), all of it cleared on activation; or
- * suspended, latched with `suspended_at` until a confirming `link`. It holds
- * its provenance (`Links\Enums\LinkOrigin`), which a confirming `link`
- * replaces, and from which `domain_provenance` is read; and when it was
- * created, last used and last changed. The email digest and the accepted
- * organisation are hidden from serialisation and never put in an event
- * (SSO-10.4).
- *
- * Its key is a lower-case ULID and its timestamps come from the package's clock
- * (see `SsoModel`); its connection, issuer, format, subject and key are fixed
- * once it exists. The table comes from `sso.links.table`, the connection from
- * the storage connection; every read that decides a flow is made on the write
- * connection (SSO-11.3).
+ * `subject_key` hashes issuer, format and subject, unique per connection, so
+ * lookups are exact whatever the collation.
  *
  * @api
  *
@@ -71,7 +49,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  */
 final class Link extends SsoModel
 {
-    /** @var string The key, under `sso.`, of the setting that names the model's table. */
+    /** @var string The `sso.` setting that names the table. */
     protected const string TABLE = 'links.table';
 
     /** @var list<string> The columns fixed when the link is made. */
@@ -80,7 +58,7 @@ final class Link extends SsoModel
     /** @var bool Indicates if the IDs are auto-incrementing. */
     public $incrementing = false;
 
-    /** @var bool Indicates if the model should be timestamped: the package stamps it from its clock instead. */
+    /** @var bool Stamped from the package's clock instead. */
     public $timestamps = false;
 
     /** @var string The "type" of the primary key ID. */
@@ -89,18 +67,17 @@ final class Link extends SsoModel
     /** @var array<string> The attributes that aren't mass assignable. */
     protected $guarded = ['*'];
 
-    /** @var list<string> The attributes hidden from serialisation: the linking email's digest and the accepted organisation. */
+    /** @var list<string> The attributes hidden from serialisation. */
     protected $hidden = ['reservation_email_digest', 'reservation_organization'];
 
-    /** @var array<string, mixed> The model's default attribute values: a link is active and was made through the `link` purpose. */
+    /** @var array<string, mixed> The model's default attribute values. */
     protected $attributes = [
         'state'      => 'active',
         'provenance' => 'link_purpose',
     ];
 
     /**
-     * Key and stamp each new link, and refuse a change to what it links once it
-     * exists.
+     * Key and stamp each new link, and fix what it links.
      *
      * @return void
      */

@@ -52,22 +52,8 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Links\ExampleLinks;
 
 /**
- * Query budgets for the OpenID Connect callback (SSO-5.4, SSO-7.1, SSO-7.2,
- * SSO-11.3, SSO-11.5), with doubles of the ID token's validation and the
- * claims' assembly and no mapped email, so no domain is read, each measured
- * once the IP address's and the connection's counters exist, so every callback
- * first costs their two updates:
- *
- * - a query the correlator refuses is the connection's read alone;
- * - a client secret is held on the row already read, so a verified callback is
- *   the connection's read and the two pairs of locking reads, and a callback
- *   refused once its request is consumed the same, with or without a token
- *   request: five reads, with the request's consumption, its single-use record
- *   and its completion the three writes beside the counters';
- * - `private_key_jwt` reads the current key to judge the connection complete,
- *   before it validates and again under the lock, and to sign, with its private
- *   half: four more reads for a verified callback, one for a callback refused
- *   before the token request.
+ * Query budgets for the OIDC callback, over doubles of validation and claims
+ * with no mapped email, measured once the counters exist.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -95,9 +81,8 @@ final class OidcCallbackQueryBudgetTest extends PerformanceContractTestCase
     private Connection $connection;
 
     /**
-     * Bind the recording issuer, a linker, the fake fetcher, the doubles and a
-     * request from an IP address, configure the endpoints and the application,
-     * make a usable connection, and create the counters.
+     * Bind the doubles and the fake fetcher, make a usable connection and
+     * create the counters.
      *
      * @return void
      */
@@ -156,8 +141,8 @@ final class OidcCallbackQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A callback refused for its `iss`, before the token request, is five reads
-     * and five writes.
+     * The connection and two pairs of locking reads; the consumption, the
+     * single-use record and the completion beside the counters.
      *
      * @return void
      *
@@ -190,7 +175,8 @@ final class OidcCallbackQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A verified callback by a client secret is five reads and five writes.
+     * A client secret is held on the row already read, so a verified callback
+     * costs a refused one.
      *
      * @return void
      *
@@ -222,8 +208,8 @@ final class OidcCallbackQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * `private_key_jwt` adds four reads to a verified callback: the current key
-     * before it validates, to sign, and under the lock, and its private half.
+     * `private_key_jwt` adds the current key's read before validation, to sign
+     * and under the lock, and its private half's.
      *
      * @return void
      *
@@ -254,8 +240,8 @@ final class OidcCallbackQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Store a request through the connection, and answer the query of the
-     * callback that answers it, with the extra parameter given.
+     * Store a request through the connection and answer its callback query,
+     * with the extra parameter given.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?string  $extra
@@ -278,8 +264,8 @@ final class OidcCallbackQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An enabled connection of the provider authenticating by the method, with
-     * no attribute mapping, and its client secret when asked.
+     * An enabled connection with no attribute mapping authenticating by the
+     * method, with its client secret when asked.
      *
      * @param  string  $method
      * @param  bool  $secret
@@ -341,8 +327,7 @@ final class OidcCallbackQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Bind doubles of the ID token's validation and the claims' assembly, which
-     * validate and verify every token and read nothing.
+     * Bind doubles that validate and verify every token and read nothing.
      *
      * @return void
      */
@@ -350,7 +335,7 @@ final class OidcCallbackQueryBudgetTest extends PerformanceContractTestCase
     {
         $this->app?->instance(IdTokenValidator::class, new readonly class extends IdTokenValidator {
             /**
-             * Constructor: it needs none of what the real validation needs.
+             * Skip the real validator's dependencies.
              *
              * @phpstan-ignore constructor.missingParentCall
              */
@@ -377,7 +362,7 @@ final class OidcCallbackQueryBudgetTest extends PerformanceContractTestCase
 
         $this->app?->instance(ClaimsAssembler::class, new readonly class extends ClaimsAssembler {
             /**
-             * Constructor: it needs none of what the real assembly needs.
+             * Skip the real assembler's dependencies.
              *
              * @phpstan-ignore constructor.missingParentCall
              */

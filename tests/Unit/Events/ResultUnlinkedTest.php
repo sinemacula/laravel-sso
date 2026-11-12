@@ -18,9 +18,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Unit tests for the unlinked-result event (SSO-8.6, SSO-10.5): a listener
- * reads the exact result and the grant, and nothing else shows them; it refuses
- * to be serialised, so a queued listener fails loudly.
+ * Unit tests for the unlinked-result event, which refuses to be queued.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -80,8 +78,7 @@ final class ResultUnlinkedTest extends TestCase
     }
 
     /**
-     * A dump shows the context with the rest redacted, and `json_encode()` the
-     * context alone.
+     * A dump redacts all but the context; JSON holds the context alone.
      *
      * @return void
      *
@@ -115,8 +112,7 @@ final class ResultUnlinkedTest extends TestCase
     }
 
     /**
-     * A clone, which a queue makes before it serialises, shares the one grant
-     * and the exact result: it is no second use.
+     * A clone, as a queue makes, shares the one grant and the exact result.
      *
      * @return void
      *
@@ -144,7 +140,7 @@ final class ResultUnlinkedTest extends TestCase
         [$event] = self::event();
 
         $this->expectException(\LogicException::class);
-        $this->expectExceptionMessage('The unlinked-result event cannot be serialised: a queued listener is too late (SSO-8.6).');
+        $this->expectExceptionMessage('The unlinked-result event cannot be serialised: a queued listener is too late.');
 
         serialize($event);
     }

@@ -23,76 +23,10 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
- * Refreshes connections from their identity provider, on a schedule and when an
- * administrator asks (`refreshNow()`) (SSO-2.8, SSO-10.3, SSO-11.12): a SAML
- * connection's certificates and endpoints from its metadata, and an OIDC
- * connection's discovery document and JWKS, each through its protocol's
- * `MetadataSource` (`MetadataSources`).
+ * Refreshes connections from their identity provider through each protocol's
+ * `MetadataSource`, on the schedule and when an administrator asks.
  *
- * The schedule (`sso:metadata:refresh`) lists the connections due
- * (`dueConnectionIds()`) and queues a `RefreshConnectionMetadata` job for each,
- * which calls `refreshQueued()`, so a large aggregate is fetched and checked on
- * a queue whose workers are sized for it; with `--sync`, the command refreshes
- * them itself (`refreshDue()`).
- *
- * The schedule refreshes a connection while `sso.features.metadata_refresh` is
- * on, its protocol is available (`ProtocolManager::isAvailable()`, so a
- * protocol switched off fetches nothing and writes nothing) and has a source,
- * and its source finds it refreshes (`MetadataSource::refreshes()`: the
- * source's rule on its own switch holds, which for a SAML connection without a
- * metadata signing anchor means an explicit opt-in, and what it fetches is a
- * URL the package may fetch). It is due while its `metadata_refresh_at` is
- * unset or not after now and no claim on it holds (`metadata_claimed_until`
- * unset or not after now), expired or not, so the schedule recovers a
- * connection past its stale limit; the due connections are read on the write
- * connection in chunks of `CHUNK_SIZE`, by keyset on their id. A queued refresh
- * reads its connection again and is `skipped` when it is no longer due,
- * refreshes or exists.
- *
- * An administrator's refresh is what recovers a connection the schedule does
- * not, so it depends on neither `sso.features.metadata_refresh` nor the
- * connection's own switch, and works on one already expired: it needs only its
- * protocol available and what it fetches to be a URL the package may fetch
- * (`MetadataSource::isRefreshable()`), or it is `feature_disabled`, with
- * nothing fetched. Where the schedule would not refresh the connection, its
- * switch or the feature being off or its not having opted in, the refresh
- * changes what the schedule was told to leave alone, so `sso.connection.trust`
- * is asked first, and `stale` is `freshness_required` (SSO-2.12). A connection
- * that has not opted in gains no stale deadline from it (`SamlRefreshRule`). It
- * skips the backoff, never a claim another server holds, and counts against the
- * connection's metadata limit (`sso.rate_limits.metadata`) before anything is
- * claimed or fetched: past it, it is `rate_limited` with the seconds until the
- * window ends.
- *
- * Each refresh, outside any transaction, has its source:
- *
- * 1. snapshot the connection's trust, after the connection itself was read, and
- *    claim the connection with one conditional update, until now plus
- *    `claim_seconds` and with a fresh random token (`RefreshClaims`, answering
- *    a `RefreshClaim`), only while no claim holds and its metadata version is
- *    still the one read; no row updated is `skipped` for the schedule and
- *    `in_progress` for an administrator, with nothing else done;
- * 2. fetch and validate what it refreshes from, noting the moment it
- *    validated (`FetchedMetadata`);
- * 3. write it, or record the failure, in one transaction that locks the
- *    connection and compares the claim and the snapshot (`RefreshWriter`).
- *
- * Each refresh that did not apply is logged as a warning, through the
- * sanitising logger, with its reason and the fetch's status alone, never the
- * URL, the response or the document.
- *
- * Every entry refuses to run inside a transaction on the storage connection (a
- * `LogicException`), since a refresh fetches before it writes. A database error
- * propagates (SSO-11.4) and stops a scheduled run. A scheduled refresh asks no
- * freshness, being a system job an administrator left on, and neither does an
- * administrator's refresh of a connection the schedule would refresh too, which
- * does no more than the schedule would, but always names the administrator.
- * Every entry takes the client its events carry as an `Http\ClientContext` and
- * reads no request: the console command and the queued job pass
- * `new ClientContext(null, null)`, an administrator's refresh the client of
- * their request. It holds the lookup, the protocols, the sources, the limiter,
- * the freshness gate, the clock and the logger, none of which keeps anything of
- * one run for the next (SSO-11.2); resolve it per run.
+ * Call outside any transaction on the storage connection; resolve it per run.
  *
  * @api
  *
@@ -160,8 +94,8 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * The ids of the connections whose refresh is due and that refresh, in id
-     * order, for the schedule to queue a refresh of each.
+     * The ids of the connections due a refresh, in id order, for the schedule
+     * to queue.
      *
      * @return list<string>
      *
@@ -195,10 +129,8 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * Refresh the tenant's connection now, for the administrator who asked,
-     * whatever its backoff, its switch or the schedule's, and whether it has
-     * expired or not, once a refresh the schedule would not make has asked for
-     * freshness and it is counted against the connection's metadata limit.
+     * Refresh the tenant's connection now, whatever its backoff, switch or
+     * expiry; a refresh the schedule would not make asks for freshness first.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -234,8 +166,7 @@ final readonly class MetadataRefresher
 
     /**
      * Why an administrator may not refresh the connection now, or `null` when
-     * they may: nothing to fetch or its protocol off, or a stale authentication
-     * where the schedule would not refresh it.
+     * they may.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -260,9 +191,8 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * Have the connection's source snapshot and claim it as read, fetch and
-     * validate, and write it or record the failure; log a refresh that did not
-     * apply.
+     * Claim, fetch and write the connection through its source, and log a
+     * refresh that did not apply.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -293,8 +223,8 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * Whether the connection a queued job names is still there with exactly
-     * that id, refreshes, and is due and unclaimed by now.
+     * Whether the connection a queued job names still exists, refreshes, and is
+     * due and unclaimed.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $connectionId
@@ -316,8 +246,8 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * Every connection whose refresh is due and unclaimed and that refreshes,
-     * in id order, read in chunks; none while the refresh is off.
+     * Every connection due a refresh, in id order, read in chunks; none while
+     * the refresh is off.
      *
      * @return list<\SineMacula\Laravel\Sso\Models\Connection>
      *
@@ -346,9 +276,8 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * Those of the connections of a listing that refresh, in the order given:
-     * each available protocol's source judges its own at once, since a
-     * connection that never refreshes stays due and is read on every run.
+     * Those of the chunk that refresh, in order; each source judges its own at
+     * once, since a connection that never refreshes is read on every run.
      *
      * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $chunk
      * @return list<\SineMacula\Laravel\Sso\Models\Connection>
@@ -372,8 +301,8 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * The next connections of a protocol with a source after the id given whose
-     * refresh is due and unclaimed, in id order.
+     * The next chunk after the id of connections with a source whose refresh is
+     * due and unclaimed.
      *
      * @param  ?string  $after
      * @return list<\SineMacula\Laravel\Sso\Models\Connection>
@@ -398,9 +327,8 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * Whether the connection refreshes: its protocol is available, and its
-     * protocol's source judges that it does; never for a protocol with no
-     * source.
+     * Whether the schedule refreshes the connection: its protocol is available
+     * and has a source that says so.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
@@ -413,9 +341,7 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * Whether an administrator may refresh the connection: its protocol is
-     * available, and its protocol's source could fetch what it refreshes from,
-     * whatever its switch says.
+     * Whether an administrator may refresh the connection, whatever its switch.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
@@ -428,8 +354,7 @@ final readonly class MetadataRefresher
     }
 
     /**
-     * The source of the connection's protocol, which a connection that
-     * refreshes always has.
+     * The source of the connection's protocol.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return \SineMacula\Laravel\Sso\Metadata\MetadataSource

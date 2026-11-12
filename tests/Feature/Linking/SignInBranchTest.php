@@ -43,15 +43,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Adversarial tests of a `sign_in`'s continuity at redemption (SSO-8.5,
- * SSO-8.8, SSO-9.9), through the public completion and redemption and, for what
- * a store cannot show, every link state against every binding: a link deleted
- * and made again, moved or removed is `link_changed` by its id; a suspended one
- * `link_suspended`; an unlinked handoff whose subject gained a link
- * `link_changed`; a reserved code with no reservation left
- * `reservation_invalid`, never a fallback. Each refusal spends the code,
- * reports once and never asks for evidence, which is asked only once an
- * identity is established.
+ * Adversarial tests of a `sign_in`'s continuity at redemption.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -81,9 +73,8 @@ final class SignInBranchTest extends LinkingTestCase
     }
 
     /**
-     * What the link is now and what the code was bound to, and what a `sign_in`
-     * makes of it: the bound identity is `App\Models\User` `7`, by link
-     * `link-7`.
+     * Rows of the link now, what the code was bound to and the outcome; the
+     * bound identity is `App\Models\User` `7`, by link `link-7`.
      *
      * @return iterable<string, array<int, mixed>>
      */
@@ -218,9 +209,8 @@ final class SignInBranchTest extends LinkingTestCase
     }
 
     /**
-     * A link deleted and made again for the same person is another link: its id
-     * tells them apart where the identity cannot. The refusal spends the code,
-     * reports once, and asks nothing.
+     * A link deleted and made again for the same person is `link_changed`, by
+     * its id.
      *
      * @return void
      */
@@ -295,9 +285,8 @@ final class SignInBranchTest extends LinkingTestCase
     }
 
     /**
-     * A domain link whose person's scope widened since completion is found out
-     * at redemption, suspended for good, and refused. A contract answering
-     * `within_tenant` again restores nothing.
+     * A domain link found outside the tenant at redemption is suspended for
+     * good.
      *
      * @return void
      */
@@ -327,10 +316,7 @@ final class SignInBranchTest extends LinkingTestCase
     }
 
     /**
-     * A domain link whose person's scope is no longer known at redemption
-     * refuses that redemption with a reason of its own, spends its code, and
-     * leaves the link as it was: the next sign-in goes through once the verdict
-     * is known.
+     * A domain link of unknown scope at redemption refuses that attempt only.
      *
      * @return void
      */
@@ -401,9 +387,8 @@ final class SignInBranchTest extends LinkingTestCase
     }
 
     /**
-     * A reserved code with no reservation left is `reservation_invalid`, even
-     * for an application allowing unlinked handoffs: no provisioning is offered
-     * and no unlinked handoff stands in.
+     * A reserved code with no reservation left is `reservation_invalid`, with
+     * no fallback.
      *
      * @return void
      */
@@ -430,10 +415,8 @@ final class SignInBranchTest extends LinkingTestCase
     }
 
     /**
-     * A reserved code whose reservation gave way to a link of the same subject
-     * and person is `reservation_invalid` too: it is judged by its reservation
-     * alone, never by whatever the subject resolves to now, and that link is
-     * left alone.
+     * A reserved code is judged by its reservation, never a link that replaced
+     * it.
      *
      * @return void
      */

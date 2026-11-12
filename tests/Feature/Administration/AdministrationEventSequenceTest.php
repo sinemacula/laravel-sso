@@ -38,14 +38,8 @@ use Tests\Fixtures\Protocols\ExampleDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests of the exact sequence of administration events each management
- * helper reports (SSO-10.3, SSO-10.4): one event per change, naming the
- * connection, its tenant and protocol and the acting identity, and never a flow
- * identifier; a connection update naming exactly what changed, in the helper's
- * order, a secret by name and never by value; nothing for a change that changed
- * nothing; and nothing for any refusal.
- *
- * Keys are generated on P-256, since RSA generation is slow.
+ * Feature tests for the sequence of administration events each management
+ * helper reports.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -93,8 +87,8 @@ final class AdministrationEventSequenceTest extends TestCase
     private Caller $actor;
 
     /**
-     * Bind a fixed clock and a freshness contract that answers `fresh`, turn
-     * both protocols on, create the tables, and record events.
+     * Bind a fixed clock and a fresh caller, enable both protocols, create the
+     * tables and record events.
      *
      * @return void
      */
@@ -130,10 +124,7 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * An update reports one `ConnectionUpdated` naming exactly what changed, in
-     * the helper's order (settings as the protocol names them, then secrets,
-     * the display name and the mapping), the client secret by name and never by
-     * value.
+     * An update names exactly what changed in order, and a secret by name only.
      *
      * @return void
      */
@@ -167,8 +158,7 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * An update of one setting names that setting alone, and one of the secret
-     * alone names the secret.
+     * An update of one setting, or of the secret alone, names only that.
      *
      * @return void
      */
@@ -212,8 +202,7 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * Enabling a connection reports `ConnectionEnabled`; enabling it again
-     * changes nothing and reports nothing.
+     * Enabling reports once, and enabling again reports nothing.
      *
      * @return void
      */
@@ -236,8 +225,8 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * The first key of a use is reported added as current, then made current
-     * with nothing replaced; the second is reported added as next, alone.
+     * The first key of a use is added then made current; the second is added as
+     * next.
      *
      * @return void
      */
@@ -279,8 +268,8 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * Making the next key current reports `KeyMadeCurrent` naming the key it
-     * replaced; retiring that key reports `KeyRetired`.
+     * Making the next key current names the key it replaced, and retiring is
+     * reported.
      *
      * @return void
      */
@@ -316,8 +305,7 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * Trusting a certificate reports `KeyAdded` with the trusted certificate's
-     * use and no state; distrusting it reports `KeyRetired`.
+     * Trusting and distrusting a certificate are each reported.
      *
      * @return void
      */
@@ -355,8 +343,7 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * A connection over a protocol the application registered is reported by
-     * that protocol's name, and its own secret by name alone.
+     * A registered protocol and its secret are reported by name.
      *
      * @return void
      */
@@ -418,8 +405,7 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * Every refusal reports nothing: no administration event, and no failure
-     * event either.
+     * A refusal reports no administration or failure event.
      *
      * @param  string  $refusal
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -478,8 +464,7 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * Each refused change to a connection, by name, to run against the OIDC
-     * connection prepared.
+     * Each refused change to a connection, by name.
      *
      * @param  string  $oidc
      * @return array<string, \Closure(): \SineMacula\Laravel\Sso\Connections\ConnectionResult>
@@ -524,8 +509,7 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * Each refused change to a key or certificate, by name, to run against the
-     * connections and keys prepared.
+     * Each refused change to a key or certificate, by name.
      *
      * @param  string  $oidc
      * @param  string  $saml
@@ -571,9 +555,8 @@ final class AdministrationEventSequenceTest extends TestCase
     }
 
     /**
-     * Assert the event's context names the connection, the tenant, the protocol
-     * and the acting identity, the time from the clock, and no flow identifier
-     * or identity.
+     * Assert the event names the connection, tenant, protocol and actor, and no
+     * flow or identity.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  string  $connectionId

@@ -12,10 +12,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for a SAML connection's typed options (SSO-2.3): every setting
- * under its property, defaults applied; the URIs of the NameID format and the
- * binding; the switches and lists by their setting; and the key transport and
- * data encryption algorithms the connection allows, apart.
+ * Feature tests for a SAML connection's typed options.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

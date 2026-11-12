@@ -138,8 +138,8 @@ reported. A response validated under the old settings reserves nothing, and a co
 
 Your matcher receives a `LinkEmailQuery`: the tenant, the email exactly as the protocol asserted it, and its domain
 canonicalised. The package does not touch the local part. Pass the email through your application's normaliser: under
-`laravel-iam`, the adapter passes it through `laravel-authentication`'s bindable identifier normaliser (AUTH-3.1). Add
-no subaddress or dot removal, Unicode folding or confusable matching: `a+b@example.com` and `a.b@example.com` are other
+`laravel-iam`, the adapter passes it through `laravel-authentication`'s bindable identifier normaliser. Add no
+subaddress or dot removal, Unicode folding or confusable matching: `a+b@example.com` and `a.b@example.com` are other
 addresses. Only an email verified in your application counts; one merely present on an account does not.
 
 ## The flow

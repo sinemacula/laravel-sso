@@ -7,15 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols\Saml2\Messages;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How the SAML adapter read a response (SSO-6.1 to SSO-6.3, SSO-6.7, SSO-6.8,
- * SSO-6.11): read, with the response it parsed and verified, or refused with a
- * reason and a detail.
- *
- * The detail is the package's own words for which rule refused the response
- * (`schema`, `duplicate_id`, `signature_policy`, say), for a log through the
- * sanitising logger; it never quotes the message, a value the provider sent or
- * a library's exception message. A decryption failure has one detail whatever
- * failed, so nothing distinguishes one cause from another (SSO-6.7).
+ * The SAML adapter's verdict on a response: read and verified, or refused with
+ * a reason and the refusing rule's name, which never quotes the message.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,7 +30,7 @@ final readonly class ReadResult
         /** Why it was refused, for one refused. */
         public ?FailureReason $reason,
 
-        /** Which rule refused it, in the package's own words, for one refused. */
+        /** Which rule refused it, for one refused. */
         public ?string $detail,
     ) {}
 

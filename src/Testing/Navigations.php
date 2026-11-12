@@ -8,14 +8,8 @@ use SineMacula\Laravel\Sso\Flows\StartResult;
 use SineMacula\Laravel\Sso\Protocols\Navigation;
 
 /**
- * Reads where a start sends the browser, in whichever form a test holds it, for
- * the fake identity providers to read the outgoing request from (SSO-12.4): the
- * `StartResult` the package answered, its `Navigation`, the `navigation` member
- * of the start's JSON body, or that body whole.
- *
- * A start that was refused or rate limited sends the browser nowhere, which is
- * a `LogicException` naming why, so a test that expected a started flow fails
- * there rather than further on.
+ * Reads where a start sends the browser, from any form a test holds it in. A
+ * refused start throws, so the test fails there rather than further on.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,8 +19,7 @@ use SineMacula\Laravel\Sso\Protocols\Navigation;
 final class Navigations
 {
     /**
-     * The URL the navigation goes to and the fields it posts, none for a
-     * redirect.
+     * The navigation's URL and posted fields, none for a redirect.
      *
      * @param  array<array-key, mixed>|\SineMacula\Laravel\Sso\Flows\StartResult|\SineMacula\Laravel\Sso\Protocols\Navigation  $navigation
      * @return array{0: string, 1: array<array-key, mixed>}
@@ -45,7 +38,7 @@ final class Navigations
     }
 
     /**
-     * The URL the navigation goes to; a string is that URL already.
+     * The navigation's URL; a string is returned as is.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult|\SineMacula\Laravel\Sso\Protocols\Navigation|string  $navigation
      * @return string
@@ -58,8 +51,7 @@ final class Navigations
     }
 
     /**
-     * The URL and the fields of a navigation decoded from JSON, each empty when
-     * it is missing or of another type.
+     * The URL and fields of a JSON-decoded navigation, each empty when missing.
      *
      * @param  array<array-key, mixed>  $navigation
      * @return array{0: string, 1: array<array-key, mixed>}

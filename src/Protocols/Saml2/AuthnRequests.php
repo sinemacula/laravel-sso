@@ -20,33 +20,8 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * Starts an SP-initiated SAML sign-in (SSO-5.3, SSO-5.10,
- * `docs/design/saml-requests.md`): writes the connection's `AuthnRequest`
- * through the SAML adapter and answers the navigation that sends it to the
- * identity provider, with the request's `ID`, which the authorisation request
- * stores for the response's `InResponseTo`.
- *
- * - The `ID` is `_` and 32 random bytes as lower-case hex, fresh per start.
- * - `IssueInstant` is the package's clock; `Issuer` is the service provider
- *   entity id and the assertion consumer service URL is the connection's, both
- *   from the endpoint resolver, never from the request (SSO-5.5).
- * - `ForceAuthn="true"` when the connection forces authentication, and always
- *   for a `reauthenticate` (SSO-5.10).
- * - `RelayState` is the flow's protocol state (43 bytes), never the public
- *   reference: a response is correlated by its digest (SSO-5.2). One over 80
- *   bytes is application code's mistake, a `LogicException`.
- * - Signed, when the connection signs its requests, with its current service
- *   provider signing key and the first algorithm it allows. With no current
- *   key, or no single sign-on URL, the start is refused with
- *   `connection_unavailable`; a complete connection has both, so the refusal is
- *   a backstop.
- * - HTTP-Redirect is a redirect to the single sign-on URL with the request's
- *   query appended, after `?`, or after `&` when the URL has a query already;
- *   HTTP-POST is a form posted to it.
- *
- * Nothing here logs or reports the request, its `RelayState` or the key. It
- * holds the key ring, the endpoint resolver, the clock and the writer, none of
- * which keeps anything between calls (SSO-11.2).
+ * Starts an SP-initiated SAML sign-in: writes the connection's `AuthnRequest`
+ * and the navigation that sends it to the identity provider.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -55,10 +30,10 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
  */
 final readonly class AuthnRequests
 {
-    /** @var int The most bytes a `RelayState` may have (SAML 2.0 Bindings §3.4.3 and §3.5.3). */
+    /** @var int The most bytes a `RelayState` may have (SAML 2.0 Bindings 3.4.3 and 3.5.3). */
     public const int MAX_RELAY_STATE_BYTES = 80;
 
-    /** @var int The random bytes of a request `ID`, written as lower-case hex after `_`. */
+    /** @var int Random bytes in a request `ID`. */
     private const int ID_BYTES = 32;
 
     /**
@@ -85,7 +60,8 @@ final readonly class AuthnRequests
     ) {}
 
     /**
-     * Start the request at the connection's identity provider.
+     * Start the request; refused when the connection lacks a single sign-on URL
+     * or a signing key it needs.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options  $options
@@ -123,8 +99,7 @@ final readonly class AuthnRequests
     }
 
     /**
-     * The private half of the connection's current service provider signing
-     * key, or `null` when it has none.
+     * The private half of the current SP signing key, if there is one.
      *
      * @param  string  $connectionId
      * @return ?\SineMacula\Laravel\Sso\Secrets\Secret
@@ -141,7 +116,7 @@ final readonly class AuthnRequests
     }
 
     /**
-     * Refuse a `RelayState` over 80 bytes, naming none of it.
+     * Refuse an over-long `RelayState`, revealing none of it.
      *
      * @param  \SineMacula\Laravel\Sso\Secrets\Secret  $state
      * @return void
@@ -168,8 +143,7 @@ final readonly class AuthnRequests
     }
 
     /**
-     * Whether the request forces fresh authentication: the connection says so,
-     * or the flow is a `reauthenticate`.
+     * Whether the request forces fresh authentication.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options  $options
      * @param  \SineMacula\Laravel\Sso\Protocols\StartRequest  $request
@@ -181,8 +155,7 @@ final readonly class AuthnRequests
     }
 
     /**
-     * Where the browser goes: redirected with the request's query, or posting
-     * its fields, to the single sign-on URL.
+     * A redirect or form post to the single sign-on URL.
      *
      * @param  string  $ssoUrl
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\OutgoingRequest  $outgoing
@@ -198,8 +171,7 @@ final readonly class AuthnRequests
     }
 
     /**
-     * The URL with the query appended: after `?`, or after `&` when the URL has
-     * a query already, or directly when it ends with either.
+     * The URL with the query appended.
      *
      * @param  string  $url
      * @param  string  $query

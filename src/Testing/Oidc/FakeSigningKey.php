@@ -5,20 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Testing\Oidc;
 
 /**
- * A signing key of the fake OpenID provider (SSO-12.4): an RSA or elliptic
- * curve key pair made with OpenSSL, its `kid` (or none), and how its JWKS entry
- * describes it.
- *
- * `rsa()` and `ec()` generate one, and the constructor takes a test's own PEM,
- * a 1024-bit RSA key or one on another curve included, since a hostile JWKS
- * needs keys the package must refuse. `jwk()` is its public JWK as the provider
- * publishes it, with `alg` and `use` as the test asks (`null` leaves one out),
- * and any extra members laid over it; `privateJwk()` adds the private members,
- * for a JWKS that wrongly publishes them; `certificate()` is a self-signed
- * certificate of the key, as a token's `x5c` offers one.
- *
- * Generating an RSA key takes a few tens of milliseconds, so a test class may
- * keep one for all its tests.
+ * An RSA or EC signing key of the fake OpenID provider. RSA generation takes
+ * tens of milliseconds, so a test class may share one key.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,7 +44,7 @@ final readonly class FakeSigningKey
      */
     public function __construct(
 
-        /** The PEM private key. */
+        /** The PEM private key, which may be one the package must refuse. */
         #[\SensitiveParameter]
         public string $privateKeyPem,
 
@@ -78,7 +66,7 @@ final readonly class FakeSigningKey
     }
 
     /**
-     * A fresh RSA key of the size given (2048 bits by default).
+     * Generate an RSA key.
      *
      * @param  ?string  $kid
      * @param  int  $bits
@@ -92,7 +80,7 @@ final readonly class FakeSigningKey
     }
 
     /**
-     * A fresh elliptic curve key on the curve given (P-256 by default).
+     * Generate an EC key.
      *
      * @param  ?string  $kid
      * @param  string  $curve
@@ -119,8 +107,8 @@ final readonly class FakeSigningKey
     }
 
     /**
-     * The public JWK as the provider publishes it: with `alg` and `use` when
-     * given, its `kid` when it has one, and the extra members laid over it.
+     * The public JWK as published; a `null` `alg` or `use` is left out and the
+     * extra members are laid over it.
      *
      * @param  ?string  $alg
      * @param  ?string  $use
@@ -139,7 +127,7 @@ final readonly class FakeSigningKey
     }
 
     /**
-     * The JWK with its private members too, as a JWKS must never publish it.
+     * The JWK with its private members, for a JWKS that wrongly publishes them.
      *
      * @param  ?string  $alg
      * @return array<string, mixed>
@@ -160,7 +148,7 @@ final readonly class FakeSigningKey
     }
 
     /**
-     * A self-signed certificate of the key, as base64 DER: an entry of `x5c`.
+     * A self-signed certificate of the key as base64 DER, for `x5c`.
      *
      * @return string
      *
@@ -180,8 +168,7 @@ final readonly class FakeSigningKey
     }
 
     /**
-     * A coordinate or the private scalar of an elliptic curve key, padded to
-     * the curve's length and encoded.
+     * An EC coordinate or private scalar, padded to the curve's length.
      *
      * @param  string  $name
      * @return string
@@ -195,7 +182,7 @@ final readonly class FakeSigningKey
     }
 
     /**
-     * A PEM private key OpenSSL generated with the options.
+     * Generate a PEM private key with OpenSSL.
      *
      * @param  array<string, mixed>  $options
      * @return string
@@ -214,7 +201,7 @@ final readonly class FakeSigningKey
     }
 
     /**
-     * The bytes, as unpadded base64url.
+     * Encode the bytes as unpadded base64url.
      *
      * @param  mixed  $bytes
      * @return string

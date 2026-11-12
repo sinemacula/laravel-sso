@@ -21,10 +21,7 @@ use Tests\Fixtures\Config\DirectoryServiceProvider;
 use Tests\TestCase;
 
 /**
- * Feature tests for a check a composing package adds (SSO-12.3, IAM-13.12): it
- * is added whichever provider registers first, and runs wherever the package's
- * own checks run (at boot, as a worker command starts and in `sso:check`), only
- * while it applies.
+ * Feature tests for a configuration check a composing package adds.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -39,8 +36,7 @@ final class AddedConfigurationChecksTest extends TestCase
     private const string PROBLEM = '[directory] `directory.revocation` must be set.';
 
     /**
-     * The registry is the application's one instance, starting with the
-     * package's own checks.
+     * The registry is one instance that starts with the package's own checks.
      *
      * @return void
      */
@@ -53,8 +49,8 @@ final class AddedConfigurationChecksTest extends TestCase
     }
 
     /**
-     * Whether the registry is resolved before the composing package's provider
-     * registers, or after.
+     * Whether the registry is resolved before or after the composing provider
+     * registers.
      *
      * @return iterable<string, array{bool}>
      */
@@ -65,8 +61,7 @@ final class AddedConfigurationChecksTest extends TestCase
     }
 
     /**
-     * The checker the package binds runs the added check once, after the
-     * package's own, whichever registers first.
+     * The checker runs the added check once, after the package's own.
      *
      * @param  bool  $resolvedFirst
      * @return void
@@ -95,8 +90,7 @@ final class AddedConfigurationChecksTest extends TestCase
     }
 
     /**
-     * Outside the console, a problem the added check finds stops the boot with
-     * the package's own.
+     * Outside the console, the added check's problem stops the boot.
      *
      * @return void
      */
@@ -113,8 +107,7 @@ final class AddedConfigurationChecksTest extends TestCase
     }
 
     /**
-     * An added check that applies only while the package is in use never fails
-     * the boot of an application with the package off.
+     * An added check that does not apply never fails the boot.
      *
      * @return void
      */
@@ -128,8 +121,8 @@ final class AddedConfigurationChecksTest extends TestCase
     }
 
     /**
-     * In the console, a problem the added check finds fails a worker command as
-     * it starts.
+     * In the console, the added check's problem fails a worker command as it
+     * starts.
      *
      * @return void
      */
@@ -148,8 +141,7 @@ final class AddedConfigurationChecksTest extends TestCase
     }
 
     /**
-     * `sso:check` reports the added check under its subject: not enabled while
-     * the package is off, and its problem while it is in use.
+     * `sso:check` reports the added check under its subject.
      *
      * @return void
      */
@@ -180,8 +172,7 @@ final class AddedConfigurationChecksTest extends TestCase
     }
 
     /**
-     * The test application with the composing package's provider registered,
-     * reporting that it is not running in the console, as it does serving a
+     * The test application with the composing provider registered, serving a
      * request.
      *
      * @return \Illuminate\Foundation\Application

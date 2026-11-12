@@ -52,11 +52,11 @@ their own.
   `family_name`, `display_name`, `groups`) or a custom lower-case name the application declares in
   `sso.mapping.custom_attributes` (`MappingLimits::customAttributes()`: a list of at most 100 distinct well-formed keys,
   none standard or reserved, empty by default, checked at boot under `[mapping]`); any other custom target is
-  `not_allowed`, and a stored one no longer declared maps nothing. The owner decided the allow-list (2026-11-03) so a
-  tenant administrator never invents a key the application does not read. The result's own fields are `reserved`
-  targets, and over OIDC a protocol value or a token is a `reserved` source (SSO-2.10). `map()` builds profile data:
-  single values for the standard targets, `groups` always a list, every string cut to `max_value_length` characters and
-  a list to `max_values` strings. Nothing mapped selects an identity (SSO-8.2).
+  `not_allowed`, and a stored one no longer declared maps nothing, so a tenant administrator never invents a key the
+  application does not read. The result's own fields are `reserved` targets, and over OIDC a protocol value or a token
+  is a `reserved` source (SSO-2.10). `map()` builds profile data: single values for the standard targets, `groups`
+  always a list, every string cut to `max_value_length` characters and a list to `max_values` strings. Nothing mapped
+  selects an identity (SSO-8.2).
 - Every helper is scoped to a tenant (an opaque id of 1 to 255 bytes; anything else is an `InvalidArgumentException`)
   and finds a connection only through `Connections\ConnectionFinder`, on the write connection: another tenant's
   connection is `connection_not_found` to a change and `null` to `get()`.
@@ -76,8 +76,8 @@ their own.
   transaction and under the connection's lock, every unfinished authorisation request and unredeemed handoff code of
   the connection (`Connections\InFlightVoider`); an update that asks only `sso.connection.idp_initiated`, or nothing,
   voids nothing.
-- `ConnectionService` stays at twenty methods: the steps of an update after the lock are its one `@internal` method,
-  `changeLocked()`, which the subject migration reuses with its relinks' violations and its own freshness.
+- The steps of an update after the lock are `ConnectionService`'s one `@internal` method, `changeLocked()`, which the
+  subject migration reuses with its relinks' violations and its own freshness.
 - Creating asks `sso.connection.trust` and the operation of each setting and secret given; an update asks only the
   operations of what changed (the display name and the mapping need none, and a change that changes nothing asks
   nothing); enabling always asks `sso.connection.enable`, even for an enabled connection. Each operation is asked

@@ -15,9 +15,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for what a helper returns for a domain (SSO-3.1 to SSO-3.3):
- * every field read from the claim, the token only through its accessor, held
- * out of every dump and encoding, and never serialised or unserialised.
+ * Feature tests for the domain summary the helpers return.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,8 +46,8 @@ final class DomainSummaryTest extends TestCase
     }
 
     /**
-     * Every field comes from the claim, and the encoding has snake_case keys,
-     * times in UTC, and no token.
+     * Every field comes from the claim; the encoding uses snake_case and UTC
+     * and holds no token.
      *
      * @return void
      */

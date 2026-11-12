@@ -24,17 +24,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/freshness.md` (SSO-2.12, SSO-12.5), on the
- * shared example harness: the guide's published maximum ages laid over the
- * package's and asked with each change; the application's own contract, bound
- * in its service provider in place of the default that refuses everything,
- * judging the caller it is given by the time the session they are on last
- * authenticated, as the application recorded it, against the package's clock;
- * and `FakeFreshness` bound by a test, answering `stale` for one operation and
- * asserting what was asked. Each refusal is shown: a change asked of a caller
- * who authenticated too long ago, or in the future, or who cannot be judged, is
- * refused with `freshness_required` and writes nothing, and an age out of range
- * fails closed.
+ * Runs the examples of `docs/guides/freshness.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,9 +40,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     private const string ADMINISTRATOR = 'admin-1';
 
     /**
-     * Under the published configuration, a trust change is asked with the five
-     * minutes it names, a key rotation with its two, and enabling a connection,
-     * which it does not name, with the default.
+     * Each change is asked with the maximum age the published file gives it.
      *
      * @return void
      */
@@ -71,10 +59,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * An administrator who signed in two hundred seconds ago may create and
-     * enable a connection, but not rotate its keys, which the published
-     * configuration holds to two minutes; once the package's clock has moved
-     * past five minutes, they may not disable it either, and it stays enabled.
+     * A 200-second-old sign-in may change a connection but not rotate keys.
      *
      * @return void
      */
@@ -101,8 +86,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * A maximum age out of range fails closed, naming its key, when a change
-     * reads it, rather than loosening what it was meant to require.
+     * A maximum age out of range fails closed, naming its key.
      *
      * @return void
      */
@@ -119,9 +103,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * The package's default answers `stale` for every operation; the
-     * application's contract, bound by its service provider after the
-     * package's, replaces it as the one contract the package asks.
+     * The application's contract replaces the default that refuses everything.
      *
      * @return void
      */
@@ -138,8 +120,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * An administrator whose session records a sign-in exactly the maximum age
-     * ago is fresh, and the connection is deleted.
+     * A sign-in exactly the maximum age ago is fresh.
      *
      * @return void
      */
@@ -156,8 +137,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * A second past the maximum age, the deletion is refused with
-     * `freshness_required` and the connection is still there.
+     * A second past the maximum age, the deletion is refused.
      *
      * @return void
      */
@@ -176,9 +156,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * A sign-in a minute old is fresh, and one recorded in the future, which
-     * the application cannot vouch for, is stale. Each question judges the
-     * caller it is given.
+     * A sign-in recorded in the future is stale.
      *
      * @return void
      */
@@ -198,9 +176,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * A caller the contract cannot judge is stale: no caller, a caller on no
-     * session, a caller on a session no sign-in was recorded for, and one on
-     * another identity's session, however recent.
+     * A caller the contract cannot judge is stale.
      *
      * @return void
      */
@@ -232,9 +208,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * `FakeFreshness` answers `stale` for the one operation it was told to, and
-     * `fresh` for every other: the connection is enabled, its deletion is
-     * refused, and the fake recorded each question with its maximum age.
+     * The fake answers what the test tells it and records each question.
      *
      * @return void
      */
@@ -264,8 +238,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * Lay the guide's published configuration over the package's, key by key,
-     * as Laravel merges a published file with a package's.
+     * Lay the guide's published configuration over the package's.
      *
      * @return void
      */
@@ -281,8 +254,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * Create a disabled SAML connection of the tenant, for the caller given,
-     * and answer its id.
+     * Create a disabled SAML connection of the tenant and answer its id.
      *
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return string
@@ -300,9 +272,7 @@ final class FreshnessExampleTest extends ExampleTestCase
     }
 
     /**
-     * Record the administrator's sign-in on the session at the time given, as
-     * the application's sign-in records it, and answer them as the caller the
-     * application gives the package: their identity, on that session.
+     * Record the administrator's sign-in and answer them as the caller.
      *
      * @param  int  $authenticatedAt
      * @param  string  $sessionId

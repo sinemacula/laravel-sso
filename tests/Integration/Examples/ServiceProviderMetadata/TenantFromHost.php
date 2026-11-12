@@ -7,10 +7,8 @@ namespace Tests\Integration\Examples\ServiceProviderMetadata;
 use Illuminate\Http\Request;
 
 /**
- * The example application's tenancy middleware (SSO-12.5): it resolves the
- * tenant a request is for from the host it was sent to, as the metadata route
- * of `docs/guides/service-provider-metadata.md` expects, and answers `404` for
- * a host the application does not serve.
+ * The example application's tenancy middleware, resolving the tenant from the
+ * request's host.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -11,13 +11,8 @@ use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * The example application's tenant authentication policy (SSO-4.1, SSO-4.4,
- * SSO-4.6), asked at sign-in, on every switch and on refresh: a session active
- * in a tenant complies when the enforcement that applies to it requires
- * nothing, or it was established through a satisfying connection; otherwise it
- * is admitted only when its identity is exempt, which the exemption gate
- * reports. The session records the version it was judged against, so it is
- * judged again once the rule changes.
+ * The example application's tenant authentication policy, asked at sign-in, on
+ * every switch and on refresh.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,8 +47,8 @@ final readonly class TenantAuthenticationPolicy
     }
 
     /**
-     * Whether the session's identity is exempt from the enforcement, asked
-     * through the gate, which reports each exemption it grants.
+     * Whether the session's identity is exempt, asked through the gate that
+     * reports each exemption.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @param  \Tests\Integration\Examples\Enforcement\UserSession  $session

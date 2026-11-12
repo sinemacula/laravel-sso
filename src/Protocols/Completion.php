@@ -8,19 +8,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 
 /**
- * How a driver judged the identity provider's response to an authorisation
- * request (SSO-5.6, SSO-6, SSO-7): verified, with what every check verified, or
- * refused with a reason.
- *
- * A driver answers `verified` only once every check of its protocol has passed
- * against the consumed request; the completion pipeline then builds the
- * `VerifiedResult` from the claims. A verified SAML response also carries the
- * `ReplayRecord` of its assertion, which the completion records in its locked
- * transaction before any downstream effect, refusing a repeat with `replayed`
- * (SSO-6.6). A verified OIDC response whose own key refetch removed a key
- * carries the `TransitionReceipt` that lets it finish across that one trust
- * change. Every refusal is a value: a malformed, unsigned, expired or replayed
- * response, an unsuccessful SAML status or an OIDC `error` response.
+ * A driver's verdict on an identity provider response: verified claims, or a
+ * refusal reason.
  *
  * @api
  *
@@ -45,16 +34,15 @@ final readonly class Completion
         /** Why the response was refused, for a refused one. */
         public ?FailureReason $reason,
 
-        /** What the completion records against replay, for a verified response that carries one. */
+        /** What the completion records against replay, if anything. */
         public ?ReplayRecord $replay = null,
 
-        /** What lets a verified response finish across the trust change its own validation made, if any. */
+        /** Lets the response finish across a key removal its own validation made. */
         public ?TransitionReceipt $receipt = null,
     ) {}
 
     /**
-     * The response passed every check, with what they verified and, for one
-     * that must never be accepted twice, what records it against replay.
+     * The response passed every check.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedClaims  $claims
      * @param  ?\SineMacula\Laravel\Sso\Protocols\ReplayRecord  $replay
@@ -77,8 +65,7 @@ final readonly class Completion
     }
 
     /**
-     * The completion with the receipt of the trust change its validation made,
-     * if any; a refusal holds none, so it is answered as it is.
+     * The completion with the given receipt; a refusal is returned unchanged.
      *
      * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
      * @return self

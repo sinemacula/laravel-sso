@@ -7,13 +7,7 @@ namespace SineMacula\Laravel\Sso\Domains;
 use SineMacula\Laravel\Sso\Domains\Enums\RecheckOutcome;
 
 /**
- * What one run of the scheduled domain recheck did (SSO-3.3, SSO-11.12): an
- * entry for every verified claim it selected, in the order it checked them, and
- * how many ended with each outcome. A claim the resolver threw on is an entry
- * of its own outcome, `resolver_threw`, never counted as a failed lookup.
- *
- * It holds ids, domains, outcomes and times: never a verification token or a
- * DNS record's value.
+ * What one run of the scheduled domain recheck did, claim by claim.
  *
  * @api
  *
@@ -65,8 +59,8 @@ final readonly class RecheckReport implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: every entry, in order, and the count of each
-     * outcome, with snake_case keys and times in UTC.
+     * What `json_encode()` writes: every entry, in order, and each outcome's
+     * count.
      *
      * @return array{entries: list<array{domain_id: string, connection_id: string, domain: string, outcome: string, lapses_at: ?string}>, counts: array<string, int>}
      */

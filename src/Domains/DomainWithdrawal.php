@@ -9,18 +9,10 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * What happens, inside the same transaction, when a domain stops allowing
- * linking by email (SSO-3.3, SSO-8.8): its claim is removed, a recheck finds
- * its record missing or changed and suspends linking, or it lapses at the end
- * of its grace period. Every such change calls `linkingWithdrawn()` under the
- * locks it holds (the connection's row, then the domain's), before it writes,
- * so whatever depends on the domain's verification is withdrawn atomically with
- * it.
+ * Withdraws what depends on a domain, in the same transaction, when it stops
+ * allowing linking by email.
  *
- * It deletes the domain's open link reservations, so a lapse, a suspension or a
- * removal can never leave one to be redeemed (`Links\ReservationWithdrawal`).
- * It holds nothing between calls (SSO-11.2). It is not final, so a test can
- * observe the call.
+ * Not final, so a test can observe the call.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -32,9 +24,8 @@ use SineMacula\Laravel\Sso\Models\Domain;
 readonly class DomainWithdrawal
 {
     /**
-     * Withdraw what depends on linking by the connection's domain. Called
-     * inside the transaction that withdraws it, with the connection's and the
-     * domain's rows locked.
+     * Delete the domain's open link reservations; call with the connection's
+     * and then the domain's rows locked, before writing.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain

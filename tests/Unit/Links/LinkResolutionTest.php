@@ -13,10 +13,7 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkResolutionStatus;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
 
 /**
- * Unit tests for what a verified result's link resolved to (SSO-8.2, SSO-8.3,
- * SSO-8.8): each of the four statuses, what each names, so a suspended or
- * reserved subject can never pass for an unlinked one, and the bounds of a link
- * id.
+ * Unit tests for link resolutions.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,8 +25,7 @@ use SineMacula\Laravel\Sso\Links\LinkResolution;
 final class LinkResolutionTest extends TestCase
 {
     /**
-     * An active link names the identity, its holder and the link, and is
-     * nothing but linked.
+     * An active link names the identity, its holder and the link.
      *
      * @return void
      */
@@ -47,8 +43,7 @@ final class LinkResolutionTest extends TestCase
     }
 
     /**
-     * An active link carries the provenance the linker stated of it, which a
-     * sign-in captures (SSO-9.10); no other status carries one.
+     * Only an active link carries the provenance the linker stated.
      *
      * @return void
      */
@@ -86,8 +81,7 @@ final class LinkResolutionTest extends TestCase
     }
 
     /**
-     * A reserved resolution names nothing: a reservation never resolves a
-     * sign-in, and a result is refused rather than told whose it is.
+     * A reserved resolution names nothing, so it never resolves a sign-in.
      *
      * @return void
      */
@@ -101,8 +95,7 @@ final class LinkResolutionTest extends TestCase
     }
 
     /**
-     * A suspended resolution resolves no identity, and says whose link it is
-     * for a confirming `link` alone.
+     * A suspended resolution resolves no identity but names its holder.
      *
      * @return void
      */
@@ -119,8 +112,7 @@ final class LinkResolutionTest extends TestCase
     }
 
     /**
-     * Whose link holds the subject is compared byte for byte, and a status with
-     * no holder is held by nobody.
+     * The holder is compared byte for byte; without one, nobody holds it.
      *
      * @return void
      */
@@ -138,8 +130,7 @@ final class LinkResolutionTest extends TestCase
     }
 
     /**
-     * A link whose scope could not be judged resolves nothing: it names its
-     * holder and its link, and is nothing but of unknown scope.
+     * A link of unknown scope names its holder and link but resolves nothing.
      *
      * @return void
      */
@@ -160,8 +151,7 @@ final class LinkResolutionTest extends TestCase
     }
 
     /**
-     * Rows of `[length, whether it is accepted]`: a link id's bounds, at one
-     * under, at, and one over.
+     * Rows of `[length, accepted]`: a link id at and around its bounds.
      *
      * @return iterable<string, array{0: int, 1: bool}>
      */

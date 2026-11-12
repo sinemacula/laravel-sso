@@ -8,28 +8,11 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
 
 /**
- * The settings an import of an identity provider's metadata proposes for a SAML
- * connection (SSO-2.8), for an administrator to review: nothing in it is
- * written or trusted until it is saved through
- * `Connections\ImportSaver::save()`, or
- * `Connections\ConnectionService::update()` for metadata given as XML, and
- * `Keys\KeyService::trustCertificate()`.
+ * The settings an import of SAML metadata proposes, trusted only once saved and
+ * each certificate trusted through `Keys\KeyService::trustCertificate()`.
  *
- * - `settings()`: `idp_entity_id`, `sso_url` and `sso_binding`, as the
- *   connection's settings name them, ready to save;
- * - `signingCertificates()` and `encryptionCertificates()`: each certificate's
- *   PEM and lower-case hex SHA-256 fingerprint, the fingerprint an
- *   administrator compares with the one the provider gave them out of band;
- * - `nameIdFormats()`: the NameID formats the provider offers, for choosing
- *   the connection's `name_id_format`, which the import never proposes;
- * - `validUntil()`: the earliest `validUntil` of the metadata, or `null`;
- * - `fetch()`: the fetch it came from, to give `ImportSaver::save()` so the
- *   stale limit counts from it, or `null` for metadata given as XML.
- *
- * Everything in it came from the metadata, which whoever serves its URL
- * controls, so it is held in a `\SensitiveParameterValue`: a dump and
- * `json_encode()` show the names and how many of each, never a value, and it
- * refuses to be serialised or unserialised.
+ * Its values are untrusted, so a dump shows names and counts alone and it
+ * refuses to be serialised.
  *
  * @api
  *
@@ -65,8 +48,8 @@ final readonly class ProposedSettings implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the names of the settings and how many certificates
-     * and formats it holds, never a value.
+     * What a dump shows: the setting names and how many certificates and
+     * formats, never a value.
      *
      * @return array<string, mixed>
      */
@@ -113,8 +96,7 @@ final readonly class ProposedSettings implements \JsonSerializable
     }
 
     /**
-     * What the read metadata proposes, with the moment it was validated when it
-     * was fetched.
+     * What the read metadata proposes, with when it was validated if fetched.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
      * @param  ?\Carbon\CarbonImmutable  $fetchedAt
@@ -149,7 +131,8 @@ final readonly class ProposedSettings implements \JsonSerializable
     }
 
     /**
-     * The signing certificates proposed, each with its fingerprint.
+     * The signing certificates proposed, each with the fingerprint an
+     * administrator checks out of band.
      *
      * @return list<Certificate>
      */
@@ -170,7 +153,7 @@ final readonly class ProposedSettings implements \JsonSerializable
     }
 
     /**
-     * The NameID formats the provider offers.
+     * The NameID formats the provider offers; the import never proposes one.
      *
      * @return list<string>
      */

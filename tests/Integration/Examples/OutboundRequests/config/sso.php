@@ -3,12 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The published `config/sso.php` of `docs/guides/outbound-requests.md`
- * (SSO-2.9, SSO-12.5): a partner's network, one of the application's own
- * public addresses and an IPv6 range refused on top of the ranges the fetcher
- * always refuses, none of them among those. `OutboundRequestsExampleTest` lays
- * it over the package's configuration, as Laravel lays a published file over a
- * package's, and asks the fetcher's address policy about each.
+ * The published `config/sso.php` of `docs/guides/outbound-requests.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

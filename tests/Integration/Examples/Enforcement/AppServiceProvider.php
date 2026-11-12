@@ -10,12 +10,8 @@ use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 
 /**
- * The example application's service provider (SSO-4.2, SSO-4.4, SSO-4.5): it
- * binds the application's tenant tree as the enforcement inheritance, its
- * break-glass administrator as the exemption, and its own session revocation,
- * each in place of the package's default. It registers after the package's
- * provider, as an application's providers do, so its bindings replace the
- * defaults as any later binding does.
+ * The example application's service provider: binds its enforcement
+ * inheritance, exemption and session revocation over the package's defaults.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

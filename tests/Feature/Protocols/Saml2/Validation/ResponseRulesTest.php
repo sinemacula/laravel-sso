@@ -21,12 +21,7 @@ use Tests\TestCase;
 
 /**
  * Feature tests for the rules of a SAML response's envelope and its assertion's
- * provenance (SSO-6.2, SSO-6.4, SSO-6.8): each issuer present and equal to the
- * identity provider's entity id exactly; the `Destination` equal to the
- * assertion consumer service and required of a signed response; encryption
- * required refusing a plain assertion; a wanted assertion signature refusing
- * one covered only by the response's; the envelope's rules for an unsuccessful
- * response; and the order they answer in.
+ * provenance.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -110,9 +105,7 @@ final class ResponseRulesTest extends TestCase
     }
 
     /**
-     * An unsuccessful response is held to its own issuer, its only one: one
-     * that names none is refused as one that names another is, and one that
-     * names the identity provider is not.
+     * An unsuccessful response must name the identity provider as its issuer.
      *
      * @return void
      */
@@ -148,9 +141,8 @@ final class ResponseRulesTest extends TestCase
     }
 
     /**
-     * The `Destination` must be present and the assertion consumer service
-     * exactly, whether the response is signed or not; for an unsuccessful
-     * response too.
+     * The `Destination` must be exactly the assertion consumer service, signed
+     * or not, unsuccessful too.
      *
      * @param  ?string  $destination
      * @param  bool  $signed
@@ -219,8 +211,7 @@ final class ResponseRulesTest extends TestCase
 
     /**
      * A successful, solicited response with the envelope given over the
-     * defaults (the identity provider's issuer, the assertion consumer service
-     * as destination), signed or not.
+     * defaults, signed or not.
      *
      * @param  array<string, mixed>  $envelope
      * @param  bool  $signed

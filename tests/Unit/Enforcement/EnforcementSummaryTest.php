@@ -10,10 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementSummary;
 
 /**
- * Unit tests for the summary of a tenant's enforcement: a tenant with no rule
- * stored is off with no connection, version or time; ids are kept each once, in
- * id order, compared byte for byte; and the encoding has snake_case keys and
- * the time in UTC.
+ * Unit tests for a tenant's enforcement summary.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,8 +38,7 @@ final class EnforcementSummaryTest extends TestCase
     }
 
     /**
-     * The ids are each kept once, in id order, compared byte for byte, and
-     * anything but a string is dropped.
+     * Ids are kept once each in id order, and non-strings are dropped.
      *
      * @return void
      */
@@ -53,8 +49,7 @@ final class EnforcementSummaryTest extends TestCase
     }
 
     /**
-     * The encoding has snake_case keys, the ids as given and the time as an ISO
-     * 8601 string in UTC, whatever the time's own zone.
+     * The encoding has snake_case keys and the time in UTC.
      *
      * @return void
      */

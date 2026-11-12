@@ -7,12 +7,7 @@ namespace Tests\Integration\Examples\StartingAFlow;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The example application's user, an Eloquent model identified by a string key
- * (SSO-5.1, SSO-5.10): the caller who links an identity provider or
- * reauthenticates through one, named to the package by its morph class and key.
- *
- * It is never stored: an example makes one in memory, as the application's
- * authentication hands its own user to a start endpoint.
+ * The example application's user, keyed by a string and never stored.
  *
  * @method int|string getKey() The key, a string here, an integer in many applications.
  *

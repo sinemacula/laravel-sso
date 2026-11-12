@@ -10,9 +10,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * Makes domain claims for a test to work on. A test that uses it uses
- * `UsesConnections` too, since a claim belongs to a connection, and calls
- * `usePackageTables()` in its `setUp()`, so the tables exist.
+ * Makes domain claims for a test to work on. A test that uses it calls
+ * `usePackageTables()` in its `setUp()`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,10 +21,8 @@ use SineMacula\Laravel\Sso\Models\Domain;
 trait UsesDomains
 {
     /**
-     * Make and save the connection's claim of the domain: pending, claimed at
-     * the clock's now with the default record name and a fixed token, expiring
-     * a week later, unless the attributes given say otherwise. A `verified`
-     * state given without times is verified and checked at the claim's time.
+     * Make and save a pending claim of the domain, unless overridden; a
+     * `verified` state given without times is verified at the claim's time.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $domain

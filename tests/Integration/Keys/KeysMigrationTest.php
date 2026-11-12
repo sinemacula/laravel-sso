@@ -13,13 +13,8 @@ use SineMacula\Laravel\Sso\Database\TableAlreadyExistsException;
 use Tests\TestCase;
 
 /**
- * Integration tests for the shipped keys and certificates migration, on
- * whichever engine the suite runs against: the table's shape, its indexes, the
- * one row per key or certificate of a use in a connection, the guard against an
- * existing table and the rollback.
- *
- * Marked `#[CoversNothing]` because a migration is an anonymous class PHPUnit
- * cannot attribute coverage to.
+ * Integration tests for the keys and certificates migration. Marked
+ * `#[CoversNothing]` as a migration is an anonymous class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,8 +59,8 @@ final class KeysMigrationTest extends TestCase
     }
 
     /**
-     * The table has exactly these columns, those a trusted certificate or a key
-     * not yet rotated leaves empty nullable, with the id as its primary key.
+     * The table has exactly these columns, the optional ones nullable, with the
+     * id as primary key.
      *
      * @return void
      */
@@ -103,9 +98,8 @@ final class KeysMigrationTest extends TestCase
     }
 
     /**
-     * The secondary indexes: the fingerprint unique per use in a connection,
-     * the rotation's lookup by state, and the expiry report's by end of
-     * validity.
+     * The fingerprint is unique per use in a connection, and rotation and
+     * expiry lookups are indexed.
      *
      * @return void
      */
@@ -132,8 +126,8 @@ final class KeysMigrationTest extends TestCase
     }
 
     /**
-     * A second row with the same fingerprint for the same use in the same
-     * connection is refused; another use or connection is not.
+     * The same fingerprint for the same use in a connection is refused; another
+     * use or connection is not.
      *
      * @return void
      */
@@ -160,8 +154,8 @@ final class KeysMigrationTest extends TestCase
     }
 
     /**
-     * Running the migration over an existing table is refused before any
-     * change, naming the setting that renames the table; the rollback drops it.
+     * An existing table is refused before any change, naming the rename
+     * setting; the rollback drops it.
      *
      * @return void
      */

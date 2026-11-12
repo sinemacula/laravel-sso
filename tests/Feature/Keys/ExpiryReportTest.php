@@ -36,15 +36,7 @@ use Tests\Fixtures\Pruning\TickingClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the nearing-expiry report (SSO-2.6, SSO-11.12, SSO-10.3):
- * the window from the largest threshold and a given one, both edges, expired
- * rows included, a retiring key past its overlap and a key with no end of
- * validity left out, the order across pages, one `KeyNearingExpiry` for the
- * most urgent threshold reached with no acting identity, monotonic escalation,
- * what a change of the thresholds does, what is listed whatever was notified, a
- * row whose connection is gone skipped, an open transaction refused, every read
- * on the write connection, a connection of the storage's own, renamed and
- * schema-qualified tables, and a day count out of range refused.
+ * Feature tests for the nearing-expiry report.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -92,9 +84,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * With no window given, the report lists up to the largest threshold, 30
-     * days by default: a key ending exactly then is listed, one ending a second
-     * later is not.
+     * With no window given the report lists up to the largest threshold, 30
+     * days by default, inclusive.
      *
      * @return void
      */
@@ -145,8 +136,7 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A window given replaces the default for what is listed, with both edges
-     * as before.
+     * A given window replaces the default, with the same edges.
      *
      * @return void
      */
@@ -162,9 +152,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A narrower window lists less but warns of the same keys: a threshold a
-     * key has reached is not missed because an operator looked at the next
-     * three days. Those it does not list are still counted among the notices.
+     * A narrower window lists less but still warns of every key that reached a
+     * threshold.
      *
      * @return void
      */
@@ -185,8 +174,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A wider window lists more, a key that has reached no threshold marked as
-     * not due, and warns of nothing beyond the largest threshold.
+     * A wider window lists keys that reached no threshold as not due, and warns
+     * of nothing beyond the largest threshold.
      *
      * @return void
      */
@@ -205,9 +194,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A key or certificate whose validity has already ended is listed, the one
-     * ending at this very second included, as expired: its expiry is reported,
-     * never enforced.
+     * A key whose validity has ended, including this second, is listed as
+     * expired; expiry is reported, never enforced.
      *
      * @return void
      */
@@ -226,8 +214,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A retiring key whose overlap has ended is left out; one still in its
-     * overlap, and a current and a next key, are listed.
+     * A retiring key past its overlap is left out; one within it, and current
+     * and next keys, are listed.
      *
      * @return void
      */
@@ -247,8 +235,7 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A key with no end of validity is never listed, and with nothing to list
-     * nothing is dispatched.
+     * A key with no end of validity is never listed, and nothing is dispatched.
      *
      * @return void
      */
@@ -262,8 +249,7 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * The rows are ordered by the end of their validity, then by id, across
-     * connections.
+     * Rows are ordered by end of validity, then id, across connections.
      *
      * @return void
      */
@@ -281,8 +267,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * More keys than a page are all listed, once each and in order, those
-     * sharing a second by their id, in one query per page and connection list.
+     * Keys spanning several pages are each listed once in order, ties by id,
+     * with one query per page and connection list.
      *
      * @return void
      */
@@ -317,9 +303,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Each row due is dispatched once as `KeyNearingExpiry`, with its id, use,
-     * fingerprint, end of validity and the threshold reached, its connection,
-     * tenant and protocol, and no acting identity; the entries match.
+     * Each due row is dispatched once as `KeyNearingExpiry` with its details
+     * and no acting identity.
      *
      * @return void
      */
@@ -372,8 +357,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds left, the threshold reached]`: the most urgent
-     * threshold reached, at each side of every default threshold.
+     * Rows of `[seconds left, threshold reached]` either side of every default
+     * threshold.
      *
      * @return iterable<string, array{0: int, 1: ?int}>
      */
@@ -394,8 +379,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * The event names the most urgent threshold reached, and only one is sent,
-     * whatever was passed since the last run.
+     * Only the most urgent threshold reached is sent, whatever was passed since
+     * the last run.
      *
      * @param  int  $left
      * @param  ?int  $threshold
@@ -423,8 +408,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A warning is sent once per threshold, however often the report runs, and
-     * the marker is written: the threshold, when, and no claim left behind.
+     * A warning is sent once per threshold and its marker written with no claim
+     * left.
      *
      * @return void
      */
@@ -446,9 +431,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A key escalates as time passes: each more urgent threshold is warned of
-     * once, the expired one last, and those passed while nothing ran are
-     * skipped.
+     * A key escalates through each more urgent threshold once, skipping those
+     * passed while nothing ran.
      *
      * @return void
      */
@@ -482,9 +466,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * After a change of the thresholds the report only ever escalates: a less
-     * urgent threshold than the last warned of stays quiet, and the next more
-     * urgent one is warned of.
+     * After a threshold change the report only escalates, never warning of a
+     * less urgent threshold.
      *
      * @return void
      */
@@ -516,8 +499,7 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * What is listed does not depend on what was notified: an expired key
-     * already warned of is still listed on every run, as expired.
+     * An expired key already warned of is still listed on every run.
      *
      * @return void
      */
@@ -604,8 +586,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * The window is counted from the one instant the run read, however the
-     * clock moves as it goes: a key's threshold and listing do not drift.
+     * The window is counted from one instant however the clock moves during the
+     * run.
      *
      * @return void
      */
@@ -640,8 +622,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A row whose connection is gone is skipped before anything is judged of
-     * it: one that has reached no threshold is neither listed nor counted.
+     * A row whose connection is gone is skipped before it is judged, neither
+     * listed nor counted.
      *
      * @return void
      */
@@ -679,8 +661,7 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A key that has reached no threshold takes no lock and writes nothing: the
-     * run reads the page and its connections alone.
+     * A key that has reached no threshold takes no lock and writes nothing.
      *
      * @return void
      */
@@ -700,8 +681,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A page's connections are read in one query naming each connection once,
-     * in the order its first key is read.
+     * A page's connections are read in one query, each once, in order of first
+     * key.
      *
      * @return void
      */
@@ -723,9 +704,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * The report writes nothing but its marker: every other column of the keys,
-     * and the connections, are as they were, and an expired certificate is
-     * still trusted.
+     * The report writes only its marker, and an expired certificate stays
+     * trusted.
      *
      * @return void
      */
@@ -746,8 +726,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Inside a transaction a report refuses, since a warning is dispatched
-     * before it is recorded, and neither lists nor dispatches.
+     * A report inside a transaction is refused, since a warning is dispatched
+     * before it is recorded.
      *
      * @return void
      *
@@ -774,8 +754,7 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Every read is made on the write connection: with the read connection
-     * unusable, the report still answers.
+     * Every read uses the write connection.
      *
      * @return void
      */
@@ -797,10 +776,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * With the storage on a connection of its own and nothing on the default,
-     * the key is listed, warned of and marked there, and every transaction of
-     * the run, the claim's and the marker's, is opened there; a transaction
-     * open there refuses the run.
+     * On a storage connection of its own, the report lists, warns, marks and
+     * opens every transaction there, and refuses a transaction open there.
      *
      * @return void
      */
@@ -856,8 +833,7 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A schema-qualified table is listed from, warned of and marked where it
-     * lives.
+     * A schema-qualified table is listed, warned of and marked where it lives.
      *
      * @return void
      */
@@ -908,8 +884,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * A day count out of range is the application's mistake: refused with an
-     * `InvalidArgumentException`, before anything is read or reported.
+     * A day count out of range is refused with an `InvalidArgumentException`
+     * before anything is read.
      *
      * @param  int  $days
      * @return void
@@ -947,9 +923,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Make and save a key or certificate of the connection, the SAML one unless
-     * another is given, whose validity ends the seconds given from now (never,
-     * for `null`), with a certificate of its own.
+     * Save a key or certificate of the connection, SAML by default, ending the
+     * given seconds from now (`null` for never).
      *
      * @param  ?int  $endsIn
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
@@ -997,9 +972,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Run the test with the connections table and the keys and certificates
-     * table made afresh under the settings, on the new connection they name
-     * when one does, and dropped again however it ends.
+     * Run the test with the connections and keys tables recreated under the
+     * settings, dropping them afterwards.
      *
      * @param  array<string, string>  $settings
      * @param  \Closure(): void  $test
@@ -1024,9 +998,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Run the shipped migrations of the connections table and the keys and
-     * certificates table up, in order, or down, in reverse, under the settings
-     * as they stand.
+     * Run the shipped connections and keys migrations up in order, or down in
+     * reverse.
      *
      * @param  bool  $up
      * @return void
@@ -1050,8 +1023,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Assert a run lists and warns of the key, and stores its marker with no
-     * claim left, wherever the keys are.
+     * Assert a run lists and warns of the key and stores its marker with no
+     * claim left.
      *
      * @param  string  $key
      * @return void
@@ -1069,8 +1042,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * The statements the storage connection ran from the action on, each by its
-     * first word, lower case, and its bindings.
+     * The storage connection's statements from the action, by lower-case first
+     * word, with bindings.
      *
      * @param  \Closure(): mixed  $action
      * @return list<array{verb: string, bindings: array<array-key, mixed>}>
@@ -1143,8 +1116,8 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * The ids of the keys reported nearing expiry since recording last started,
-     * in order.
+     * The ids of keys reported nearing expiry since recording started, in
+     * order.
      *
      * @return list<string>
      */
@@ -1163,8 +1136,7 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
-     * Every row of the connections table and the keys table, as stored, in
-     * order of id.
+     * Every row of the connections and keys tables, by id.
      *
      * @return array{connections: list<array<array-key, mixed>>, keys: list<array<array-key, mixed>>}
      */

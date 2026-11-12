@@ -11,50 +11,10 @@ use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 
 /**
- * The default enforcement contract (SSO-4.1, SSO-4.2, SSO-4.6): it answers from
- * the package's enforcement table, on the write connection, for the tenant
- * `Contracts\EnforcementInheritance` names, every time it is asked.
+ * Default enforcement contract, read uncached from the enforcement table.
  *
- * While the `enforcement` feature is off nothing is required, and nothing is
- * read or asked; a malformed switch fails closed with an
- * `InvalidArgumentException`. Otherwise the inheritance contract, resolved from
- * the container on each call, names the enforcing tenant, and that tenant's row
- * is read: none, or one that is off, requires nothing; one that is on requires
- * one of its stored connections that still exists, belongs to the enforcing
- * tenant byte for byte and is enabled, read in one statement. A rule whose
- * every connection has since gone is still required, and satisfied by none. The
- * policy carries the row's version, so an adapter can recheck a session checked
- * against an older one.
- *
- * `policy()`'s reads take no lock, so asked inside a transaction that has
- * already read, it answers as of that transaction's snapshot (MySQL's
- * `REPEATABLE READ`), which may predate a change committed since; and even a
- * current read alone does not stop the rule changing before the session it
- * admits commits. Ask it outside a transaction for the rule as it is now, and
- * recheck a session against the policy's version.
- *
- * An admission that must not race a change of the rule takes `lock()` first,
- * inside its transaction on the storage connection, as the package's own
- * redemption and completion do: the inheritance contract names the enforcing
- * tenant, that tenant's row is locked through `EnforcementLock` (inserted
- * unconfigured when it has none), and then, in one locking statement in id
- * order, the connections the admission goes through and those the rule names.
- * The rule cannot change, nor a satisfying connection be disabled, until that
- * transaction ends, so `LockedEnforcement::policy()` answers what the rule is
- * at its commit, and a change that waited revokes what it admitted. While the
- * feature is off it locks, reads and asks nothing, and answers `null`. The
- * inheritance contract must answer in a way that is safe inside the caller's
- * transaction: from state that does not change under it, or that it reads with
- * a current read.
- *
- * Nothing is cached: a change is answered on the next call. A database error
- * propagates (SSO-11.4); it never answers that nothing is required when it
- * cannot tell. An empty or overlong tenant id and an empty application are the
- * application's mistake (`InvalidArgumentException`); an inheritance contract
- * that names no tenant is a `LogicException`.
- *
- * It holds the container, the finder and the lock, none of which keeps anything
- * of one call for the next (SSO-11.2), and is bound scoped.
+ * `policy()` takes no lock; an admission that must not race a rule change calls
+ * `lock()` inside its transaction on the storage connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -81,8 +41,7 @@ final readonly class DatabaseEnforcement implements Enforcement
     ) {}
 
     /**
-     * The enforcement that applies to sessions active in the tenant, on the
-     * application.
+     * The enforcement for sessions in the tenant on the application.
      *
      * @param  string  $tenantId
      * @param  string  $application
@@ -106,11 +65,8 @@ final readonly class DatabaseEnforcement implements Enforcement
     }
 
     /**
-     * Lock the enforcement that applies to sessions active in the tenant, on
-     * the application, for an admission through the connections given, inside
-     * the caller's transaction on the storage connection: the enforcing
-     * tenant's row first, then those connections and the rule's, in id order.
-     * `null`, with nothing locked, read or asked, while the feature is off.
+     * Lock the enforcing tenant's row, then the given and named connections in
+     * id order; `null`, locking nothing, while the feature is off.
      *
      * @param  string  $tenantId
      * @param  string  $application
@@ -141,8 +97,7 @@ final readonly class DatabaseEnforcement implements Enforcement
     }
 
     /**
-     * The policy the enforcing tenant's stored rule gives sessions active in
-     * the tenant.
+     * The policy the enforcing tenant's stored rule gives.
      *
      * @param  string  $tenantId
      * @param  string  $enforcingTenantId
@@ -159,8 +114,7 @@ final readonly class DatabaseEnforcement implements Enforcement
     }
 
     /**
-     * The tenant whose rule applies, as the inheritance contract bound now
-     * names it.
+     * The tenant whose rule applies, as the inheritance contract names it.
      *
      * @param  string  $tenantId
      * @param  string  $application

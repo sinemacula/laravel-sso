@@ -13,44 +13,9 @@ use SineMacula\Laravel\Sso\Pruning\Enums\PruneKind;
 use SineMacula\Laravel\Sso\Pruning\Enums\PruneStatus;
 
 /**
- * Deletes what the package no longer needs (SSO-11.11): authorisation requests
- * and handoff codes past their expiry and the retention, and expired single-use
- * keys, link reservations, pending domain claims and rate limit counters, the
- * last on their own connection. `Pruning\PruneTarget` holds the eligibility of
- * each. `sso:prune` runs it, and several servers may at once.
+ * Deletes expired rows the package no longer needs, in short batches.
  *
- * A run reads the clock once, so every kind is judged by one instant. Each kind
- * then takes its turn: at most `batch_size` primary keys are selected on the
- * write connection, by keyset, and deleted with the eligibility repeated. The
- * scan moves on by what it selected, so a batch another server has already
- * deleted does not end it, and it counts what was deleted, never what was
- * selected. Each batch commits by itself, a batch of reservations one
- * connection at a time, and each is counted as it commits, so a run holds no
- * long transaction and reports what it committed however it ends.
- *
- * A kind stops at `max_rows_per_kind` rows looked at, so every kind gets its
- * turn however large another's backlog: the report says `incomplete` when more
- * was eligible, and the next run goes on where this one would have. A drain
- * takes no cap, and ends on the rows eligible at its one instant.
- *
- * An exception stops the kind it came from and the others still take their
- * turn. The run then logs its one summary line and throws
- * `PruneFailedException`, holding the report of what committed; a run begun
- * again finds what is left, since what it would delete is still eligible. A
- * summary line the logger refused throws it as well, holding the report, any
- * kind's failure and the logger's exception, so what committed is never lost to
- * a log that could not be written.
- *
- * Grace is not what makes this safe. A completion or a redemption delayed past
- * a row's retention is refused by its own expiry checks, and a locked recheck
- * that finds the row gone refuses as well.
- *
- * It refuses to run inside a transaction on either connection it uses (a
- * `LogicException`), since a caller's transaction would turn every short batch
- * into one long one. It dispatches no event, being housekeeping, and logs one
- * line per run: the outcome, the duration, the counts, and for a kind that
- * failed its exception's class alone. It holds the settings, the clock and the
- * logger, none of which keeps anything of one run for the next (SSO-11.2).
+ * Call outside any transaction; several servers may run it at once.
  *
  * @api
  *
@@ -80,13 +45,12 @@ final readonly class Pruner
         /** The clock each run reads its one instant from. */
         private Clock $clock,
 
-        /** The sanitising logger the run's one line goes to. */
+        /** The sanitising logger. */
         private LoggerInterface $logger,
     ) {}
 
     /**
-     * Give every kind its turn at one instant and report what was deleted; a
-     * drain looks at every row eligible at that instant, whatever the work cap.
+     * Prune every kind at one instant; a drain ignores the per-kind work cap.
      *
      * @param  bool  $drain
      * @return \SineMacula\Laravel\Sso\Pruning\PruneReport
@@ -119,9 +83,7 @@ final readonly class Pruner
     }
 
     /**
-     * One kind's turn: delete batch after batch until nothing more is eligible
-     * or the work cap is reached. Each transaction of a batch is counted as it
-     * commits, so an exception ends the turn with the count of what has.
+     * Delete batches of one kind until none is left or the cap is reached.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\PruneTarget  $target
      * @param  int  $batch
@@ -155,9 +117,7 @@ final readonly class Pruner
     }
 
     /**
-     * Delete a batch one committed transaction at a time, adding each one's
-     * count as it commits, so that an exception from a later one leaves the
-     * count of those before it.
+     * Delete a batch unit by unit, counting each as it commits.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\PruneTarget  $target
      * @param  list<\SineMacula\Laravel\Sso\Pruning\PruneCandidate>  $found
@@ -174,7 +134,7 @@ final readonly class Pruner
     }
 
     /**
-     * The first exception of the sweeps, for the failure to chain.
+     * The first sweep exception, for the failure to chain.
      *
      * @param  array<string, \SineMacula\Laravel\Sso\Pruning\PruneSweep>  $sweeps
      * @return ?\Throwable
@@ -191,7 +151,7 @@ final readonly class Pruner
     }
 
     /**
-     * The report of the run begun at the instant, from each kind's turn.
+     * Build the run's report from each kind's sweep.
      *
      * @param  \Carbon\CarbonImmutable  $now
      * @param  array<string, \SineMacula\Laravel\Sso\Pruning\PruneSweep>  $sweeps
@@ -214,7 +174,7 @@ final readonly class Pruner
     }
 
     /**
-     * How a run with those kinds incomplete and failed ended.
+     * The run's status from its incomplete and failed kinds.
      *
      * @param  list<\SineMacula\Laravel\Sso\Pruning\Enums\PruneKind>  $incomplete
      * @param  array<string, class-string<\Throwable>>  $failures
@@ -230,10 +190,7 @@ final readonly class Pruner
     }
 
     /**
-     * Log the run's one line: an error when it failed, a warning when it is
-     * incomplete, and for information otherwise. Answers what the logger threw,
-     * so the report still reaches the caller, or `null` once the line is
-     * written.
+     * Log the run's one line, returning what the logger threw, if anything.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\PruneReport  $report
      * @return ?\Throwable

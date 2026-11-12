@@ -5,12 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Authentication\External;
 
 /**
- * A stand-in for `laravel-authentication`'s real `External\ProviderContext`,
- * which this package does not install, with the exact signatures of its
- * constructor and of the `toArray()` the guide's contributor reads
- * (`docs/guides/integrating-with-laravel-iam.md`): a map with string keys,
- * holding at least one value, kept as given, and refused as the sibling's is
- * when it is not one, or takes more than 4,096 bytes as JSON.
+ * A stand-in for `laravel-authentication`'s `External\ProviderContext`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -10,12 +10,7 @@ use SineMacula\Laravel\Authentication\External\ExternalEvidence;
 use SineMacula\Laravel\Authentication\External\ProviderContext;
 
 /**
- * A stand-in for `laravel-authentication`'s real `Proofs\Provenance`, which
- * this package does not install, with its exact constructor
- * (`docs/guides/integrating-with-laravel-iam.md`): authentication's own,
- * narrower record of a session's external provenance (whole seconds, one
- * deadline), and the provider context the adapter gave at sign-in, which is
- * what the guide's contributor reads.
+ * A stand-in for `laravel-authentication`'s `Proofs\Provenance`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

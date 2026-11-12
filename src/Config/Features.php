@@ -9,16 +9,7 @@ use Illuminate\Support\Facades\Config;
 use SineMacula\Laravel\Sso\Config\Enums\Feature;
 
 /**
- * Which features the application has switched on in `sso.features`, read on
- * each call so nothing is kept across requests (SSO-11.2).
- *
- * `enabled()` is the answer a flow acts on: a switch that is neither on nor off
- * fails closed with an `InvalidArgumentException` naming its key. `requested()`
- * is the answer the configuration checks act on: a malformed switch counts as
- * on there, so the settings it would enable are checked as well as the switch
- * itself, and a check never fails to say why. `requested()` and `isInUse()`
- * read the repository they are given, so a composing package's check can pass
- * its own.
+ * Which features are switched on in `sso.features`, read on each call.
  *
  * @api
  *
@@ -33,7 +24,7 @@ final class Features
     private function __construct() {}
 
     /**
-     * Whether the feature is switched on.
+     * The answer a flow acts on; a malformed switch fails closed.
      *
      * @param  \SineMacula\Laravel\Sso\Config\Enums\Feature  $feature
      * @return bool
@@ -46,8 +37,8 @@ final class Features
     }
 
     /**
-     * Whether the feature is switched on, or its switch is malformed and so may
-     * have been meant to be.
+     * The answer the configuration checks act on: a malformed switch counts as
+     * on, so what it would enable is checked too.
      *
      * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  \SineMacula\Laravel\Sso\Config\Enums\Feature  $feature
@@ -59,8 +50,8 @@ final class Features
     }
 
     /**
-     * Whether the package is in use: a protocol is switched on, or its switch
-     * is malformed. Every check of what a flow needs applies only then.
+     * Whether any protocol is requested; checks of what a flow needs apply only
+     * then.
      *
      * @param  \Illuminate\Contracts\Config\Repository  $config
      * @return bool

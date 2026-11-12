@@ -8,26 +8,10 @@ use Psr\Log\LoggerInterface;
 use SineMacula\Laravel\Sso\Contracts\DnsResolver;
 
 /**
- * The default DNS resolver (SSO-3.2, decision D3): the system resolver, through
- * `dns_get_record()` for the name's TXT records.
+ * The default DNS resolver, through the system's `dns_get_record()`.
  *
- * The name is looked up as absolute, with a trailing dot, so the system
- * resolver's search list and `ndots` never put another name in its place: an
- * answer under a search domain is never read as the claimed domain's record.
- *
- * It has no timeout of its own, and PHP cannot interrupt `dns_get_record()`, so
- * a slow resolver holds the request, job or command for as long as the system
- * allows: bind your own `Contracts\DnsResolver` for a bounded deadline, DNSSEC
- * validation or DNS over HTTPS.
- *
- * An answer with no TXT record, which is how PHP reports a name that does not
- * exist too, is `absent`. A lookup that fails (`false`), or answers with a
- * warning, is `lookup_failed`, never `absent`: it proves nothing either way.
- * The failure is logged with the name and PHP's warning, through the package's
- * sanitising logger, and never a record. Of the records found, the first
- * `MAX_RECORDS` of at most `MAX_RECORD_LENGTH` bytes are kept, each record's
- * character-strings joined into one value; an answer whose every TXT record is
- * left out is `absent`.
+ * PHP cannot interrupt the lookup, so it has no timeout; bind your own
+ * `Contracts\DnsResolver` for a deadline.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,15 +38,15 @@ final readonly class SystemDnsResolver implements DnsResolver
         /** Where a failed lookup is logged: the package's sanitising logger. */
         private LoggerInterface $logger,
 
-        // Not promoted: `dns_get_record()` stands in when none is given; a test
-        // gives its own, so no name is looked up over the network
+        // Not promoted: defaults to `dns_get_record()`; a test gives its own
         ?\Closure $lookup = null,
     ) {
         $this->lookup = $lookup ?? dns_get_record(...);
     }
 
     /**
-     * The TXT records at the name.
+     * The TXT records at the name; a failure or warning is `lookup_failed`,
+     * never `absent`.
      *
      * @param  string  $name
      * @return \SineMacula\Laravel\Sso\Domains\DnsLookup
@@ -86,6 +70,7 @@ final readonly class SystemDnsResolver implements DnsResolver
         });
 
         try {
+            // Absolute, so the search list and `ndots` never substitute a name
             $answer = ($this->lookup)($name . '.', DNS_TXT);
         } finally {
             restore_error_handler();
@@ -103,8 +88,7 @@ final readonly class SystemDnsResolver implements DnsResolver
     }
 
     /**
-     * The value of each TXT record of the answer, its character-strings joined,
-     * up to `MAX_RECORDS` of at most `MAX_RECORD_LENGTH` bytes.
+     * Each TXT record's value, up to `MAX_RECORDS` within `MAX_RECORD_LENGTH`.
      *
      * @param  array<array-key, mixed>  $answer
      * @return list<string>
@@ -132,8 +116,8 @@ final readonly class SystemDnsResolver implements DnsResolver
     }
 
     /**
-     * The record's value: its `entries` joined, or its `txt` when it has no
-     * entries; `null` when it holds neither as strings.
+     * The record's `entries` joined, else its `txt`; `null` when neither is
+     * usable.
      *
      * @param  array<array-key, mixed>  $record
      * @return ?string

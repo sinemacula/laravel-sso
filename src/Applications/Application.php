@@ -13,23 +13,10 @@ use SineMacula\Laravel\Sso\Config\IntegerSetting;
 use SineMacula\Laravel\Sso\Config\UrlSetting;
 
 /**
- * One application people sign into through a connection (SSO-5.5, decision D7),
- * as `sso.applications.<name>` registers it: the suite's own front ends, a
- * fixed set deployed with the code.
+ * An application registered under `sso.applications.<name>`.
  *
- * It has exactly one redirect URI, used exactly as configured: never chosen,
- * extended or altered by anything in a request, and there is no return URL. It
- * says whether it allows sign-in through an external provider (off unless set),
- * where a handoff code is delivered on the redirect URI, whether it offers
- * discovery and the fallback URL a miss leads to, whether a sign-in that
- * resolves to no identity is still handed off, and how long a handoff code
- * lives.
- *
- * Built only by `fromSettings()`, which judges a configuration the one way both
- * the boot check (`Config\Checks\ApplicationsCheck`) and the flows judge it,
- * failing closed with an `InvalidArgumentException` that names the key and what
- * it must be, never the configured value. Any setting the package does not have
- * is refused, so a misspelt one is never silently left at its default.
+ * Its one redirect URI is used exactly as configured; nothing in a request can
+ * change it.
  *
  * @api
  *
@@ -41,13 +28,13 @@ final readonly class Application
     /** @var list<string> The settings an application may set. */
     public const array SETTINGS = ['redirect_uri', 'external_sign_in', 'delivery', 'discovery', 'unlinked_handoffs', 'handoff_ttl_seconds'];
 
-    /** @var int The handoff code's default lifetime, in seconds (SSO-9.2). */
+    /** @var int The handoff code's default lifetime, in seconds. */
     public const int HANDOFF_TTL_SECONDS = 60;
 
-    /** @var int The longest a handoff code may live, in seconds (SSO-9.2). */
+    /** @var int The longest a handoff code may live, in seconds. */
     public const int MAX_HANDOFF_TTL_SECONDS = 300;
 
-    /** @var string An application's name: a lower-case letter, then up to 63 lower-case letters, digits, `_` and `-`, with nothing after them. */
+    /** @var string An application's name. */
     private const string NAME = '/^[a-z][a-z0-9_\-]{0,63}$/D';
 
     /** @var list<string> The discovery settings. */
@@ -70,19 +57,19 @@ final readonly class Application
         /** The application's name, its key under `sso.applications`. */
         public string $name,
 
-        /** The one redirect URI configured, exactly as configured. */
+        /** The one redirect URI, exactly as configured. */
         public string $redirectUri,
 
-        /** Whether the configuration allows sign-in through an external provider; the application policy decides. */
+        /** Whether the configuration allows external sign-in; the policy decides. */
         public bool $externalSignIn,
 
         /** Where the handoff code goes on the redirect URI. */
         public HandoffDelivery $delivery,
 
-        /** Whether the application offers discovery, while the `discovery` feature is on. */
+        /** Whether the application offers discovery, while the feature is on. */
         public bool $discoveryEnabled,
 
-        /** Where a discovery miss leads; set whenever discovery is offered with the feature on. */
+        /** Where a discovery miss leads; set whenever discovery is in effect. */
         public ?string $discoveryFallbackUrl,
 
         /** Whether a sign-in that resolves to no identity is still handed off. */
@@ -93,8 +80,8 @@ final readonly class Application
     ) {}
 
     /**
-     * The application the settings under the name describe, judged against the
-     * features the repository switches on.
+     * Build the application from its settings, refusing unknown or malformed
+     * ones without echoing their values.
      *
      * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  string  $name
@@ -124,8 +111,7 @@ final readonly class Application
     }
 
     /**
-     * Whether the name is an application's name: a lower-case letter, then up
-     * to 63 lower-case letters, digits, `_` and `-`.
+     * Whether the name is a valid application name.
      *
      * @param  string  $name
      * @return bool
@@ -136,8 +122,7 @@ final readonly class Application
     }
 
     /**
-     * The settings, once the name is a name and they are an array holding no
-     * setting the package does not have.
+     * The settings, once the name is valid and no setting is unknown.
      *
      * @param  string  $name
      * @param  string  $key
@@ -169,9 +154,8 @@ final readonly class Application
     }
 
     /**
-     * Whether the application offers discovery, and the fallback URL a miss
-     * leads to: required while it offers discovery and the `discovery` feature
-     * is on (or its switch is malformed), and checked whenever it is given.
+     * Whether discovery is offered, and the fallback URL, required while the
+     * feature is requested.
      *
      * @param  \Illuminate\Contracts\Config\Repository  $config
      * @param  string  $key
@@ -197,8 +181,7 @@ final readonly class Application
     }
 
     /**
-     * The value when it is a string, and an empty string otherwise, which no
-     * delivery is.
+     * The value when it is a string, otherwise an empty string.
      *
      * @param  mixed  $value
      * @return string

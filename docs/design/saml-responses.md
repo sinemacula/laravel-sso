@@ -56,8 +56,8 @@ verified elements.
    confirmation's, then one bearer confirmation satisfying every rule on its own), `SubjectRules` with
    `SubjectEncoding`, and `AuthenticationRules`.
 5. The response is verified with `VerifiedClaims` (the identity provider's entity id, the subject, the format URI or
-   `null` for an attribute subject, every attribute statement's string values by name, the authentication context, no
-   linking email yet) and the `ReplayWindow` record.
+   `null` for an attribute subject, every attribute statement's string values by name, the authentication context, and
+   the linking email while linking by a verified domain is on, `linking.md`) and the `ReplayWindow` record.
 
 ## Failure / Edge Cases
 
@@ -65,9 +65,9 @@ verified elements.
   its `InResponseTo` must be the consumed request's, before it is `provider_error`.
 - `issuer_mismatch`: the response's `Issuer` or the assertion's is absent or is not the connection's entity id. SAML 2.0
   Profiles §4.1.4.2 lets an unsigned response with a plain assertion leave its `Issuer` out; the package refuses that
-  too, since SSO-6.4 holds both issuers to the entity id. The recommended default (2026-11-03,
-  [RD-30](requirements.md#recorded-decisions)) is that the response's `Issuer` is always required, successful or not
-  (SSO-6.4, SSO-6.11): one rule that never depends on which parts are signed is simpler to hold and to test.
+  too, since SSO-6.4 holds both issuers to the entity id. The response's `Issuer` is always required, successful or not
+  ([RD-30](requirements.md#recorded-decisions), SSO-6.4, SSO-6.11): one rule that never depends on which parts are
+  signed is simpler to hold and to test.
 - `recipient_mismatch`: the `Destination` is absent, or is not exactly the assertion consumer service, whether or not
   the response is signed (an unsigned response's `Destination` is not authenticated, but its absence is never taken
   as a pass); or no bearer confirmation names the service as its `Recipient`.
@@ -119,4 +119,3 @@ verified elements.
 - A new subject source or kind of identifier: a new kind in the encoding, never a change to `v1`'s layout.
 - A new condition the package understands: its own rule, and its removal from the refused set.
 - A change to the clock skew or the maximum ages: the replay record's expiry follows the same bounds.
-- Linking by a verified domain (P6): the linking email joins the claims.

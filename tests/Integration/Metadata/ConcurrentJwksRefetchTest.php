@@ -41,30 +41,12 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Races a JWKS refetch across processes, each with its own database connection,
- * on PostgreSQL and MySQL (SSO-7.3, SSO-2.13):
+ * Races a JWKS refetch across processes on PostgreSQL and MySQL, ordered by
+ * signal files.
  *
- * - two servers hit the same unknown `kid` at once: one claims the cooldown and
- *   fetches. The other, having read the old keys, finds the claim taken once
- *   the winner has written, rereads and finds the key; while the winner still
- *   fetches it finds nothing and refuses;
- * - a refetch paused between its fetch and its write while an administrator
- *   changes the JWKS URI or the client secret: it loses its compare and set and
- *   writes nothing, and the administrator's change stands;
- * - a refetch and a scheduled refresh: exactly one JWKS write wins, and the
- *   other reports `metadata_conflict` and rereads.
- *
- * The order is forced with signal files and a pause before the claim's
- * statement, never with timing. A refetch refuses to run inside a transaction,
- * so it always runs plainly and is shown refusing; the administrator runs
- * plainly, and again inside a `REPEATABLE READ` transaction of its own that
- * read the connection before the refetch claimed it. On PostgreSQL that
- * transaction then fails to serialise (SQLSTATE 40001) when it locks the
- * connection the claim wrote, which leaves the refetch to write: an accepted
- * safe outcome, on PostgreSQL only.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * On PostgreSQL an administrator's `REPEATABLE READ` transaction that read
+ * before the claim fails to serialise (40001), leaving the refetch to write: an
+ * accepted safe outcome.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -112,10 +94,9 @@ final class ConcurrentJwksRefetchTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock, a
-     * fake fetcher serving the provider and a fresh freshness contract; switch
-     * OIDC and the refresh on; create the tables, a refreshing connection
-     * storing the provider's key, and the directory the processes use.
+     * Skip without a shared database or pcntl; bind a fixed clock, a fake
+     * fetcher and fresh freshness; enable OIDC and refresh; create a refreshing
+     * connection.
      *
      * @return void
      *
@@ -179,9 +160,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Two servers on one unknown `kid`, the second having read the old keys
-     * before the first wrote and claiming after: one claim and one fetch, and
-     * the second rereads the winner's keys and finds the key.
+     * A second server claiming after the winner wrote rereads the winner's keys
+     * and finds the key.
      *
      * @return void
      */
@@ -221,9 +201,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Two servers on one unknown `kid`, the second claiming while the first
-     * still fetches: it fetches nothing, finds only the old keys and refuses,
-     * and the first's write stands.
+     * A second server claiming while the winner fetches fetches nothing,
+     * refuses, and the winner's write stands.
      *
      * @return void
      */
@@ -258,8 +237,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * A refetch inside a transaction already open, which read the connection,
-     * refuses, with nothing claimed or fetched.
+     * A refetch inside an open transaction that read the connection refuses,
+     * claiming and fetching nothing.
      *
      * @return void
      */
@@ -287,8 +266,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Rows of `[change, in transaction]`: what the administrator changes while
-     * the refetch is paused, plainly or inside a transaction of its own.
+     * Rows of `[change, in transaction]` for the administrator's change during
+     * the paused refetch.
      *
      * @return iterable<string, array{0: string, 1: bool}>
      */
@@ -303,11 +282,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * A refetch paused between its fetch and its write while an administrator
-     * changes the connection's trust loses its compare and set and writes
-     * nothing, and the administrator's change stands; on PostgreSQL, an
-     * administrator inside a transaction older than the refetch's claim fails
-     * to serialise instead, changes nothing, and the refetch writes.
+     * A paused refetch loses its compare and set to an administrator's trust
+     * change; on PostgreSQL an older transaction may fail to serialise instead.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -350,9 +326,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * A scheduled refresh wins while a refetch fetches: exactly one JWKS write,
-     * and the refetch reports `metadata_conflict` and rereads the winner's
-     * keys.
+     * A scheduled refresh wins while a refetch fetches, and the refetch reports
+     * `metadata_conflict` and rereads.
      *
      * @return void
      */
@@ -389,8 +364,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * A refetch wins while a scheduled refresh fetches: exactly one JWKS write,
-     * and the refresh is a conflict that writes nothing.
+     * A refetch wins while a scheduled refresh fetches, and the refresh writes
+     * nothing.
      *
      * @return void
      */
@@ -429,10 +404,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Wait until the other process has signalled, and fail loudly once the
-     * deadline passes without it: the process then reports an error, so a race
-     * whose processes ran one after the other never passes as one that
-     * overlapped.
+     * Wait for the other process's signal, failing after the deadline so a
+     * serial run never passes as a race.
      *
      * @param  string  $signal
      * @return void
@@ -455,8 +428,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Have the JWKS note each fetch and signal it, then, when given one, wait
-     * for the signal before it answers.
+     * Have the JWKS signal each fetch and, if given a signal, wait for it
+     * before answering.
      *
      * @param  string  $signal
      * @param  ?string  $await
@@ -480,8 +453,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Have this process's JWKS signal it is being fetched, then wait for the
-     * signal before it answers.
+     * Have the JWKS signal it is being fetched, then wait for the signal before
+     * answering.
      *
      * @param  string  $signal
      * @param  string  $await
@@ -499,8 +472,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Pause this process just before it claims the cooldown, having read the
-     * keys: signal, then wait for the signal given.
+     * Signal just before claiming the cooldown, having read the keys, then wait
+     * for the given signal.
      *
      * @param  string  $read
      * @param  string  $await
@@ -524,9 +497,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * In a forked process: inside a `REPEATABLE READ` transaction that read the
-     * connection first, or plainly, signal it has read, wait for the refetch to
-     * fetch, then make the change and signal once that is done or failed.
+     * In a fork, read the connection (optionally in `REPEATABLE READ`), wait
+     * for the refetch to fetch, then make the change.
      *
      * @param  string  $change
      * @param  bool  $inTransaction
@@ -579,9 +551,7 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Assert that the administrator's change alone is what the row holds: the
-     * JWKS URI moved, and its keys cleared with it, or the keys left as they
-     * were.
+     * Assert the row holds only the administrator's change.
      *
      * @param  string  $change
      * @param  string  $reported
@@ -597,8 +567,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Select the key of the provider's next key's token, and report how it
-     * ended and what the refetch reported.
+     * Select the key for the provider's next key's token and report the
+     * outcome.
      *
      * @return array{selection: string, events: list<string>}
      *
@@ -651,8 +621,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Fork a process per body, have each run its body on a connection of its
-     * own, and collect what each reported, in order.
+     * Fork a process per body, each on its own connection, and collect their
+     * reports in order.
      *
      * @param  list<\Closure(): array<string, mixed>>  $bodies
      * @return list<array<string, mixed>>
@@ -691,9 +661,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, run the body, report
-     * what it answered, a PostgreSQL serialisation failure, or the error it
-     * threw, and end without running the parent's shutdown.
+     * In a fork, run the body on a fresh connection, report its outcome and
+     * exit without the parent's shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): array<string, mixed>  $body
@@ -719,10 +688,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure: SQLSTATE 40001 on PostgreSQL. Inside a caller's
-     * transaction, Laravel rethrows it as a `DeadlockException` whose previous
-     * error is the query's.
+     * Whether the error or its cause is PostgreSQL's SQLSTATE 40001; inside a
+     * transaction Laravel wraps it in a `DeadlockException`.
      *
      * @param  \Throwable  $exception
      * @return bool
@@ -739,8 +706,8 @@ final class ConcurrentJwksRefetchTest extends TestCase
     }
 
     /**
-     * The statement that makes every later transaction of the session
-     * `REPEATABLE READ`.
+     * The statement that makes the session's later transactions `REPEATABLE
+     * READ`.
      *
      * @param  string  $driver
      * @return string

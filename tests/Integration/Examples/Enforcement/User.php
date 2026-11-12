@@ -7,12 +7,7 @@ namespace Tests\Integration\Examples\Enforcement;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The example application's user, an Eloquent model identified by a string key
- * (SSO-4.1): the administrator who changes a tenant's enforcement, named to the
- * package by its morph class and key.
- *
- * It is never stored: an example makes one in memory, as the application's
- * authentication hands its own user to an administration screen.
+ * The example application's administrator, keyed by a string and never stored.
  *
  * @method int|string getKey() The key, a string here, an integer in many applications.
  *

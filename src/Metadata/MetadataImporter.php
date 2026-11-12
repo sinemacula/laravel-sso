@@ -25,44 +25,12 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
- * Imports a SAML identity provider's metadata, given as XML or fetched from a
- * URL, and answers the settings it proposes (SSO-2.8, SSO-2.11), for an
- * administrator to review: an import writes and trusts nothing, and reports no
- * event. While the SAML protocol is not available (`sso.features.saml2` off),
- * every import is refused as `protocol_unavailable` before anything is looked
- * up, read or fetched. What it proposes is saved, if the administrator accepts
- * it, through `Connections\ImportSaver::save()` (or
- * `Connections\ConnectionService::update()` for metadata given as XML) and
- * `Keys\KeyService::trustCertificate()`, each with its own freshness check.
+ * Imports a SAML identity provider's metadata, given as XML or fetched, and
+ * proposes settings for an administrator to review; it writes and trusts
+ * nothing.
  *
- * The administrator names the entity, which is chosen from aggregate metadata
- * by that id alone (`Protocols\Saml2\Library\MetadataReader`). Naming the
- * tenant's SAML connection the metadata is for (optional) holds the metadata to
- * the connection's metadata signing anchors, when it has any, so unsigned
- * metadata, or metadata no anchor signed, is refused; and prefers the binding
- * the connection uses now. A connection that is unknown, another tenant's or
- * not SAML is `connection_not_found`, exactly as an unknown one.
- *
- * `importUrl()` fetches the URL through the package's fetcher as a metadata
- * request, with no credential and every rule of the safe fetcher (SSO-2.9);
- * with a connection named, each import counts against the connection's metadata
- * limit (`sso.rate_limits.metadata`) before anything is fetched. The document,
- * fetched or given, is capped at `sso.metadata.max_bytes`, not the fetcher's
- * `max_response_bytes`: the fetch stops reading past it and a document over it
- * is never parsed. The fetch runs while `importUrl()` is called, so a large
- * aggregate is imported from the console or a queued job, never a web request,
- * whose timeout and memory it could exceed. The proposal is checked as the
- * connection's settings would be (an `https` single sign-on URL, an entity id
- * that is a URL or a URN), and refused as `metadata_invalid` otherwise.
- *
- * A proposal from a fetched document carries the moment it was validated
- * (`ProposedSettings::fetch()`), for `ImportSaver::save()` to stamp, so the
- * stale limit counts from that fetch; metadata given as XML came from no fetch
- * and carries none, so it is saved as by hand.
- *
- * It holds the reader, the lookup, the key ring, the fetcher, the limiter, the
- * protocols and the clock, none of which keeps anything of one request for the
- * next (SSO-11.2).
+ * `importUrl()` fetches while called: import a large aggregate from the console
+ * or a queued job, never a web request.
  *
  * @api
  *
@@ -164,9 +132,8 @@ final readonly class MetadataImporter
     }
 
     /**
-     * The URL fetched as a metadata request held to the metadata cap, once an
-     * import of the connection named, if any, is counted against its limit;
-     * or the import rate limited.
+     * The URL fetched under the metadata cap once the named connection's limit
+     * allows it, or the import rate limited.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $url
@@ -187,8 +154,7 @@ final readonly class MetadataImporter
 
     /**
      * The tenant's SAML connection named, `null` when none is named, or the
-     * refusal of one that is unknown, another tenant's or not SAML, or of any
-     * import while the SAML protocol is not available.
+     * refusal of the import.
      *
      * @param  string  $tenantId
      * @param  ?string  $connectionId
@@ -217,8 +183,7 @@ final readonly class MetadataImporter
 
     /**
      * The settings the document proposes for the entity, read with the
-     * connection's anchors and binding when there is a connection, noting the
-     * moment it validated when it was fetched.
+     * connection's anchors and binding when there is a connection.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $xml
@@ -245,8 +210,7 @@ final readonly class MetadataImporter
     }
 
     /**
-     * The proposal of the metadata read, or why there is none: the metadata
-     * refused, or what it proposes not settings a connection may hold.
+     * The proposal of the metadata read, or why there is none.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
      * @param  ?\Carbon\CarbonImmutable  $fetchedAt

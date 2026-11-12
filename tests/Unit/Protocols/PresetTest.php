@@ -10,8 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Protocols\Preset;
 
 /**
- * Unit tests for a preset: data that fills in a connection's settings and
- * mapping, where what an administrator gives always wins.
+ * Unit tests for a preset, where what an administrator gives always wins.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

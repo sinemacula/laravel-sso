@@ -15,7 +15,7 @@ disabled, `--no-plugins` or the plugin not allowed, and any registry it put in p
 earlier install: run `composer install` again with it allowed, into a fresh vendor directory if the plugin has run
 before.
 
-The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets two limits until the package
+The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets three limits until the package
 can move to its next major version, which needs PHP 8.5:
 
 - **Guzzle stays at 7.** The package requires `guzzlehttp/guzzle` `^7.9`, because the SAML library's dependencies do

@@ -29,72 +29,10 @@ use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * Refetches a connection's JWKS on an unknown `kid` (SSO-7.3), at most once per
- * cooldown, so an identity provider can rotate its keys without a restart and a
- * flood of unknown `kid`s cannot trigger fetches.
+ * Refetches a connection's JWKS on an unknown `kid`, at most once per cooldown,
+ * so a flood of unknown `kid`s cannot trigger fetches.
  *
- * `refetch()` refuses to run inside a transaction on the storage connection (a
- * `LogicException`), since it fetches before it writes. From the connection as
- * read on the write connection, it:
- *
- * 1. claims the cooldown, before it fetches, with one conditional update: where
- *    the JWKS version is still the one read and `jwks_refetch_at` is unset or
- *    not after now, `jwks_refetch_at` becomes now plus
- *    `sso.oidc.jwks_refetch_cooldown_seconds`, `jwks_claim_token` a fresh
- *    random token and `jwks_refetch_suppressed` 0. The count it cleared is
- *    answered, for its caller's one summary line, so at most one is written per
- *    connection per window, across servers. No row updated is `cooling_down`:
- *    no fetch, the keys and the trust version stored now are read again and
- *    answered, a winner's among them, and the token turned away is counted up
- *    to `MAX_COUNTED_SUPPRESSED` with one more conditional update, so a flood
- *    writes the row a bounded number of times per window and then not at all;
- * 2. fetches the `jwks_uri` read, outside any transaction, as a JWKS request
- *    held to `sso.oidc.max_jwks_bytes` (SSO-2.9), and reads it with
- *    `ProviderKeySet::read()` under the caps and the allow-list given, noting
- *    the moment it validated;
- * 3. writes, in one transaction on the storage connection whose first statement
- *    locks the connection's row, the only lock it takes but for the request a
- *    rotation spares, locked next.
- *
- * It compares and sets, for a success and a failure alike: the locked
- * connection must still hold its token, the JWKS version and trust version read
- * and the same `issuer` and `jwks_uri`. Otherwise it is `conflict`: it writes
- * nothing, answers the winner's keys from the locked row with no other fetch,
- * and reports `JwksRefreshFailed` with `metadata_conflict`. Then:
- *
- * - a JWKS validated at a moment whose stale limit has passed by the commit
- *   (`MetadataExpiry::hasExpired()`, as a scheduled refresh checks) is `failed`
- *   with `metadata_expired`, as below: nothing is replaced and no success is
- *   reported;
- * - a JWKS read replaces what is stored exactly, never as a union, is
- *   `refreshed` and reports `JwksRefreshed`: `jwks_version` raised,
- *   `jwks_fetched_at` the validated moment and the token cleared, keeping
- *   `jwks_refetch_at`, so the cooldown stays. It resets the JWKS's freshness
- *   alone, never the discovery document's. A key removed, or replaced under the
- *   same `kid`, voids what is in flight through the connection and raises its
- *   trust version once (`Connections\InFlightVoider::voidFor()`); a key added
- *   alone voids nothing and leaves it as it was, so a refetch never voids its
- *   own callback;
- * - a fetch refused or failed (a response not `2xx` or over the cap included)
- *   or a JWKS refused (`jwks_invalid`) is `failed`, clears the token alone,
- *   keeping the cooldown and the last good keys, and reports
- *   `JwksRefreshFailed`.
- *
- * When a key is removed and the refetch was asked for a consumed request, that
- * one request is spared the void, in the same transaction, and a
- * `Protocols\TransitionReceipt` answered for it: only when a locking read shows
- * it consumed, not finished, not voided and of the locked trust version, since
- * a request something else voided is never restored. It may then finish across
- * this one transition, once its token has passed every check under the new keys
- * (`TransitionReceipts`). Every other request and every issued code is voided.
- *
- * Every event is dispatched after the transaction commits (SSO-10.5), and
- * carries the client the refetch is made for (`Http\ClientContext`): the client
- * of the completion whose token asked. It answers how it ended for its caller
- * to log; it logs nothing, and never holds a URL, body or key in what it
- * reports. A database error propagates (SSO-11.4). It holds the limits, the
- * fetcher, the voider, the reporter, the expiry and the clock, none of which
- * keeps anything of one refetch for the next (SSO-11.2).
+ * Call outside any transaction on the storage connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -125,7 +63,7 @@ final readonly class JwksRefetcher
     /** @var string The cooldown holds, so nothing was fetched. */
     public const string COOLING_DOWN = 'cooling_down';
 
-    /** @var int The most tokens a cooldown counts as turned away, so a flood writes the row a bounded number of times per window. */
+    /** @var int The most tokens a cooldown counts as turned away, bounding a flood's writes. */
     public const int MAX_COUNTED_SUPPRESSED = 100;
 
     /** @var string Why a refetch refuses to run inside a transaction. */
@@ -165,10 +103,8 @@ final readonly class JwksRefetcher
     ) {}
 
     /**
-     * Refetch the JWKS of the connection as read, unless the cooldown holds,
-     * for the client, and answer how it ended, with the keys stored at its end.
-     * The reference names the consumed request whose token asked, which a
-     * rotation spares.
+     * Refetch the connection's JWKS unless the cooldown holds, answering the
+     * keys stored at the end; a rotation spares the request the trigger names.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $read
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -213,8 +149,7 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * Claim the cooldown of the connection as read with the token; whether the
-     * one conditional update changed its row.
+     * Whether one conditional update claimed the cooldown with the token.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $read
      * @param  string  $token
@@ -240,9 +175,8 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * The refetch lost to a change made while it fetched and writes nothing;
-     * the failure is reported as the winner left the connection, whose keys it
-     * answers.
+     * The refetch lost to a change made while it fetched: write nothing and
+     * answer the winner's keys.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Fetching\Enums\FetchStatus  $status
@@ -279,7 +213,7 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * Record the failure on the locked connection, for the reason given.
+     * Record the failure on the locked connection, for the reason.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -299,11 +233,8 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * Replace the locked connection's keys exactly, keeping the cooldown,
-     * unless what was validated has passed its stale limit by now; a key
-     * removed, or replaced under its `kid`, voids what is in flight, but for
-     * the request whose token asked, raises the trust version once and answers
-     * that request's receipt.
+     * Replace the locked connection's keys exactly unless past their stale
+     * limit; a key removed or replaced voids what is in flight.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet  $keys
@@ -346,10 +277,8 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * Void what is in flight through the locked connection and raise its trust
-     * version once, in the transaction that replaced its keys, sparing the
-     * request whose token asked when a locking read shows it still may finish;
-     * that request's receipt, if any.
+     * Void what is in flight through the locked connection, sparing the request
+     * whose token asked when it may still finish, and answer its receipt.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $trigger
@@ -368,9 +297,8 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * The request the reference names, read with a locking read, when it is
-     * consumed, not finished, not voided and of the locked trust version;
-     * `null` otherwise, so a request voided by anything else is never spared.
+     * The request the reference names, read locked, when it is consumed,
+     * unfinished, unvoided and of the locked trust version; `null` otherwise.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $trigger
@@ -394,8 +322,8 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * The cooldown holds: nothing is fetched, the connection as stored now is
-     * answered, and the token is counted while the count is under its cap.
+     * The cooldown holds: answer the stored keys and count the token, up to the
+     * cap.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $read
      * @return JwksRefetch
@@ -412,8 +340,8 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * How a refetch ended, with the keys and the trust version the connection
-     * holds at its end, `null` when it is gone.
+     * How a refetch ended, with the connection's keys and trust version at its
+     * end.
      *
      * @param  string  $outcome
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -453,8 +381,7 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * The `jwks_uri` of the connection as read, empty when it holds none, which
-     * the fetcher refuses.
+     * The connection's `jwks_uri`, or empty, which the fetcher refuses.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return string
@@ -467,8 +394,7 @@ final readonly class JwksRefetcher
     }
 
     /**
-     * The settings a refetch's keys belong to, whatever order the connection's
-     * settings were read in: the issuer and the `jwks_uri`.
+     * The issuer and `jwks_uri` a refetch's keys belong to, in a fixed order.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return array{0: mixed, 1: mixed}

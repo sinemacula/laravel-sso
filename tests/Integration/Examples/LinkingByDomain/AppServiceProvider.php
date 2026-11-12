@@ -13,12 +13,8 @@ use SineMacula\Laravel\Sso\Contracts\TenantMembership;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 
 /**
- * The example application's service provider (SSO-8.8): it binds the package's
- * link store as the linker, the application's own three linking contracts, each
- * in place of a default that refuses, and its session revocation, in place of
- * the default that revokes nothing. It registers after the package's provider,
- * as an application's providers do, so its bindings replace the defaults as any
- * later binding does.
+ * The example application's service provider: binds the link store, its linking
+ * contracts and its session revocation over the package's defaults.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

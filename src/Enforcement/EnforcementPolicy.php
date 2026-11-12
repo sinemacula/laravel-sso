@@ -5,26 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Enforcement;
 
 /**
- * What the `Contracts\Enforcement` contract answers for a tenant and an
- * application (SSO-4.1, SSO-4.2, SSO-4.6): whether sessions active in the
- * tenant must be established through a connection, which connections satisfy
- * that, whose rule it is, and the version of that rule.
- *
- * - `tenantId` is the tenant asked about, the one a session is active in.
- * - `enforcingTenantId` is the tenant whose rule applies, as the
- *   `Contracts\EnforcementInheritance` contract chose it: the tenant itself by
- *   default, or an ancestor the application names. The satisfying connections
- *   always belong to it.
- * - `required` is whether sign-in through one of `connectionIds` is required.
- * - `connectionIds` are the connections that satisfy it, each of the enforcing
- *   tenant and enabled, in id order; none when it is not required.
- * - `version` changes with every change to the enforcing tenant's rule, so an
- *   adapter that records it against a session rechecks the session once it is
- *   stale; `null` while that tenant has never had a rule stored.
- *
- * A policy that is required with no connection left (every satisfying
- * connection since disabled) is satisfied by none: only an exemption admits a
- * session then (SSO-4.4). Ids are compared byte for byte.
+ * Whether sessions in a tenant must come through one of its enforcing tenant's
+ * connections; a required policy with no connection left is satisfied by none.
  *
  * @api
  *
@@ -53,10 +35,10 @@ final readonly class EnforcementPolicy implements \JsonSerializable
         /** Whether sign-in through a satisfying connection is required. */
         public bool $required,
 
-        /** The connections that satisfy it, in id order. */
+        /** The enabled connections that satisfy it, in id order. */
         public array $connectionIds,
 
-        /** The version of the enforcing tenant's rule, `null` when it has none stored. */
+        /** Changes with every change to the rule, `null` when none is stored. */
         public ?string $version,
     ) {}
 
@@ -78,8 +60,7 @@ final readonly class EnforcementPolicy implements \JsonSerializable
     }
 
     /**
-     * Sessions active in the tenant must have been established through one of
-     * the connections given, which are de-duplicated and put in id order.
+     * Sessions in the tenant must come through one of the connections given.
      *
      * @param  string  $tenantId
      * @param  string  $enforcingTenantId
@@ -115,9 +96,7 @@ final readonly class EnforcementPolicy implements \JsonSerializable
     }
 
     /**
-     * Whether a session established through the connection complies: always
-     * when nothing is required, and only through a satisfying connection when
-     * something is.
+     * Whether a session established through the connection complies.
      *
      * @param  string  $connectionId
      * @return bool
@@ -128,7 +107,7 @@ final readonly class EnforcementPolicy implements \JsonSerializable
     }
 
     /**
-     * The policy, with snake_case keys.
+     * Snake_case keys.
      *
      * @return array{tenant_id: string, enforcing_tenant_id: string, required: bool, connection_ids: list<string>, version: ?string}
      */
@@ -145,7 +124,7 @@ final readonly class EnforcementPolicy implements \JsonSerializable
     }
 
     /**
-     * Refuse an empty tenant id: the application's or the contract's mistake.
+     * Refuse an empty tenant id.
      *
      * @param  string  $tenantId
      * @param  string  $enforcingTenantId

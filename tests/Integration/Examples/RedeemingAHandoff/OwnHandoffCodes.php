@@ -22,19 +22,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * An application's own handoff store of `docs/guides/redeeming-a-handoff.md`
- * (SSO-9.2, SSO-12.5), bound to `Contracts\HandoffIssuer` in place of the
- * package's: it issues each code inside the completion's transaction, into the
- * application's own table on the package's storage connection, keeping only the
- * code's digest, the verified result encrypted, and everything else the grant
- * names, the connection's trust version and the session's latest end among
- * them, as the contract requires (the latest end to the whole second, as the
- * package's own store keeps it, so never later); it reads a code back plainly,
- * with both; and it consumes one atomically, exactly once, inside the
- * redeemer's transaction, then checks it as the package checks its own (the
- * expiry, the purpose and the verifier).
- *
- * It keeps nothing of one call for the next (SSO-11.2).
+ * An application's own handoff store, bound to `Contracts\HandoffIssuer`. It
+ * keeps only the code's digest, and the latest end to the whole second.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -92,8 +81,7 @@ final readonly class OwnHandoffCodes implements HandoffIssuer
     }
 
     /**
-     * The code the value is, read plainly, or `null` when it is not a code this
-     * store issued.
+     * The code the value is, or `null` when this store did not issue it.
      *
      * @param  string  $value
      * @return ?\Tests\Integration\Examples\RedeemingAHandoff\OwnHandoffCode
@@ -112,11 +100,8 @@ final readonly class OwnHandoffCodes implements HandoffIssuer
     }
 
     /**
-     * Consume the code atomically, inside the redeemer's transaction, and
-     * answer why it is refused: `replayed` when it was consumed before, and
-     * nothing is spent now; otherwise it is spent, and refused when it has
-     * expired, was issued for another purpose than the one given, or the
-     * verifier is not its own; `null` when it is accepted.
+     * Consume the code once, inside the redeemer's transaction, and answer why
+     * it is refused, or `null`; only `replayed` leaves nothing spent.
      *
      * @param  \Tests\Integration\Examples\RedeemingAHandoff\OwnHandoffCode  $code
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -166,8 +151,7 @@ final readonly class OwnHandoffCodes implements HandoffIssuer
     }
 
     /**
-     * The verified result a code carries, decrypted and restored, every part
-     * checked again.
+     * The verified result a code carries, decrypted and restored.
      *
      * @param  string  $stored
      * @return \SineMacula\Laravel\Sso\Results\VerifiedResult
@@ -214,8 +198,7 @@ final readonly class OwnHandoffCodes implements HandoffIssuer
     }
 
     /**
-     * A column of the row, seconds since the epoch, as an instant in UTC, or
-     * `null` when it holds none.
+     * A column of the row, in epoch seconds, as an instant in UTC, or `null`.
      *
      * @param  array<string, mixed>  $row
      * @param  string  $column
@@ -229,7 +212,7 @@ final readonly class OwnHandoffCodes implements HandoffIssuer
     }
 
     /**
-     * The application's table of codes, on the package's storage connection.
+     * The application's table of codes on the package's storage connection.
      *
      * @return \Illuminate\Database\Query\Builder
      */

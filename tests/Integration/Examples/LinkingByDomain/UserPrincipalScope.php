@@ -12,12 +12,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\ScopeVerdict;
 
 /**
- * The example application's principal scope (SSO-8.8): a user's principals are
- * their rows in the application's `tenant_principals` table, each a membership
- * of a tenant or, with no tenant, a platform principal. Under the user's guard,
- * which `GrantPrincipal` takes after `ScopeWidening`, it reads the complete
- * set, and answers `within_tenant` only when every current principal is of the
- * tenant; an identity that is not one of the application's users is `unknown`.
+ * The example application's principal scope: `within_tenant` only when every
+ * current principal, read under the user's guard, is of the tenant.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

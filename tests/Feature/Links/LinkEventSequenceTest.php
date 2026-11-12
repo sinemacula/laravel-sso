@@ -26,10 +26,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * The event sequence of each link operation (SSO-10.3, SSO-10.5): a creation
- * reports `LinkCreated` and a removal `LinkRemoved`, each exactly once; a
- * refused creation or removal reports nothing, not even a failure event, since
- * a helper's refusal is its result.
+ * Feature tests for the events each link operation reports.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -107,8 +104,7 @@ final class LinkEventSequenceTest extends TestCase
     }
 
     /**
-     * A creation refused for a subject already linked, or for the limit,
-     * reports nothing.
+     * A creation refused as already linked or over the limit reports nothing.
      *
      * @return void
      */
@@ -124,8 +120,7 @@ final class LinkEventSequenceTest extends TestCase
     }
 
     /**
-     * A removal refused for a link not found, or for a stale caller, reports
-     * nothing.
+     * A removal refused as not found or stale reports nothing.
      *
      * @return void
      */
@@ -145,8 +140,7 @@ final class LinkEventSequenceTest extends TestCase
     }
 
     /**
-     * Link the subject through the connection, to the identity given or the
-     * test's.
+     * Link the subject through the connection to the given or default identity.
      *
      * @param  string  $subject
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity

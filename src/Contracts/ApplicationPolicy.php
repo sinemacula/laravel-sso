@@ -8,17 +8,8 @@ use SineMacula\Laravel\Sso\Applications\Application;
 use SineMacula\Laravel\Sso\Applications\Enums\ExternalSignIn;
 
 /**
- * Application policy contract (SSO-5.1, SSO-9.2): whether a registered
- * application allows sign-in through an external provider. It is asked before a
- * flow starts for the application and again before a handoff code is issued for
- * it; anything but `allowed` refuses with `application_not_allowed`.
- *
- * The default, `Applications\ConfiguredApplicationPolicy`, answers the
- * application's `external_sign_in` setting, off unless set. An adapter may bind
- * it to the per-application sign-in methods of the application's
- * authentication. An implementation answers from current state on each call and
- * keeps nothing of one call for the next (SSO-11.2); an error it cannot answer
- * through propagates, and it never answers `allowed` when it cannot tell.
+ * Decides whether a registered application allows sign-in through an external
+ * provider.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,7 +17,7 @@ use SineMacula\Laravel\Sso\Applications\Enums\ExternalSignIn;
 interface ApplicationPolicy
 {
     /**
-     * Whether the application allows sign-in through an external provider.
+     * Never answer `allowed` when unsure; let an error propagate instead.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @return \SineMacula\Laravel\Sso\Applications\Enums\ExternalSignIn

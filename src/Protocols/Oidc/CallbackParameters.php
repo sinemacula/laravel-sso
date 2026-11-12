@@ -5,33 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc;
 
 /**
- * The parameters of an OpenID Connect callback, read from its raw query before
- * anything has parsed it (SSO-7.1), since a parsed query hides what the
- * callback must refuse: PHP's parser keeps the last of two values, makes an
- * array of `state[]` and folds names.
- *
- * `parse()` splits the query on `&`, ignores empty segments, splits each pair
- * at its first `=` and form-decodes both sides (`+` is a space). The whole
- * query is refused, with `null`, when it is empty or longer than
- * `OidcLimits::maxCallbackQueryBytes()`, when it holds no parameter or more
- * than `OidcLimits::maxCallbackParameters()`, or when any parameter:
- *
- * - repeats a name once decoded, compared exactly, so `st%61te` repeats `state`
- *   and `State` does not;
- * - has a name holding `[` or `]`, the shape of an array;
- * - has a decoded name or value longer than
- *   `OidcLimits::maxCallbackParameterBytes()`;
- * - has a decoded name or value that is not valid UTF-8 or holds a control
- *   character.
- *
- * A name the callback does not read is ignored once it has passed these, so it
- * still counts towards the caps and may not repeat; it is not kept.
- *
- * What it keeps is attacker-supplied, and holds an authorisation code and the
- * protocol state, so the values are held in a `\SensitiveParameterValue`, given
- * only through their accessors: a dump and JSON encoding show the names of what
- * arrived and no value, and it refuses to be serialised or unserialised
- * (SSO-7.6, SSO-9.8). It holds nothing between calls (SSO-11.2).
+ * An OpenID Connect callback's parameters, read from the raw query because
+ * PHP's parser keeps the last duplicate, builds arrays and folds names.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -40,7 +15,7 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc;
  */
 final readonly class CallbackParameters implements \JsonSerializable
 {
-    /** @var array<string, int> The parameters the callback reads, as keys; every other name is ignored. */
+    /** @var array<string, int> The parameters kept, as keys; others are checked, then dropped. */
     private const array READ = ['code' => 0, 'state' => 1, 'iss' => 2, 'error' => 3];
 
     /** @var string A control character: C0, DEL or C1. */
@@ -56,7 +31,7 @@ final readonly class CallbackParameters implements \JsonSerializable
      */
     private function __construct(
 
-        // The parameters the callback reads, by name; held wrapped
+        // Not promoted: held wrapped
         #[\SensitiveParameter]
         array $values,
     ) {
@@ -64,7 +39,7 @@ final readonly class CallbackParameters implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the name of each parameter given, never a value.
+     * Show each parameter's name, never a value.
      *
      * @return array<array-key, string>
      */
@@ -74,8 +49,7 @@ final readonly class CallbackParameters implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: a callback's parameters are read in the request
-     * they arrived in and kept nowhere.
+     * Refuse to be serialised; the parameters live only for their request.
      *
      * @return array<string, mixed>
      *
@@ -105,7 +79,7 @@ final readonly class CallbackParameters implements \JsonSerializable
     }
 
     /**
-     * What JSON encoding shows: the same as a dump, never a value.
+     * Encode the same redacted view as a dump.
      *
      * @return array<array-key, string>
      */
@@ -116,7 +90,8 @@ final readonly class CallbackParameters implements \JsonSerializable
     }
 
     /**
-     * The parameters of the raw query, or `null` when it is refused.
+     * Parse the raw query, or return `null` when it is empty, over a cap, or
+     * any parameter repeats or is refused.
      *
      * @param  string  $rawQuery
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcLimits  $limits
@@ -138,7 +113,7 @@ final readonly class CallbackParameters implements \JsonSerializable
     }
 
     /**
-     * The authorisation code, for the token request and nothing else.
+     * The authorisation code, for the token request only.
      *
      * @return ?string
      */
@@ -148,7 +123,7 @@ final readonly class CallbackParameters implements \JsonSerializable
     }
 
     /**
-     * The protocol state, for the correlation and nothing else.
+     * The protocol state, for correlation only.
      *
      * @return ?string
      */
@@ -189,8 +164,8 @@ final readonly class CallbackParameters implements \JsonSerializable
     }
 
     /**
-     * Each segment's decoded name and value, or `null` when one repeats a name
-     * or is refused.
+     * Each segment's form-decoded name and value, or `null` when a decoded name
+     * repeats or a pair is refused.
      *
      * @param  array<int, string>  $segments
      * @param  int  $maxBytes
@@ -218,8 +193,7 @@ final readonly class CallbackParameters implements \JsonSerializable
     }
 
     /**
-     * Whether the decoded name is not array-shaped, and the name and value are
-     * within the cap and are text.
+     * Whether the name is not array-shaped and both sides are capped text.
      *
      * @param  string  $name
      * @param  string  $value

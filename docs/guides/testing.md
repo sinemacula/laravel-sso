@@ -1,9 +1,9 @@
 # Testing Your SSO Flows
 
 The package ships what your application needs to test its SSO flows without a network, under
-`SineMacula\Laravel\Sso\Testing` (SSO-12.4): a fake SAML identity provider and a fake OpenID provider (keys, signed
-responses and ID tokens, metadata, a JWKS, token and UserInfo endpoints), a fake DNS resolver, a fake fetcher, a frozen
-clock, a fake freshness contract, and a reader for the redirect your client receives.
+`SineMacula\Laravel\Sso\Testing`: a fake SAML identity provider and a fake OpenID provider (keys, signed responses and
+ID tokens, metadata, a JWKS, token and UserInfo endpoints), a fake DNS resolver, a fake fetcher, a frozen clock, a fake
+freshness contract, and a reader for the redirect your client receives.
 
 Every example in this guide is a test that runs with the package's own suite, in `tests/Integration/Examples`, and each
 snippet below is taken from it: a test fails when a snippet and its source differ (see

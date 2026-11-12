@@ -11,19 +11,8 @@ use SineMacula\Laravel\Sso\Database\MigrationCollisionGuard;
 use Tests\Concerns\ScansLibraryNames;
 
 /**
- * Holds the package's code to reading and writing rows (SSO-11.7): the schema
- * is the published migrations' alone, so no class names the schema builder or
- * its facade but `Database\MigrationCollisionGuard`, which the migrations call
- * to ask whether a table exists, and no class runs a statement of its own
- * (`statement()`, `unprepared()`, `affectingStatement()`) or reaches past the
- * query builder to the schema or the PDO handle. What is left is the query
- * builder's and Eloquent's `SELECT`, `INSERT` (an upsert included), `UPDATE`
- * and `DELETE`.
- *
- * Names are read as `ScansLibraryNames` reads them, and calls from the source's
- * tokens, so a comment that mentions a statement is not one. The scan is a
- * backstop: `Integration\Standalone\ApplicationIntegrationTest` records every
- * statement each purpose runs and finds only those four.
+ * Architecture tests holding the package's code to reading and writing rows.
+ * Only the migrations' collision guard may name the schema.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,13 +24,13 @@ final class DatabaseStatementsTest extends TestCase
 {
     use ScansLibraryNames;
 
-    /** @var string A name of the schema: its builder's namespace, and its facade, imported or by its root alias. */
+    /** @var string A name of the schema builder or its facade, however imported. */
     private const string SCHEMA_NAME = '/^\\\?(?:Illuminate\\\Database\\\Schema\\\|(?:Illuminate\\\Support\\\Facades\\\)?Schema$)/';
 
     /** @var string The one class that may name the schema, for the migrations. */
     private const string SCHEMA_OWNER = 'src/Database/MigrationCollisionGuard.php';
 
-    /** @var list<string> The methods that run a statement of the caller's own, or reach past the query builder. */
+    /** @var list<string> The methods that run raw statements or reach past the query builder. */
     private const array STATEMENT_METHODS = ['statement', 'unprepared', 'affectingstatement', 'getschemabuilder', 'getpdo', 'getreadpdo', 'getrawpdo', 'getrawreadpdo'];
 
     /**
@@ -83,10 +72,8 @@ final class DatabaseStatementsTest extends TestCase
     }
 
     /**
-     * The scans catch the schema's facade and builder however they are named,
-     * and each way of running a statement of one's own, and pass over a word in
-     * a comment, a method declared with such a name, and a name that only
-     * starts like the schema's.
+     * The scans catch every form of schema name and raw statement, and skip
+     * comments, declarations and lookalike names.
      *
      * @return void
      */
@@ -112,9 +99,7 @@ final class DatabaseStatementsTest extends TestCase
     }
 
     /**
-     * The statement methods the source calls, in order, by their lower-case
-     * name: as a method, a nullsafe method or a static call, never a function
-     * of that name being declared.
+     * The statement methods the source calls, in order, by lower-case name.
      *
      * @param  string  $source
      * @return list<string>

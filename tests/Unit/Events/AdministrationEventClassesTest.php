@@ -23,14 +23,7 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 
 /**
- * Unit tests for the nine administration events (SSO-10.3, SSO-10.4): each is a
- * package event returning its context, survives a queue unchanged, and holds
- * exactly its declared public properties, none of them a secret, a private key,
- * a setting value or the settings; a connection update holds the names of what
- * changed and nothing else.
- *
- * Disabling and deleting a connection have no management helper until BL-37, so
- * their events are covered here and by the reporter's own test only.
+ * Unit tests for the administration events.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,15 +41,14 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 #[CoversClass(KeyNearingExpiry::class)]
 final class AdministrationEventClassesTest extends TestCase
 {
-    /** @var list<string> Names no administration event may give a property, compared without case or underscores. */
+    /** @var list<string> Forbidden property names, ignoring case and underscores. */
     private const array FORBIDDEN = ['secret', 'privatekey', 'value', 'settings'];
 
     /** @var string The key's fingerprint the events carry. */
     private const string FINGERPRINT = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
 
     /**
-     * Each administration event, with the public properties it declares, in
-     * order.
+     * Each administration event with its declared public properties, in order.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Contracts\SsoEvent, 1: list<string>}>
      */
@@ -90,8 +82,7 @@ final class AdministrationEventClassesTest extends TestCase
     }
 
     /**
-     * Each event is a package event, final and read-only, and returns the
-     * context it was given.
+     * Each event is a final, read-only package event returning its context.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties
@@ -112,9 +103,7 @@ final class AdministrationEventClassesTest extends TestCase
     }
 
     /**
-     * A serialise and unserialise round trip, as a queue makes, gives an equal
-     * event: every property holds the same value, and the context the same
-     * record.
+     * A serialise round trip, as a queue makes, gives an equal event.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties
@@ -145,9 +134,7 @@ final class AdministrationEventClassesTest extends TestCase
     }
 
     /**
-     * By reflection, each event holds exactly the public properties it
-     * declares, each read-only, and none named after a secret, a private key, a
-     * value or the settings.
+     * Each event holds exactly its declared properties, none sensitive.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties
@@ -173,8 +160,7 @@ final class AdministrationEventClassesTest extends TestCase
     }
 
     /**
-     * A connection update holds the names of what changed, as a list of
-     * strings, and nothing of their values.
+     * A connection update holds only the names of what changed.
      *
      * @return void
      */

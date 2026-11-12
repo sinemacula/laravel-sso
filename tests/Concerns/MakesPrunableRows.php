@@ -20,11 +20,8 @@ use SineMacula\Laravel\Sso\Models\SsoModel;
 use SineMacula\Laravel\Sso\Pruning\Enums\PruneKind;
 
 /**
- * Makes one row of each kind `Pruning\Pruner` deletes, whose time is the
- * instant given, for a test of pruning to work on. A test that uses it uses
- * `UsesConnections`, `UsesDomains` and `UsesFlowTables` too, and has created
- * the tables. Each row's values are the full width of their columns, since
- * PostgreSQL pads fixed-width columns.
+ * Makes rows of each kind the pruner deletes, timed at the instant given.
+ * Values fill their columns, since PostgreSQL pads fixed-width ones.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -33,7 +30,7 @@ use SineMacula\Laravel\Sso\Pruning\Enums\PruneKind;
  */
 trait MakesPrunableRows
 {
-    /** @var int The next row's number, so each is its own. */
+    /** @var int The last row's number, so each row is distinct. */
     private int $prunableRow = 0;
 
     /**

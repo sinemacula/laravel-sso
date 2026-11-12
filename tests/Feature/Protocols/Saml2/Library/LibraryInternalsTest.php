@@ -13,11 +13,8 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\TestCase;
 
 /**
- * Tests of the SAML adapter's own parsing parts (SSO-6.1): the schema of each
- * kind of document, by absolute path; the entity loader that holds schema
- * validation to the library's own files, installed for every validation and
- * removed after it; and a refusal that names only its rule. The library's
- * container is tested in `LibraryContainerTest`.
+ * Tests of the SAML adapter's own parsing parts: schemas, the entity loader and
+ * refusals.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,9 +49,8 @@ final class LibraryInternalsTest extends TestCase
     }
 
     /**
-     * The entity loader answers a schema file in the library's directory by its
-     * real path, and nothing else: no URL, no file elsewhere, no path that
-     * escapes the directory, and nothing for no path.
+     * The entity loader answers only a schema file in the library's directory,
+     * by its real path.
      *
      * @return void
      */
@@ -74,10 +70,8 @@ final class LibraryInternalsTest extends TestCase
     }
 
     /**
-     * Schema validation loads every schema through the parser's own entity
-     * loader: a loader the application set beforehand is never asked for the
-     * schemas a valid response needs (though validation loads several), and
-     * once validation ends no loader is left installed.
+     * Schema validation loads every schema through the parser's own loader and
+     * leaves no loader installed.
      *
      * @return void
      *

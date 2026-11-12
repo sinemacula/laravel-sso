@@ -10,10 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 
 /**
- * Unit tests for a masked key or certificate: the certificate, the public key
- * and the SHA-256 fingerprint of the DER, read from a self-signed certificate
- * and an RSA key made for the test; a private key refused; a malformed PEM
- * refused without being echoed; and an unset key.
+ * Unit tests for a masked key or certificate.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,8 +24,7 @@ final class MaskedKeyTest extends TestCase
     private static ?array $pair = null;
 
     /**
-     * A certificate gives itself, its public key and the fingerprint OpenSSL
-     * computes of it.
+     * A certificate gives itself, its public key and OpenSSL's fingerprint.
      *
      * @return void
      */
@@ -46,8 +42,7 @@ final class MaskedKeyTest extends TestCase
     }
 
     /**
-     * Surrounding whitespace and other line breaks read as the same
-     * certificate, given back in OpenSSL's canonical form.
+     * Layout differences read as the same certificate in canonical form.
      *
      * @return void
      */
@@ -61,8 +56,7 @@ final class MaskedKeyTest extends TestCase
     }
 
     /**
-     * A public key gives itself and the SHA-256 of its DER, the same key a
-     * certificate for it gives, and no certificate.
+     * A public key gives itself and the SHA-256 of its DER, and no certificate.
      *
      * @return void
      */
@@ -95,8 +89,7 @@ final class MaskedKeyTest extends TestCase
     }
 
     /**
-     * A private key is never masked, from either kind of PEM, and the refusal
-     * does not echo it.
+     * A private key is refused without being echoed.
      *
      * @param  string  $pem
      * @return void
@@ -134,8 +127,7 @@ final class MaskedKeyTest extends TestCase
     }
 
     /**
-     * A malformed certificate is refused, the refusal never echoes it, and
-     * nothing is left in OpenSSL's error queue.
+     * A malformed certificate is refused unechoed, clearing OpenSSL's errors.
      *
      * @param  string  $pem
      * @return void
@@ -173,8 +165,7 @@ final class MaskedKeyTest extends TestCase
     }
 
     /**
-     * A malformed public key is refused, the refusal never echoes it, and
-     * nothing is left in OpenSSL's error queue.
+     * A malformed public key is refused unechoed, clearing OpenSSL's errors.
      *
      * @param  string  $pem
      * @return void
@@ -235,8 +226,7 @@ final class MaskedKeyTest extends TestCase
     }
 
     /**
-     * A self-signed certificate, its public key and its private key, made once
-     * for the class.
+     * A self-signed certificate with its public and private keys, made once.
      *
      * @return array<string, string>
      */
@@ -277,8 +267,7 @@ final class MaskedKeyTest extends TestCase
     }
 
     /**
-     * Empty OpenSSL's error queue, so what a test finds there afterwards is
-     * what the code under test left.
+     * Empty OpenSSL's error queue so a test sees only what the code left.
      *
      * @return void
      */

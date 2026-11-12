@@ -9,10 +9,7 @@ use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
 
 /**
- * Binds the configuration checker to the foundations' own checks (the switches,
- * extensions, storage, endpoints and applications), so a test of how the checks
- * are run and reported does not depend on the checks of the parts of the
- * package each item adds.
+ * Binds the configuration checker to the foundations' checks only.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

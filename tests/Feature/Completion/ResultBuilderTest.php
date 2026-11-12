@@ -31,14 +31,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for building a completion's verified result (SSO-8.1, SSO-2.10,
- * SSO-3.3): every part from the claims, the connection and the consumed
- * request, the subject exactly as received, the attributes through the
- * connection's mapping and its caps, and whether the email's domain is
- * verified: routing for this connection, of another connection, pending,
- * lapsed, at its lapse and either side, and malformed; and the asserted email,
- * passed through from the claims, never derived from the mapped attributes, and
- * kept through the handoff store.
+ * Feature tests for building a completion's verified result.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,8 +56,7 @@ final class ResultBuilderTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, and create the tables and a connection that maps the
-     * email, the given name, the groups and a custom attribute.
+     * Bind a fixed clock and create a connection with an attribute mapping.
      *
      * @return void
      */
@@ -89,10 +81,7 @@ final class ResultBuilderTest extends TestCase
     }
 
     /**
-     * The result holds the claims' issuer, subject exactly as received, format,
-     * authentication context and linking email; the connection's id, tenant and
-     * protocol; the request's application, purpose and reference; and the
-     * mapped attributes, and nothing else.
+     * The result is built from the claims, the connection and the request.
      *
      * @return void
      */
@@ -136,8 +125,7 @@ final class ResultBuilderTest extends TestCase
     }
 
     /**
-     * The attributes are cut to the mapping's caps: each list to its most
-     * values, and each value to its longest length.
+     * Each attribute list and value is cut to the mapping's caps.
      *
      * @return void
      */
@@ -166,9 +154,7 @@ final class ResultBuilderTest extends TestCase
     }
 
     /**
-     * The email's domain is verified when it routes for this connection: a
-     * verified claim not past its lapse, the first string of a listed email, an
-     * email with a domain that normalises, and the domain after the last `@`.
+     * An email whose domain routes for the connection is verified.
      *
      * @param  mixed  $email
      * @return void
@@ -198,8 +184,7 @@ final class ResultBuilderTest extends TestCase
     }
 
     /**
-     * An email that is not one, or whose domain does not normalise, is never
-     * verified, whatever is claimed.
+     * A malformed email is never verified, whatever is claimed.
      *
      * @param  mixed  $email
      * @return void
@@ -225,8 +210,7 @@ final class ResultBuilderTest extends TestCase
     }
 
     /**
-     * A domain verified for another connection, pending for this one, or
-     * lapsed, does not verify the email.
+     * A domain that does not route for the connection does not verify.
      *
      * @return void
      */
@@ -256,8 +240,7 @@ final class ResultBuilderTest extends TestCase
     }
 
     /**
-     * A verified domain whose record has gone routes until its lapse: one
-     * second before it, but not at it or after it.
+     * A verified domain whose record has gone routes until its lapse.
      *
      * @param  int  $offset
      * @param  bool  $verified
@@ -276,8 +259,7 @@ final class ResultBuilderTest extends TestCase
     }
 
     /**
-     * The asserted email is the claims', the same value, kept apart from the
-     * mapped attributes even when the mapped email is another, and stored last.
+     * The asserted email is passed through from the claims.
      *
      * @return void
      */
@@ -295,8 +277,7 @@ final class ResultBuilderTest extends TestCase
     }
 
     /**
-     * Claims with no asserted email give a result with none, whatever the
-     * mapped attributes hold: it is never derived from them.
+     * The asserted email is never derived from the mapped attributes.
      *
      * @return void
      */
@@ -311,9 +292,7 @@ final class ResultBuilderTest extends TestCase
     }
 
     /**
-     * A result stored by the handoff store, encrypted, reads back with its
-     * asserted email exactly as it was built, each thing `email_verified` may
-     * be.
+     * The handoff store keeps the asserted email exactly.
      *
      * @return void
      *

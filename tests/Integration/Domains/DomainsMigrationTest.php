@@ -13,14 +13,8 @@ use SineMacula\Laravel\Sso\Database\TableAlreadyExistsException;
 use Tests\TestCase;
 
 /**
- * Integration tests for the shipped domains migration, on whichever engine the
- * suite runs against: the table's shape, its indexes, one claim of a domain per
- * connection, one verified connection per domain whatever the tenant, any
- * number of claims of a domain that is not verified, the guard against an
- * existing table and the rollback.
- *
- * Marked `#[CoversNothing]` because a migration is an anonymous class PHPUnit
- * cannot attribute coverage to.
+ * Integration tests for the domains migration. `#[CoversNothing]` because
+ * PHPUnit cannot attribute coverage to an anonymous migration class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,8 +59,7 @@ final class DomainsMigrationTest extends TestCase
     }
 
     /**
-     * The table has exactly these columns, those a claim's state leaves empty
-     * nullable, with the id as its primary key.
+     * The table has exactly these columns and nullability, keyed by id.
      *
      * @return void
      */
@@ -103,9 +96,8 @@ final class DomainsMigrationTest extends TestCase
     }
 
     /**
-     * The secondary indexes: one claim per connection, one verified connection
-     * per domain, every claim of a domain, the recheck's and the pruning's
-     * reads.
+     * The secondary indexes serve claims, verification, the recheck and
+     * pruning.
      *
      * @return void
      */
@@ -134,8 +126,8 @@ final class DomainsMigrationTest extends TestCase
     }
 
     /**
-     * Several connections may claim a domain while none holds it verified; a
-     * second claim of it by one connection is refused.
+     * Many connections may claim an unverified domain; one connection may claim
+     * it once.
      *
      * @return void
      */
@@ -164,8 +156,8 @@ final class DomainsMigrationTest extends TestCase
     }
 
     /**
-     * Running the migration over an existing table is refused before any
-     * change, naming the setting that renames the table; the rollback drops it.
+     * An existing table is refused before any change, and the rollback drops
+     * the table.
      *
      * @return void
      */

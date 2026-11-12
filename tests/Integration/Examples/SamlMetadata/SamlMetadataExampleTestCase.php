@@ -19,12 +19,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * What the examples of `docs/guides/saml-metadata.md` share (SSO-2.8,
- * SSO-12.5), on the shared example harness: the application's tenant, the
- * tenant's identity provider publishing its metadata at the guide's URL, the
- * tenant's SAML connection each example makes, the administrator acting, and
- * the administration endpoints under `admin/`, each run with its input as the
- * application's screen runs it.
+ * The base of the `docs/guides/saml-metadata.md` examples.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,12 +43,12 @@ abstract class SamlMetadataExampleTestCase extends ExampleTestCase
     /** @var \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider The tenant's identity provider. */
     protected FakeSamlIdentityProvider $idp;
 
-    /** @var \SineMacula\Laravel\Sso\Connections\ConnectionSummary The tenant's SAML connection, as each example makes it. */
+    /** @var \SineMacula\Laravel\Sso\Connections\ConnectionSummary The tenant's SAML connection. */
     protected ConnectionSummary $connection;
 
     /**
-     * Keep sessions in memory, for an endpoint that goes back with errors, and
-     * make the tenant, its identity provider and its SAML connection.
+     * Make the tenant, its provider and its connection; the array session holds
+     * the errors an endpoint goes back with.
      *
      * @return void
      */
@@ -71,7 +66,7 @@ abstract class SamlMetadataExampleTestCase extends ExampleTestCase
     }
 
     /**
-     * Make the tenant's SAML connection, as the example needs it.
+     * Make the tenant's SAML connection.
      *
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionSummary
      */
@@ -89,8 +84,7 @@ abstract class SamlMetadataExampleTestCase extends ExampleTestCase
     }
 
     /**
-     * Save the guide's metadata URL on the connection, with any other settings
-     * given, as an administrator would by hand.
+     * Save the guide's metadata URL, and any other settings, on the connection.
      *
      * @param  array<string, mixed>  $settings
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
@@ -103,8 +97,7 @@ abstract class SamlMetadataExampleTestCase extends ExampleTestCase
     }
 
     /**
-     * The tenant's connection, or the one with the id given, as it is stored
-     * now.
+     * The tenant's connection, or the one given, as stored now.
      *
      * @param  ?string  $connectionId
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionSummary
@@ -140,7 +133,7 @@ abstract class SamlMetadataExampleTestCase extends ExampleTestCase
     }
 
     /**
-     * The administrator, as the acting identity of each change.
+     * The administrator acting on each change.
      *
      * @return \SineMacula\Laravel\Sso\Identities\Caller
      */
@@ -150,7 +143,7 @@ abstract class SamlMetadataExampleTestCase extends ExampleTestCase
     }
 
     /**
-     * The administration endpoint of the name, given its input.
+     * Run the named administration endpoint with its input.
      *
      * @param  string  $endpoint
      * @param  array<string, mixed>  $input

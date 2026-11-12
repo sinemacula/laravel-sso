@@ -34,11 +34,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Integration tests of when a metadata refresh's events reach their listeners
- * (SSO-10.5): a refresh or a failure written inside an outer transaction on the
- * storage connection that rolls back writes and reports nothing; one that
- * commits reports only once the outer transaction commits, in order; and each
- * event crosses a queue with its values intact.
+ * Integration tests for when a metadata refresh's events reach their listeners.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -58,8 +54,8 @@ final class MetadataEventsAfterCommitTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, switch SAML and the refresh on, create the tables and
-     * a refreshing connection trusting one certificate, and record events.
+     * Bind a fixed clock, enable SAML and refresh, create a refreshing
+     * connection and record events.
      *
      * @return void
      */
@@ -101,8 +97,8 @@ final class MetadataEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * A refresh and a failure written inside an outer transaction that rolls
-     * back write nothing and report nothing, though each succeeded.
+     * A refresh and a failure inside a rolled-back outer transaction write and
+     * report nothing.
      *
      * @return void
      *
@@ -129,8 +125,8 @@ final class MetadataEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * A refresh written inside an outer transaction that commits reports
-     * nothing until it commits, then every event in order.
+     * A refresh inside an outer transaction reports nothing until it commits,
+     * then every event in order.
      *
      * @return void
      *
@@ -197,9 +193,8 @@ final class MetadataEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * Claim the connection as it is now, as the refresher does: a fresh token
-     * written, and the connection, its trusted certificates and its anchors as
-     * they are, the snapshot.
+     * Claim the connection as the refresher does, with a fresh token and a
+     * snapshot of its trust.
      *
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshClaim
      */
@@ -249,8 +244,7 @@ final class MetadataEventsAfterCommitTest extends TestCase
     }
 
     /**
-     * Metadata of the entity publishing another certificate in place of the one
-     * trusted.
+     * Metadata publishing another certificate in place of the trusted one.
      *
      * @return \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata
      */

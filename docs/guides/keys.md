@@ -136,8 +136,8 @@ A certificate is refused with `settings_invalid` and one violation at `certifica
 
 A certificate's dates are reported, never enforced: an expired certificate is trusted and keeps verifying signatures,
 since trust comes from the certificate you configured, not from its dates. Read a summary's dates, or ask
-`$summary->isExpiredAt($now)` and `$summary->expiresWithin($now, $seconds)`, or run `sso:keys:expiring` on a schedule: see
-[Operations](operations.md#keys-and-certificates-nearing-expiry).
+`$summary->isExpiredAt($now)` and `$summary->expiresWithin($now, $seconds)`, or run `sso:keys:expiring` on a schedule:
+see [Operations](operations.md#keys-and-certificates-nearing-expiry).
 
 Removing the last certificate is allowed; the connection then cannot complete a sign-in until another is trusted.
 

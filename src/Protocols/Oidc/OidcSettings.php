@@ -11,54 +11,8 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
 
 /**
- * The settings of an OpenID Connect connection (SSO-2.4, SSO-7.1, SSO-7.3),
- * named by `Enums\OidcSetting`, which also classifies a change to each.
- *
- * - `issuer`: an `https` URL with a host and no query, userinfo or fragment, of
- *   at most 2048 bytes, kept exactly as given: the ID token's `iss` must equal
- *   it, so it is never normalised (SSO-2.8).
- * - `authorization_endpoint`, `token_endpoint`, `jwks_uri` and the optional
- *   `userinfo_endpoint`: `https` URLs with a host and no userinfo or fragment,
- *   of at most 2048 bytes.
- * - `returns_iss`: whether the provider returns the RFC 9207 `iss` parameter
- *   (off by default).
- * - `client_id`: at most 255 bytes; `client_authentication`:
- *   `client_secret_basic` (the default), `client_secret_post` or
- *   `private_key_jwt`.
- * - `client_assertion_algorithm`: the algorithm `private_key_jwt` client
- *   assertions are signed with, `PS256`, `RS256` or `ES256`; none by default,
- *   each key then signing with its own default (`ClientAssertionAlgorithm`). It
- *   is pinned, never negotiated from a response or discovery, and apart from
- *   the allow-list of `id_token_algorithms`. Whether it fits the connection's
- *   keys is judged where they are read: an update
- *   (`Connections\ConnectionService`) and a key added (`Keys\KeyService`).
- * - `scopes`: up to twenty RFC 6749 scope tokens, always including `openid` (by
- *   default `openid`, `email` and `profile`).
- * - `id_token_algorithms`: asymmetric signature algorithms only (`RS256` by
- *   default), never `none` or an HMAC (SSO-7.3).
- * - `extra_parameters`: up to ten authorisation parameters from the allow-list
- *   (`prompt`, `acr_values`, `login_hint`, `ui_locales`, `claims_locales`,
- *   `display`, `domain_hint`, `hd`), each a string of at most 512 bytes. A
- *   parameter the flow controls is `reserved`, whatever its case, so none can
- *   ever be set or overridden (SSO-2.4).
- * - `trusted_audiences`: up to ten distinct audiences an ID token may name
- *   beside the client id, each at most 255 bytes with no whitespace (none by
- *   default, SSO-7.4).
- * - `max_age`: the `max_age` every authorisation request sends, an integer from
- *   0 to a week in seconds (none by default, SSO-7.4); a `reauthenticate` sends
- *   0 whatever it is (SSO-5.10).
- * - `fetch_userinfo`: whether the UserInfo endpoint is called (off by default);
- *   while it is on, `userinfo_endpoint` is required (SSO-7.5).
- * - `metadata_refresh`: whether the discovery document and the JWKS are
- *   refreshed on a schedule (on by default), while
- *   `sso.features.metadata_refresh` is on. Off leaves the stale limit in force
- *   and an administrator's refresh available (SSO-2.8).
- *
- * The client secret is a secret: the management helpers take it out of what is
- * given before the settings see it, so a `client_secret` among the settings is
- * `reserved`. A missing setting is not a violation, so a connection may be
- * saved before it is complete; `isComplete()` says when it is. What is stored
- * holds every setting given or defaulted, defaults applied.
+ * The settings of an OpenID Connect connection. A missing setting is not a
+ * violation, so a connection may be saved before it is complete.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,13 +25,13 @@ final readonly class OidcSettings implements ProtocolSettings
     /** @var list<string> The algorithms a client assertion may be pinned to (RFC 7523). */
     public const array CLIENT_ASSERTION_ALGORITHMS = [ClientAssertionAlgorithm::PS256, ClientAssertionAlgorithm::RS256, ClientAssertionAlgorithm::ES256];
 
-    /** @var list<string> The ID token signature algorithms accepted: asymmetric only (SSO-7.3). */
+    /** @var list<string> The ID token signature algorithms accepted, asymmetric only. */
     public const array ID_TOKEN_ALGORITHMS = ['RS256', 'RS384', 'RS512', 'PS256', 'PS384', 'PS512', 'ES256', 'ES384', 'ES512'];
 
     /** @var list<string> The extra authorisation parameters that may be set. */
     public const array EXTRA_PARAMETERS = ['prompt', 'acr_values', 'login_hint', 'ui_locales', 'claims_locales', 'display', 'domain_hint', 'hd'];
 
-    /** @var list<string> The authorisation parameters the flow controls, in lower case; an extra parameter never sets one (SSO-2.4). */
+    /** @var list<string> The lower-case authorisation parameters only the flow sets. */
     public const array RESERVED_PARAMETERS = [
         'response_type',
         'response_mode',
@@ -145,8 +99,7 @@ final readonly class OidcSettings implements ProtocolSettings
     ) {}
 
     /**
-     * The settings the values give, whatever their shape; a `null` value is a
-     * setting not given.
+     * Read the settings, whatever their shape; a `null` value is not given.
      *
      * @param  array<array-key, mixed>  $values
      * @return static
@@ -180,7 +133,7 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
-     * The settings a change to which may alter what existing subjects mean.
+     * The settings that may alter what existing subjects mean.
      *
      * @return list<string>
      */
@@ -202,8 +155,8 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
-     * The operation whose freshness a change to the setting needs, as
-     * `OidcSetting` classifies it; `null` for a name it does not have.
+     * The operation whose freshness a change needs, or `null` for an unknown
+     * name.
      *
      * @param  string  $name
      * @return ?\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation
@@ -215,8 +168,7 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
-     * Every setting given or with a default, defaults applied, in the order
-     * `OidcSetting` names them; never a secret.
+     * Every setting given or defaulted, in `OidcSetting` order; never a secret.
      *
      * @return array<string, mixed>
      */
@@ -244,8 +196,8 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
-     * Every problem with the settings, in the order `OidcSetting` names them,
-     * then each name it does not have, as `unknown`.
+     * Every problem with the settings in `OidcSetting` order, then each unknown
+     * name.
      *
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
      */
@@ -276,9 +228,8 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
-     * Whether the settings are valid, and name the issuer, the authorisation,
-     * token and JWKS endpoints, and the client id, and the UserInfo endpoint
-     * while UserInfo is fetched.
+     * Whether the settings are valid and name every required value, including
+     * the UserInfo endpoint while UserInfo is fetched.
      *
      * @return bool
      */
@@ -321,7 +272,8 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
-     * The problem with one setting of a single value, or `null`.
+     * The problem with one single-valued setting, or `null`. The issuer is kept
+     * exactly, so it allows no query.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting  $setting
      * @param  mixed  $value
@@ -342,8 +294,7 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
-     * The scopes: a list of at most twenty distinct scope tokens, including
-     * `openid`.
+     * The scopes: at most twenty distinct scope tokens, including `openid`.
      *
      * @param  string  $name
      * @param  mixed  $value
@@ -400,9 +351,8 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
-     * The extra parameters: a map of at most ten names from the allow-list to
-     * strings of at most 512 bytes; a name the flow controls, in any case, is
-     * `reserved`.
+     * The extra parameters: at most ten allow-listed names; a name the flow
+     * controls, in any case, is `reserved`.
      *
      * @param  string  $name
      * @param  mixed  $value
@@ -437,8 +387,7 @@ final readonly class OidcSettings implements ProtocolSettings
     }
 
     /**
-     * The trusted audiences: a list of at most ten distinct strings of at most
-     * 255 bytes with no whitespace.
+     * The trusted audiences: at most ten distinct strings with no whitespace.
      *
      * @param  string  $name
      * @param  mixed  $value

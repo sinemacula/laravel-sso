@@ -10,8 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Localization\Enums\Message;
 
 /**
- * Unit tests for the messages: every message has an English line, every English
- * line is a message, and each line is plain text (SSO-12.6).
+ * Unit tests for the translatable messages.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,8 +21,7 @@ use SineMacula\Laravel\Sso\Localization\Enums\Message;
 final class MessageTest extends TestCase
 {
     /**
-     * Every message has a non-empty English line, so a message is never shown
-     * as its key.
+     * Every message has a non-empty English line.
      *
      * @return void
      */
@@ -40,8 +38,7 @@ final class MessageTest extends TestCase
     }
 
     /**
-     * Every English line is a message, so no line is shipped that nothing
-     * reads.
+     * Every English line belongs to a message.
      *
      * @return void
      */
@@ -69,8 +66,7 @@ final class MessageTest extends TestCase
     }
 
     /**
-     * The messages are these: a key an application overrides is never renamed
-     * or reused, so a change here is a deliberate one.
+     * The message keys are fixed, since applications override them.
      *
      * @return void
      */
@@ -83,8 +79,7 @@ final class MessageTest extends TestCase
     }
 
     /**
-     * Each English line is plain text, with no markup for a caller to trust:
-     * whoever renders it escapes it.
+     * Each English line is plain text without markup.
      *
      * @return void
      */

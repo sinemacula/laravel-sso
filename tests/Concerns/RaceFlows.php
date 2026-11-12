@@ -16,31 +16,8 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptResult;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
- * What the combined-flow tests share (SSO-4.5, SSO-8.8, SSO-9.9, SSO-10.5): how
- * a race establishes the order it claims, and how a rollback test reads what is
- * stored.
- *
- * A racer that goes first holds its locks in a transaction, raises `HOLDS`, and
- * then waits until the database itself shows another session waiting on what it
- * holds, so the overlap is real and never a matter of timing; only then does it
- * commit. That wait fails loudly at the deadline. Where the first racer cannot
- * hold a transaction open itself, as `Pruning\Pruner` and a completion cannot,
- * `pauseBeforeCommit()` does the same from inside its transaction, on the
- * commit that follows the statement named.
- *
- * A racer given a snapshot opens a `REPEATABLE READ` transaction before the
- * race begins and reads in it, as a caller does, so a re-read that decides a
- * write must be a locking one on MySQL, and on PostgreSQL such a racer fails to
- * serialise when what it locks changed since, which is a safe end there alone.
- *
- * `storedRows()` reads every row of the package's tables, and of those named,
- * so a rollback test compares what stood before with what stands after, whole,
- * once `armFailure()` has failed the statement or the commit it names.
- *
- * A race starts from the package's tables migrated afresh, never from those an
- * earlier test kept (`reusesKeptTables()`): the rows a delete leaves in
- * InnoDB's indexes until its purge removes them change which session waits on
- * which lock.
+ * Races and rollback checks shared by the combined-flow tests. The first racer
+ * commits only once the database shows another session waiting.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -51,12 +28,12 @@ trait RaceFlows
 {
     use FailsDatabaseStatements, RacesProcesses;
 
-    /** @var string The signal a racer raises once it holds what the other must find held. */
+    /** @var string The signal a racer raises once it holds its locks. */
     protected const string HOLDS = 'holds';
 
     /**
-     * Start from tables migrated afresh, since the rows a delete leaves until
-     * InnoDB's purge removes them change which session waits on which lock.
+     * Start from fresh tables: rows a delete leaves until InnoDB's purge change
+     * which session waits on which lock.
      *
      * @return bool
      */
@@ -78,8 +55,7 @@ trait RaceFlows
     }
 
     /**
-     * Open a transaction at `REPEATABLE READ` and read in it, which pins its
-     * snapshot.
+     * Open a `REPEATABLE READ` transaction and pin its snapshot with a read.
      *
      * @param  \Closure(): mixed  $reads
      * @return void
@@ -102,8 +78,7 @@ trait RaceFlows
     }
 
     /**
-     * What `race()` runs before its start: a snapshot opened by each racer told
-     * to, by its index.
+     * What `race()` runs before its start: a snapshot for each racer named.
      *
      * @param  list<bool>  $reading
      * @param  \Closure(): mixed  $reads
@@ -138,8 +113,8 @@ trait RaceFlows
     }
 
     /**
-     * Do the work in a transaction, a savepoint inside a snapshot; hold what it
-     * locked until another session waits on it; then commit, the snapshot too.
+     * Do the work in a transaction and hold its locks until another session
+     * waits on them, then commit.
      *
      * @template TResult
      *
@@ -165,8 +140,7 @@ trait RaceFlows
     }
 
     /**
-     * Raise `HOLDS`, then wait until another session waits on a lock this one
-     * holds.
+     * Raise `HOLDS`, then wait until another session waits on this one.
      *
      * @return void
      *
@@ -179,9 +153,8 @@ trait RaceFlows
     }
 
     /**
-     * Run the closure once, in the transaction's last moment before the commit
-     * that follows a statement matching the pattern, whose locks it still
-     * holds.
+     * Run the closure once, just before the commit that follows a statement
+     * matching the pattern, while its locks are still held.
      *
      * @param  string  $pattern
      * @param  \Closure(): void  $paused
@@ -210,8 +183,8 @@ trait RaceFlows
     }
 
     /**
-     * Assert the racer ended without an error, or failed to serialise, which is
-     * accepted only inside a snapshot on PostgreSQL, and answer whether it did.
+     * Assert the racer succeeded or, in a snapshot on PostgreSQL, failed to
+     * serialise, and answer whether it failed.
      *
      * @param  array{result: mixed, error: ?string}  $report
      * @param  bool  $inSnapshot
@@ -232,9 +205,8 @@ trait RaceFlows
     }
 
     /**
-     * Arm the failure: of the occurrence of the verb's statement on the table,
-     * named by its key under `sso.` or itself, or of the commit when no verb is
-     * given.
+     * Arm the failure of the verb's statement on the table (a key under `sso.`
+     * or a name), or of the commit when no verb is given.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -275,8 +247,7 @@ trait RaceFlows
     }
 
     /**
-     * Allow every attempt, whose counters a racer's transaction would otherwise
-     * hold locked.
+     * Allow every attempt, so no racer's transaction holds the counters locked.
      *
      * @return void
      */
@@ -300,8 +271,7 @@ trait RaceFlows
     }
 
     /**
-     * Every row of the package's tables that exist and of the tables named,
-     * each in a form that compares whole and in no order the database chose.
+     * Every row of the package's tables and those named, in a stable order.
      *
      * @param  list<string>  $also
      * @return array<string, list<string>>
@@ -332,11 +302,9 @@ trait RaceFlows
     }
 
     /**
-     * Wait until another session waits on a lock this one holds, failing loudly
-     * at the deadline. MySQL finds the holder by its transaction: where a
-     * delete left only an implicit lock on a secondary index, as a prune does,
-     * the waiter makes it explicit, and `BLOCKING_THREAD_ID` then names the
-     * waiter.
+     * Wait until another session waits on a lock this one holds. MySQL's holder
+     * is found by transaction: when a waiter makes a prune's implicit index
+     * lock explicit, `BLOCKING_THREAD_ID` names the waiter.
      *
      * @return void
      *
@@ -370,8 +338,7 @@ trait RaceFlows
     }
 
     /**
-     * The row in a form that compares whole: a binary column reads as a stream
-     * on PostgreSQL.
+     * The row, comparable; PostgreSQL reads a binary column as a stream.
      *
      * @param  object  $row
      * @return string

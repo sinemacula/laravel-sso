@@ -19,15 +19,8 @@ use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/completion-responses.md` (SSO-5.6, SSO-5.7,
- * SSO-12.1, SSO-12.5), on the shared example harness: the completion routes of
- * `routes/api.php` and the controller that returns what `CompletionResponses`
- * builds, run over HTTP for each protocol. Each asserts the status, the
- * `Location`, the headers and the body the guide's table gives: a `303` after
- * the posted SAML response and a `302` after the OIDC callback, each carrying
- * the code and the reference; and the refusals, a replayed response's `400`
- * with no redirect, a provider's error as a failure redirect naming its code,
- * and a full completion limit's `429` with its wait.
+ * The examples of `docs/guides/completion-responses.md`, run over HTTP for each
+ * protocol.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,8 +50,8 @@ final class CompletionResponsesExampleTest extends ExampleTestCase
     private IdentityReference $person;
 
     /**
-     * Serve the completion routes under the API prefix the base URL carries,
-     * and make the tenant's SAML connection and the person.
+     * Serve the completion routes under the API prefix, and make the SAML
+     * connection and the person.
      *
      * @return void
      */
@@ -76,10 +69,8 @@ final class CompletionResponsesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The posted SAML response is answered with a `303` to the redirect URI,
-     * the code and then the reference in its fragment, and the code links the
-     * subject; the same response posted again is a `400` with no `Location` and
-     * a body that says nothing of why.
+     * A posted SAML response gets a `303` with the code; a replay gets a bare
+     * `400`.
      *
      * @return void
      */
@@ -103,10 +94,8 @@ final class CompletionResponsesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The OIDC authorisation response is answered with a `302` carrying the
-     * code and the reference; a provider's error is answered with a `302` to
-     * the same redirect URI naming the failure reason's code, never the
-     * provider's own error or its description.
+     * The OIDC callback gets a `302` with the code, and a provider's error only
+     * as a failure reason's code.
      *
      * @return void
      *
@@ -136,9 +125,7 @@ final class CompletionResponsesExampleTest extends ExampleTestCase
     }
 
     /**
-     * Once the connection's completion limit is full, the next response is
-     * answered with a `429` and the seconds until the limit's window ends, and
-     * with no redirect.
+     * A full completion limit answers `429` with its wait and no redirect.
      *
      * @return void
      */
@@ -159,8 +146,7 @@ final class CompletionResponsesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The fields the browser posts to the assertion consumer service: the
-     * provider's signed response to the started flow, with its relay state.
+     * The fields the browser posts to the assertion consumer service.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
      * @return array<string, string>
@@ -173,8 +159,7 @@ final class CompletionResponsesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The redirect a completion route answered with the status given, sent with
-     * the headers every completion response carries.
+     * Assert a redirect with the status given and the shared headers.
      *
      * @param  \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>  $response
      * @param  int  $status
@@ -188,8 +173,8 @@ final class CompletionResponsesExampleTest extends ExampleTestCase
     }
 
     /**
-     * A refusal: the status given, no `Location`, the body that says nothing of
-     * why, and the headers every completion response carries.
+     * Assert a refusal: the status given, no `Location`, the generic body and
+     * the shared headers.
      *
      * @param  \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>  $response
      * @param  int  $status
@@ -202,9 +187,8 @@ final class CompletionResponsesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The response was sent with `Cache-Control: no-store` (which Symfony
-     * writes as `no-store, private`), `Referrer-Policy: no-referrer` and a
-     * plain text `Content-Type`.
+     * Assert the headers every completion response carries; Symfony writes
+     * `no-store` as `no-store, private`.
      *
      * @param  \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>  $response
      * @return void

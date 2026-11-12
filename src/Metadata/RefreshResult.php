@@ -9,24 +9,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Metadata\Enums\RefreshOutcome;
 
 /**
- * How a refresh of one connection's metadata ended (SSO-2.8, SSO-11.12): its
- * outcome, the connection, and what goes with the outcome.
- *
- * - `refreshed`: the names of the settings it changed, in the order the
- *   connection's settings name them, then `idp_signing_certificates` when the
- *   trusted certificates changed (none when nothing did); the connection's
- *   metadata version after it; and whether it changed the connection's trust,
- *   voiding the flows in flight through it.
- * - `failed`: the reason, how many refreshes have failed in a row, and when the
- *   next is due.
- * - `rate_limited` (`rate_limited`): an administrator's refresh past the
- *   connection's metadata limit, with the seconds until the window ends.
- * - `conflict` (`metadata_conflict`), `in_progress`
- *   (`metadata_refresh_in_progress`), `skipped`, and `refused`
- *   (`connection_not_found`, `feature_disabled` or `freshness_required`), with
- *   nothing else.
- *
- * It holds no certificate, URL or other value of the metadata.
+ * How a refresh of one connection's metadata ended; it holds no value of the
+ * metadata.
  *
  * @api
  *
@@ -61,13 +45,13 @@ final readonly class RefreshResult implements \JsonSerializable
         /** Why it did not refresh, for every outcome but `refreshed` and `skipped`. */
         public ?FailureReason $reason = null,
 
-        /** The names of the settings a refresh changed, in order, each once. */
+        /** The names of the settings a refresh changed, in the connection's order, each once. */
         public array $changedSettings = [],
 
         /** The connection's metadata version after a refresh. */
         public ?int $metadataVersion = null,
 
-        /** Whether a refresh changed the connection's trust. */
+        /** Whether a refresh changed the connection's trust, voiding what was in flight. */
         public bool $trustChanged = false,
 
         /** How many refreshes have failed in a row, for a failed one. */
@@ -121,8 +105,7 @@ final readonly class RefreshResult implements \JsonSerializable
     }
 
     /**
-     * An administrator's refresh past the connection's metadata limit, which
-     * ran nothing.
+     * An administrator's refresh past the connection's metadata limit.
      *
      * @param  string  $connectionId
      * @param  int  $retryAfter

@@ -10,9 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Config\UrlSetting;
 
 /**
- * Unit tests for the URL reader: what a web URL and a redirect URI may be, that
- * each is returned exactly as configured, and that a refusal names the key and
- * never the value.
+ * Unit tests for the URL setting reader.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -118,8 +116,7 @@ final class UrlSettingTest extends TestCase
     }
 
     /**
-     * A value neither reader accepts fails closed, naming the key and never the
-     * value.
+     * A value neither reader accepts fails, naming the key and never the value.
      *
      * @param  mixed  $value
      * @return void

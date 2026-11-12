@@ -42,26 +42,11 @@ use Tests\Integration\Examples\RedeemingAHandoff\OwnHandoffRedemption;
 use Tests\TestCase;
 
 /**
- * Races a change to a connection's trust against the redemption of a code an
- * application's own store issued through it, across processes, each with its
- * own database connection, on PostgreSQL and MySQL (SSO-2.13, SSO-9.2): the
- * package never voids such a code, so only the trust version its store kept
- * decides it.
+ * Integration tests racing a trust change against redeeming an
+ * application-issued code.
  *
- * The order is established by signals, never by timing. When the change holds
- * the connection's lock first (it signals from inside its void, under the lock,
- * after raising the version), the redemption that then locks waits for it to
- * commit and is refused as `connection_unavailable`, its code spent and no one
- * signed in. When the redemption holds the lock first (it signals as its
- * recheck asks the linker, under the lock), it is admitted, and the change that
- * then locks waits for it and commits after. Either way the change commits, and
- * raises the version once. The first order runs again with each process inside
- * a transaction of its own that read the connection and the code before the
- * race began, so the redemption's locking read must see the change committed
- * rather than its snapshot (MySQL's `REPEATABLE READ`).
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * The package never voids such a code, so only its stored trust version decides
+ * it. Skipped on SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -96,11 +81,8 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     private bool $created = false;
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock, a
-     * fresh caller, a limiter that allows every attempt, a linker that links
-     * every result to one identity and a voider that signals once it holds the
-     * lock; register the driver; create the tables, the application's table of
-     * codes, the connection and the code.
+     * Skip where processes cannot share the database, then set up the linker,
+     * the signalling voider, the tables, the connection and the code.
      *
      * @return void
      *
@@ -150,7 +132,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * Remove what the race used and drop the application's table of codes.
+     * Remove what the race used and drop the application's code table.
      *
      * @return void
      */
@@ -167,8 +149,8 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * The change holds the lock first: the redemption waiting on it is refused
-     * as `connection_unavailable`, and the version is raised once.
+     * With the change holding the lock first, the redemption is
+     * `connection_unavailable`.
      *
      * @return void
      */
@@ -178,8 +160,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * The same race, each process inside a transaction of its own that read the
-     * connection and the code before the race began.
+     * The same race, each process in a transaction that read the code first.
      *
      * @return void
      */
@@ -196,8 +177,8 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * The redemption holds the lock first: it is admitted, and the change
-     * waiting on it commits after, raising the version once.
+     * With the redemption holding the lock first, it is admitted and the change
+     * follows.
      *
      * @return void
      */
@@ -213,9 +194,9 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * Assert the change committed and raised the version once, and the
-     * redemption that waited on it was refused, its code spent; on PostgreSQL a
-     * redemption may instead fail to serialise, and then spends nothing.
+     * Assert the change raised the version once and the redemption was refused.
+     *
+     * On PostgreSQL the redemption may fail to serialise instead.
      *
      * @param  list<array{result: mixed, error: ?string}>  $reports
      * @return void
@@ -238,9 +219,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * What a process changing the connection's trust does: wait for the signal
-     * given, if any, then change the connection's issuer, and report the
-     * outcome.
+     * Wait for the signal, if any, change the connection's issuer and report.
      *
      * @param  ?string  $after
      * @return \Closure(): string
@@ -260,9 +239,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * What a redeeming process does: wait for the signal given, if any, then
-     * redeem the application's code through its own redemption, and report
-     * `admitted` or the reason it was refused.
+     * Wait for the signal, if any, redeem the application's code and report.
      *
      * @param  ?string  $after
      * @return \Closure(): string
@@ -282,8 +259,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * Bind a linker that links every result to one identity, and calls the
-     * closure each time it is asked, which the recheck does under the lock.
+     * Bind a linker that calls the closure each time the recheck asks it.
      *
      * @param  \Closure(): void  $asked
      * @return void
@@ -322,8 +298,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * A voider that signals once it has raised the trust version, under the
-     * connection's lock, inside the change's transaction.
+     * A voider that signals once it has raised the version under the lock.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
      * @return \SineMacula\Laravel\Sso\Connections\InFlightVoider
@@ -341,7 +316,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
              */
             public function __construct(
 
-                // The clock a void is stamped from
+                // Passed to the parent constructor
                 Clock $clock,
 
                 /** Called once the void is made. */
@@ -393,8 +368,7 @@ final class TrustChangeRedemptionRaceTest extends TestCase
     }
 
     /**
-     * Issue a linked `sign_in` code through the application's own store, under
-     * the connection's trust version, bound to the client's verifier.
+     * Issue a linked `sign_in` code through the application's own store.
      *
      * @return string
      *

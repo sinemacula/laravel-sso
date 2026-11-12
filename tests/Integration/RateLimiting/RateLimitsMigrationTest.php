@@ -14,13 +14,8 @@ use SineMacula\Laravel\Sso\Database\TableAlreadyExistsException;
 use Tests\TestCase;
 
 /**
- * Integration tests for the shipped rate limits migration, on whichever engine
- * the suite runs against: the table's shape, its primary key and its index, the
- * guard against an existing table, the rollback, and the connection it runs on,
- * the counters' own when `sso.rate_limits.connection` names one.
- *
- * Marked `#[CoversNothing]` because a migration is an anonymous class PHPUnit
- * cannot attribute coverage to.
+ * Integration tests for the rate limits migration. `#[CoversNothing]`: PHPUnit
+ * cannot cover an anonymous migration class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,10 +38,8 @@ final class RateLimitsMigrationTest extends TestCase
     private const string COUNTERS = 'counters';
 
     /**
-     * Drop the tables an earlier test kept, then run the shipped migration,
-     * with the schema builder's default time precision raised to microseconds
-     * while it runs, so the whole-second precision is what the migration itself
-     * declares.
+     * Drop the tables, then run the migration with microsecond default
+     * precision so its own precision shows.
      *
      * @return void
      */
@@ -86,8 +79,8 @@ final class RateLimitsMigrationTest extends TestCase
     }
 
     /**
-     * The table has exactly the key, the count and the window's end, none of
-     * them nullable, with the key as its primary key.
+     * The table has exactly the key, count and window end, none nullable, keyed
+     * by the key.
      *
      * @return void
      */
@@ -106,8 +99,8 @@ final class RateLimitsMigrationTest extends TestCase
     }
 
     /**
-     * The one secondary index is on the window's end and the key, in the order
-     * pruning pages by keyset.
+     * The one secondary index is on the window end and the key, in pruning's
+     * keyset order.
      *
      * @return void
      */
@@ -169,8 +162,8 @@ final class RateLimitsMigrationTest extends TestCase
     }
 
     /**
-     * Running the migration again finds its table and stops before changing it,
-     * naming the setting that renames it.
+     * Running the migration again stops before changing anything, naming the
+     * setting.
      *
      * @return void
      */
@@ -232,8 +225,8 @@ final class RateLimitsMigrationTest extends TestCase
     }
 
     /**
-     * With the counters on a connection of their own, the migration creates and
-     * drops the table there, and only there, whatever the storage connection.
+     * With a counters connection, the migration creates and drops the table
+     * only there.
      *
      * @return void
      */
@@ -260,8 +253,7 @@ final class RateLimitsMigrationTest extends TestCase
     }
 
     /**
-     * Without a counters connection of their own, the migration creates the
-     * table on the storage connection.
+     * Without a counters connection, the migration uses the storage connection.
      *
      * @return void
      */
@@ -291,8 +283,7 @@ final class RateLimitsMigrationTest extends TestCase
     }
 
     /**
-     * A counters connection that is not a name is refused, as the model refuses
-     * it, rather than creating the table on another connection.
+     * A counters connection that is not a name is refused.
      *
      * @return void
      */

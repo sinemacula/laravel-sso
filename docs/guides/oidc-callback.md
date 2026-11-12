@@ -18,8 +18,7 @@ Route::get('/auth/sso/connections/{connection}/callback', [SsoCompletionControll
 <!-- snippet: tests/Integration/Examples/OidcCallback/SsoCompletionController.php#oidc-callback-action -->
 ```php
 /**
- * GET: the OIDC authorisation response the provider sends the browser back
- * with.
+ * GET: the provider's authorisation response.
  *
  * @param  \Illuminate\Http\Request  $request
  * @param  string  $connection
@@ -73,7 +72,8 @@ handled as a success or an error:
 - when absent otherwise, the response is accepted only at the callback of the request's own connection.
 
 A response carrying another connection's `state` is `connection_mismatch`, and its failure goes to that request's
-application. Neither provider is sent anything. Together these are the defence against mix-up attacks (RFC 9700 §4.4.2).
+application. Neither provider is sent anything. Together these are the defence against mix-up attacks (RFC 9700,
+section 4.4.2).
 
 If your provider returns `iss`, turn `returns_iss` on: without it, a response that omits `iss` is accepted on its
 connection's callback alone.

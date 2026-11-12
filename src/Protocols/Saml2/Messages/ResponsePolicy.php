@@ -5,24 +5,15 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Saml2\Messages;
 
 /**
- * What the SAML adapter holds a response to, for one connection (SSO-2.6,
- * SSO-6.2, SSO-6.7, SSO-6.8): the identity provider certificates the connection
- * trusts (PEM), the only keys a signature is verified with, since a key the
- * message carries is never trusted; the signature, key transport and data
- * encryption algorithms the connection allows; and what yields the service
- * provider's decryption keys (PEM private keys), called only when the response
- * carries an encrypted assertion, so a response that carries none never
- * decrypts a stored key.
- *
- * The decryption keys are held in a `\SensitiveParameterValue`; a dump shows
- * how many certificates and algorithms it holds, never a key.
+ * A connection's trusted certificates and allowed algorithms for reading a
+ * response. Decryption keys load lazily, only for an encrypted assertion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class ResponsePolicy
 {
-    /** @var \SensitiveParameterValue What yields the decryption keys, a `\Closure(): list<\SineMacula\Laravel\Sso\Secrets\Secret>`. */
+    /** @var \SensitiveParameterValue A `\Closure(): list<\SineMacula\Laravel\Sso\Secrets\Secret>` of decryption keys. */
     private \SensitiveParameterValue $decryptionKeys;
 
     /**
@@ -36,7 +27,7 @@ final readonly class ResponsePolicy
      */
     public function __construct(
 
-        /** The trusted identity provider certificates, as PEM. */
+        /** The trusted IdP certificates, as PEM; the only verification keys. */
         public array $trustedCertificates,
 
         /** The signature algorithms allowed. */
@@ -48,15 +39,14 @@ final readonly class ResponsePolicy
         /** The data encryption algorithms allowed. */
         public array $dataEncryptionAlgorithms = [],
 
-        // Yields the service provider's decryption keys; held wrapped
+        // Held wrapped, so not promoted
         ?\Closure $decryptionKeys = null,
     ) {
         $this->decryptionKeys = new \SensitiveParameterValue($decryptionKeys ?? static fn (): array => []);
     }
 
     /**
-     * What a dump shows: how many certificates and algorithms it holds, never a
-     * key.
+     * Show only counts, never a key.
      *
      * @return array<string, int>
      */
@@ -71,7 +61,7 @@ final readonly class ResponsePolicy
     }
 
     /**
-     * Refuse to be serialised: it may yield private keys.
+     * Refuse to be serialised; it may yield private keys.
      *
      * @return array<string, mixed>
      *
@@ -101,8 +91,7 @@ final readonly class ResponsePolicy
     }
 
     /**
-     * The service provider's decryption keys, as PEM private keys, decrypted
-     * now for the decryption that asks.
+     * The SP decryption keys as PEM, decrypted on each call.
      *
      * @return list<\SineMacula\Laravel\Sso\Secrets\Secret>
      */

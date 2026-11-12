@@ -14,9 +14,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[secrets]`: checked while the package is in use; the
- * default encrypter must round-trip under `app.key`; an application's own
- * encrypter must resolve and is never called.
+ * Feature tests for the `[secrets]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -69,8 +67,7 @@ final class SecretsCheckTest extends TestCase
     }
 
     /**
-     * A default encrypter whose round trip gives back something else, or
-     * throws, fails.
+     * A default encrypter whose round trip fails or throws fails the check.
      *
      * @return void
      */
@@ -86,8 +83,7 @@ final class SecretsCheckTest extends TestCase
     }
 
     /**
-     * An application's own encrypter that resolves passes without being called,
-     * even with no `app.key` for the default.
+     * An application's own encrypter that resolves passes without being called.
      *
      * @return void
      */
@@ -130,7 +126,7 @@ final class SecretsCheckTest extends TestCase
     }
 
     /**
-     * An application's own encrypter that cannot be resolved fails with the
+     * An application's own encrypter that cannot resolve fails with the
      * container's message.
      *
      * @return void
@@ -147,8 +143,8 @@ final class SecretsCheckTest extends TestCase
     }
 
     /**
-     * Set `app.key` and forget Laravel's encrypter and the scoped instances, so
-     * the next resolution reads it.
+     * Set `app.key` and forget the resolved encrypters so the next resolution
+     * reads it.
      *
      * @param  string  $key
      * @return void
@@ -162,8 +158,8 @@ final class SecretsCheckTest extends TestCase
     }
 
     /**
-     * Laravel's string encrypter, broken: its decryption throws, or gives back
-     * something other than what was encrypted.
+     * Laravel's string encrypter, broken to throw or to decrypt to something
+     * else.
      *
      * @param  bool  $throws
      * @return \Illuminate\Contracts\Encryption\StringEncrypter

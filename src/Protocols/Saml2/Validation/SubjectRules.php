@@ -11,24 +11,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute;
 
 /**
- * The subject of a verified SAML assertion (SSO-6.9), by the connection's
- * `subject_source`, as `SubjectEncoding` writes it, or `subject_invalid`:
- *
- * - `name_id`: the subject carries a `NameID` with a non-empty value; its
- *   `Format` is the connection's `name_id_format` URI exactly, and an absent
- *   `Format` is accepted only when that is `unspecified` (SAML 2.0 Core
- *   §8.3.1), so a transient `NameID` is never a subject and the email and
- *   unspecified formats only by opt-in; its `NameQualifier` is absent or the
- *   identity provider's entity id, and its `SPNameQualifier` absent or the
- *   service provider's, each compared exactly. The claims' NameID format is the
- *   connection's format URI.
- * - `attribute`: exactly one `Attribute` whose `Name` is exactly
- *   `subject_attribute`, with exactly one value, a non-empty string. The claims
- *   carry no NameID format.
- * - any other source fails closed.
- *
- * The encoded subject must be at most `LinkSubject::MAX_SUBJECT_LENGTH` bytes;
- * a longer one is refused, never truncated. Nothing here keeps anything.
+ * The encoded subject of a verified SAML assertion by the connection's
+ * `subject_source`; an over-long one is refused, never truncated.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,17 +21,14 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute;
  */
 final class SubjectRules
 {
-    /** @var string The NameID format that may also be given by no `Format` at all. */
-    private const string UNSPECIFIED = 'unspecified';
-
     /**
      * Disallow instantiation; utility container only.
      */
     private function __construct() {}
 
     /**
-     * The encoded subject and its NameID format, or why the assertion has no
-     * subject the connection accepts.
+     * The encoded subject and its NameID format, or why there is none; an
+     * unknown source fails closed.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -67,8 +48,7 @@ final class SubjectRules
     }
 
     /**
-     * The encoded subject of the `NameID`, or `null` when the connection does
-     * not accept it.
+     * The encoded subject of the `NameID`, or `null` if it is not accepted.
      *
      * @param  ?\SineMacula\Laravel\Sso\Protocols\Saml2\Messages\NameId  $nameId
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -84,8 +64,7 @@ final class SubjectRules
     }
 
     /**
-     * Whether the connection accepts the `NameID`: a non-empty value, its
-     * format and its qualifiers.
+     * Whether the `NameID` has a value and an accepted format and qualifiers.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\NameId  $nameId
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -97,8 +76,8 @@ final class SubjectRules
     }
 
     /**
-     * Whether the `NameID`'s format is the connection's: its URI exactly, or
-     * absent when the connection accepts `unspecified`.
+     * Whether the format is the connection's URI exactly; an absent one means
+     * `unspecified` (SAML 2.0 Core 8.3.1).
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\NameId  $nameId
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -108,12 +87,11 @@ final class SubjectRules
     {
         $format = $nameId->format();
 
-        return $format === null ? $context->options->nameIdFormat === self::UNSPECIFIED : $format === $context->options->nameIdFormatUri();
+        return $format === null ? $context->options->nameIdFormat === 'unspecified' : $format === $context->options->nameIdFormatUri();
     }
 
     /**
-     * Whether each qualifier of the `NameID` is absent or names its party
-     * exactly.
+     * Whether each qualifier is absent or names its party exactly.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\NameId  $nameId
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -131,9 +109,8 @@ final class SubjectRules
     }
 
     /**
-     * The encoded subject of the one value of the one attribute with exactly
-     * the name, or `null` when there is not exactly one, with exactly one
-     * non-empty string value.
+     * The encoded subject of the one attribute of the name with one non-empty
+     * value, or `null`.
      *
      * @param  list<\SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute>  $attributes
      * @param  ?string  $name
@@ -150,7 +127,7 @@ final class SubjectRules
     }
 
     /**
-     * Whether the encoded subject is one a link can hold.
+     * Whether the encoded subject fits a link.
      *
      * @param  ?string  $subject
      * @return bool

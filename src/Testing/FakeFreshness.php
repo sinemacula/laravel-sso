@@ -11,20 +11,8 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Identities\Caller;
 
 /**
- * A freshness contract for tests that answers what the test gave it and records
- * every operation it is asked about, with the maximum age and the caller asked
- * for, so a test of a management helper neither authenticates a caller nor
- * depends on the default, which refuses every operation (SSO-2.12).
- *
- * Bind it in place of the package's contract with
- * `$this->app->instance(Freshness::class, $fake = FakeFreshness::fresh())`, run
- * the operation, then assert what was asked. It answers `fresh` for every
- * operation unless built with `FakeFreshness::stale()`, or told with
- * `staleFor()` which operations alone answer `stale`. It holds its answers and
- * what it was asked per instance, so a test that binds a new one starts afresh.
- * It judges no caller, answering the same for none, and never belongs in
- * production: an application binds a contract that judges the caller it is
- * given instead.
+ * A test freshness contract that answers as told and records every question. It
+ * judges no caller, so it never belongs in production.
  *
  * @api
  *
@@ -33,10 +21,10 @@ use SineMacula\Laravel\Sso\Identities\Caller;
  */
 final class FakeFreshness implements Freshness
 {
-    /** @var array<string, \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation> The operations that answer `stale` whatever the outcome, by name. */
+    /** @var array<string, \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation> The operations that always answer `stale`, by name. */
     private array $staleOperations = [];
 
-    /** @var list<array{operation: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation, max_age_seconds: int, caller: ?\SineMacula\Laravel\Sso\Identities\Caller}> Every question asked, in the order it was asked. */
+    /** @var list<array{operation: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation, max_age_seconds: int, caller: ?\SineMacula\Laravel\Sso\Identities\Caller}> Every question asked, in order. */
     private array $asked = [];
 
     /**
@@ -71,9 +59,8 @@ final class FakeFreshness implements Freshness
     }
 
     /**
-     * Answer `stale` for the operations given and `fresh` for every other,
-     * however the contract was built; a later call adds to the operations an
-     * earlier one gave.
+     * Answer `stale` for these operations and `fresh` for every other; calls
+     * accumulate.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  ...$operations
      * @return self
@@ -106,8 +93,7 @@ final class FakeFreshness implements Freshness
     }
 
     /**
-     * Every question asked, in order: the operation, the maximum age, in
-     * seconds, and the caller, `null` for none, it was asked with.
+     * Every question asked, in order.
      *
      * @return list<array{operation: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation, max_age_seconds: int, caller: ?\SineMacula\Laravel\Sso\Identities\Caller}>
      */
@@ -117,8 +103,7 @@ final class FakeFreshness implements Freshness
     }
 
     /**
-     * Assert that the operation was asked about, with the maximum age when one
-     * is given.
+     * Assert that the operation was asked about, with the maximum age if given.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  ?int  $maxAgeSeconds
@@ -143,8 +128,7 @@ final class FakeFreshness implements Freshness
     }
 
     /**
-     * Assert that exactly the operations given were asked about, in that order
-     * and each as many times as it is given.
+     * Assert that exactly these operations were asked about, in order.
      *
      * @param  list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation>  $operations
      * @return void
@@ -157,8 +141,7 @@ final class FakeFreshness implements Freshness
     }
 
     /**
-     * Assert that the operation was never asked about, or, when none is given,
-     * that nothing was.
+     * Assert that the operation, or with none given anything, was never asked.
      *
      * @param  ?\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @return void
@@ -175,7 +158,7 @@ final class FakeFreshness implements Freshness
     }
 
     /**
-     * The name of each operation asked about, in order.
+     * The name of each operation asked, in order.
      *
      * @return list<string>
      */

@@ -30,17 +30,8 @@ use Tests\Fixtures\Queue\ScopedEndpoints;
 use Tests\TestCase;
 
 /**
- * One real queue worker across jobs for different connections (SSO-11.2), over
- * the database queue, in the one application, with only the worker's own reset
- * of the scope between jobs. A refresh of connection A, then B, then A fetches
- * from and writes to the connection each job names, and nothing of a job stays
- * for the next. Each scoped service is rebuilt between jobs, and a driver kept
- * by the registry with it. A job that throws, an application's or the package's
- * on a failing statement, is recorded and the next runs.
- *
- * The package queues nothing else: `Events\ResultUnlinked` is dispatched
- * synchronously and refuses to be serialised, so no provisioning listener can
- * be queued, and the last test holds the package to that one queued class.
+ * Integration tests for one queue worker running jobs for different
+ * connections.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -79,8 +70,8 @@ final class QueueWorkerIsolationTest extends TestCase
     private FakeOpenIdProvider $providerB;
 
     /**
-     * Create the tables, the queue and the connections of two tenants, each
-     * refreshing from a provider of its own.
+     * Create the queue and two tenants' connections, each with its own
+     * provider.
      *
      * @return void
      */
@@ -120,10 +111,8 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * A, then B, then A: each job refreshes the connection it names, from its
-     * own provider; the other's row and provider are not touched; the second
-     * job for A finds it no longer due and does nothing; and no job leaves a
-     * value of its connection for the next.
+     * A, B, then A each refresh only the connection they name, and nothing
+     * stays.
      *
      * @return void
      */
@@ -156,8 +145,7 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * The worker's loop forgets the package's scoped services before each job,
-     * so each is rebuilt for the job that follows, and a singleton stands.
+     * The worker forgets scoped services between jobs and keeps singletons.
      *
      * @return void
      */
@@ -190,10 +178,7 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * The registry outlives the jobs and a driver holds scoped services, so it
-     * keeps a driver for one scope alone: within a job the same one, and in the
-     * next one built anew, the drivers a registered driver's name stands for
-     * included. A service an application scopes is never a job's old one.
+     * The registry keeps a driver for one job's scope only.
      *
      * @return void
      */
@@ -216,8 +201,7 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * A driver answers with the endpoint resolver of the job it serves, one an
-     * application scopes, and not with the one of a job before it.
+     * A driver uses the current job's endpoint resolver.
      *
      * @return void
      */
@@ -246,8 +230,7 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * Once due again, the third job's connection is refreshed from its own
-     * provider, whatever the job before it fetched.
+     * Once due again, the third job refreshes from its own provider.
      *
      * @return void
      */
@@ -273,8 +256,7 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * An application's job that throws is recorded and the next job runs, in
-     * the same worker, for the connection it names.
+     * An application job that throws is recorded and the next job runs.
      *
      * @return void
      */
@@ -297,10 +279,8 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * A refresh whose claim fails on a statement fails its job: its connection
-     * is left unclaimed and unrefreshed, the transaction level at nothing, and
-     * the next job refreshes the next connection. A job queued for it later
-     * refreshes it.
+     * A refresh whose claim fails leaves its connection unclaimed and the
+     * worker clean.
      *
      * @return void
      */
@@ -332,8 +312,7 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * The one class the package queues is the metadata refresh, so no job
-     * carries a connection's trust, a verified result or a grant.
+     * The metadata refresh is the only job the package queues.
      *
      * @return void
      */
@@ -388,8 +367,7 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * The package's scoped services as the application resolves them now, by
-     * the contract.
+     * The package's scoped services as currently resolved, by contract.
      *
      * @return array<class-string, object>
      */
@@ -405,8 +383,8 @@ final class QueueWorkerIsolationTest extends TestCase
     }
 
     /**
-     * Assert neither the root application nor a static property of a package
-     * class holds a value of either connection.
+     * Assert no connection value is held by the root application or a static
+     * property.
      *
      * @return void
      */

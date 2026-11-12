@@ -17,10 +17,7 @@ use SineMacula\Laravel\Sso\Sessions\Provenance;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Unit tests for how a redemption ended: redeemed with the result and what the
- * code was bound to, refused for its reason, or rate limited with its wait;
- * each outcome's predicates; and that no dump, `json_encode()` or serialisation
- * shows the result's subject or attributes.
+ * Unit tests for handoff redemption results.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,8 +39,7 @@ final class RedemptionResultTest extends TestCase
     }
 
     /**
-     * A redeemed answer carries the result and everything the code was bound
-     * to, and no reason or wait.
+     * A redeemed answer carries the result and its binding, no reason or wait.
      *
      * @return void
      */
@@ -91,8 +87,7 @@ final class RedemptionResultTest extends TestCase
     }
 
     /**
-     * A redeemed answer carries the session provenance it is given, and only a
-     * redeemed answer can: a refusal and a rate limit carry none.
+     * Only a redeemed answer carries session provenance.
      *
      * @return void
      */
@@ -177,8 +172,7 @@ final class RedemptionResultTest extends TestCase
     }
 
     /**
-     * A rate limited answer carries `rate_limited` and its wait, from one
-     * second.
+     * A rate limited answer carries `rate_limited` and a wait of 1s or more.
      *
      * @return void
      */
@@ -231,8 +225,7 @@ final class RedemptionResultTest extends TestCase
     }
 
     /**
-     * An answer was redeemed inside the caller's transaction only when it says
-     * so: nothing else, redeemed or not, claims it.
+     * Only an answer that says so was admitted in the caller's transaction.
      *
      * @return void
      */
@@ -247,9 +240,7 @@ final class RedemptionResultTest extends TestCase
     }
 
     /**
-     * A dump and `json_encode()` of a redeemed answer show its outcome, the
-     * purpose, the connection and the reference, and never the subject, an
-     * attribute or an identity.
+     * No dump or JSON of a redeemed answer shows the subject or attributes.
      *
      * @return void
      */

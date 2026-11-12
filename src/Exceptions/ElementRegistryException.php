@@ -5,8 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Exceptions;
 
 /**
- * Thrown by the configuration check when the XML library would not load an XML
- * provider package's element registry exactly once, naming the package.
+ * An XML provider package's element registry would not load exactly once.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

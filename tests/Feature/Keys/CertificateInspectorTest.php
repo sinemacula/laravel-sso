@@ -14,10 +14,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reading and judging of an identity provider's signing
- * certificate (SSO-2.6): each violation, at the setting `certificate` and in
- * the order the checks run; and the facts of an accepted certificate, whose
- * dates are read and never judged (the inspector reads no clock).
+ * Feature tests for reading and judging an identity provider's signing
+ * certificate.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,8 +74,7 @@ final class CertificateInspectorTest extends TestCase
     }
 
     /**
-     * Rows of `[certificate, type, bits]`: each certificate accepted, with its
-     * key's type and size.
+     * Rows of `[certificate, type, bits]` for each accepted certificate.
      *
      * @return iterable<string, array{0: \Closure(): string, 1: \SineMacula\Laravel\Sso\Keys\Enums\KeyType, 2: int}>
      */
@@ -92,9 +89,8 @@ final class CertificateInspectorTest extends TestCase
     }
 
     /**
-     * An accepted certificate gives its facts: the canonical certificate and
-     * public key, the fingerprint, the key's type and size, and the validity,
-     * in UTC.
+     * An accepted certificate gives its canonical PEM, public key, fingerprint,
+     * key type and size, and UTC validity.
      *
      * @param  \Closure(): string  $certificate
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
@@ -128,8 +124,8 @@ final class CertificateInspectorTest extends TestCase
     }
 
     /**
-     * A certificate given with other line endings and surrounding whitespace
-     * reads as the same canonical certificate and fingerprint.
+     * A certificate with other line endings and surrounding whitespace reads as
+     * the same canonical certificate.
      *
      * @return void
      */
@@ -185,8 +181,8 @@ final class CertificateInspectorTest extends TestCase
     }
 
     /**
-     * Empty OpenSSL's error queue, so what a test finds there afterwards is
-     * what the code under test left.
+     * Empty OpenSSL's error queue so a test sees only what the code under test
+     * left.
      *
      * @return void
      */

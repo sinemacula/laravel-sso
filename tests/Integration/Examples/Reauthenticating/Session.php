@@ -7,15 +7,8 @@ namespace Tests\Integration\Examples\Reauthenticating;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * The example application's session, an Eloquent model of its own
- * `app_sessions` table (SSO-5.10, SSO-9.5): the identity it is for, the
- * application and the connection it was signed in to and through, the exact
- * link that established it, when it last authenticated, and when it was
- * revoked, if it was.
- *
- * Its table lives on the package's storage connection, where the application's
- * sessions read and write it, so a locking read of a session's row takes part
- * in a redemption's transaction.
+ * The example application's session, stored on the package's storage connection
+ * so a locking read joins a redemption's transaction.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -39,7 +32,7 @@ final class Session extends Model
     /** @var bool Whether the key increments: it is the session's own id. */
     public $incrementing = false;
 
-    /** @var bool Whether the model is timestamped: the example needs no times of its own. */
+    /** @var bool Whether the model is timestamped: the example needs no times. */
     public $timestamps = false;
 
     /** @var ?string The table the model is stored in. */

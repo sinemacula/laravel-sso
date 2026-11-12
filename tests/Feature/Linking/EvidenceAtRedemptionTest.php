@@ -60,15 +60,8 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Adversarial tests of what a redemption makes of the provider's authentication
- * context (SSO-8.7, SSO-9.5, SSO-9.10), with `ConnectionEvidencePolicy` bound,
- * through the public completion and redemption: each `amr`, `acr` and SAML
- * `AuthnContextClassRef` accepted or not, each combination one value short and
- * exact; every time bound measured at redemption, and a code redeemed later than
- * the maximum age though unexpired; the current policy deciding; a policy empty or
- * malformed; a `link` and an unlinked handoff never asking; `sign_in` and
- * `reauthenticate` carrying it; no event added; and no value anywhere it may not
- * be.
+ * Adversarial tests of how a redemption judges the provider's authentication
+ * context.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -225,9 +218,9 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[seconds from the completion the provider authenticated, seconds
-     * from completion to redemption, whether it is accepted]`, under a maximum
-     * age of 600 seconds and a skew of 30.
+     * Rows of `[seconds from completion to authentication, seconds from
+     * completion to redemption, accepted]`, under a 600-second maximum age and
+     * 30 seconds of skew.
      *
      * @return iterable<string, array{0: int, 1: int, 2: bool}>
      */
@@ -683,9 +676,8 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
     }
 
     /**
-     * A `reauthenticate` whose evidence is insufficient still renews: freshness
-     * is the purpose's whole meaning, and nothing is offered with it. The old
-     * authentication is judged at the same bound as a sign-in's.
+     * A `reauthenticate` with insufficient evidence still renews, offering
+     * nothing.
      *
      * @return void
      */
@@ -804,9 +796,8 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
     }
 
     /**
-     * No evidence value reaches an event, a log, a dump or JSON of the
-     * evidence, nor JSON or a dump of the redemption's answer; the answer's
-     * JSON is exactly the outcome, and it refuses to be serialised.
+     * No evidence value is shown anywhere, and the answer refuses to be
+     * serialised.
      *
      * @return void
      */
@@ -907,9 +898,8 @@ final class EvidenceAtRedemptionTest extends LinkingTestCase
     }
 
     /**
-     * Sign in through a SAML connection under the policy, the fake provider
-     * stating the class, the seconds given from now: the signed response at the
-     * assertion consumer service, then the redemption.
+     * Sign in through a SAML connection whose provider states the class at the
+     * given offset, then redeem.
      *
      * @param  array<string, mixed>  $policy
      * @param  string  $class

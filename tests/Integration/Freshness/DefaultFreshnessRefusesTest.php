@@ -20,11 +20,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Integration tests of fresh authentication in a booted application with a
- * protocol on: with the default binding every operation SSO-2.12 lists is
- * refused, alone or together, in a request as in a test; with a contract that
- * answers `fresh` bound in its place, every one is let through, asked with its
- * shipped maximum age.
+ * Integration tests of the default freshness contract in a booted application.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,8 +34,7 @@ final class DefaultFreshnessRefusesTest extends TestCase
     use RunsConfigurationChecks;
 
     /**
-     * The package is in use and its shipped freshness configuration passes, so
-     * nothing but the default contract refuses below.
+     * The package is in use and its shipped freshness configuration passes.
      *
      * @return void
      */
@@ -51,8 +46,8 @@ final class DefaultFreshnessRefusesTest extends TestCase
     }
 
     /**
-     * With the default binding, every operation is refused, alone and all
-     * together, for no caller and for a caller on a session alike.
+     * The default refuses every operation, alone and together, with or without
+     * a caller.
      *
      * @return void
      */
@@ -71,8 +66,8 @@ final class DefaultFreshnessRefusesTest extends TestCase
     }
 
     /**
-     * With a contract that answers `fresh` bound, every operation is let
-     * through, each asked once with its shipped maximum age.
+     * A fresh contract lets every operation through with its shipped maximum
+     * age.
      *
      * @return void
      */
@@ -94,9 +89,7 @@ final class DefaultFreshnessRefusesTest extends TestCase
     }
 
     /**
-     * A request served under the default is refused, and one served once a
-     * contract that answers `fresh` is bound is let through, by the gate each
-     * request resolves.
+     * Each request asks the contract bound when it is served.
      *
      * @return void
      */
@@ -118,8 +111,8 @@ final class DefaultFreshnessRefusesTest extends TestCase
     }
 
     /**
-     * Turn the package on with a protocol, its endpoints and an application,
-     * and leave the freshness block as shipped.
+     * Enable the package with a protocol, endpoints and an application, and
+     * keep the shipped freshness block.
      *
      * @param  mixed  $app
      * @return void

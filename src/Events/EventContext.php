@@ -8,28 +8,8 @@ use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Support\Arrayable;
 
 /**
- * Who and what a package event is about (SSO-9.6, SSO-10.4): the connection,
- * its tenant and protocol, the application and the purpose, the authorisation
- * request's public reference, the identity and the acting identity, the client
- * the request came from, and, where they apply, the principal, the active
- * tenant, the session and the sign-in method, under the names the suite's
- * shared vocabulary gives them (SSO-9.6). Every package event carries one, so a
- * single listener on `Contracts\SsoEvent` can attribute them all the same way.
- *
- * It holds strings only, fixed when it is built, so it survives a queue
- * unchanged and `toArray()` is the record an audit sink keeps. A part the
- * event's flow did not establish, or that does not apply to it, is `null`.
- * `tenantId` is the active tenant, the tenant the person is acting in, under
- * the suite's meaning of `tenant_id`; `connectionTenantId` is the tenant that
- * owns the connection (or the enforcement rule) the event concerns. The two
- * differ when a session acts in a child tenant under a parent's rule, and most
- * events carry only the second. The public reference is the only flow
- * identifier it ever holds (SSO-9.8).
- *
- * It is built only by the package's event projection, which admits these fields
- * and nothing else: never a secret, assertion, provider token, verifier,
- * handoff code, protocol state, raw payload, transport header or mapped
- * attribute (SSO-10.4). A verified result is never passed to an event whole.
+ * Who and what a package event is about; a part the flow did not establish is
+ * `null`.
  *
  * @api
  *
@@ -76,7 +56,7 @@ final readonly class EventContext implements Arrayable
         /** Id of the connection the event concerns. */
         public ?string $connectionId = null,
 
-        /** Opaque id of the tenant that owns the connection, or the enforcement rule, the event concerns. */
+        /** Opaque id of the tenant that owns the connection or enforcement rule. */
         public ?string $connectionTenantId = null,
 
         /** Protocol of the connection (`saml2`, `oidc` or a registered driver's). */
@@ -88,7 +68,7 @@ final readonly class EventContext implements Arrayable
         /** Purpose of the flow (`sign_in`, `link` or `reauthenticate`). */
         public ?string $purpose = null,
 
-        /** Public reference of the authorisation request, the only flow identifier an event carries. */
+        /** Public reference of the request, the only flow identifier carried. */
         public ?string $requestReference = null,
 
         /** Type of the identity reference (for an Eloquent identity, its morph class). */
@@ -109,7 +89,7 @@ final readonly class EventContext implements Arrayable
         /** Id of the principal, where a session's principal applies. */
         public ?string $principalId = null,
 
-        /** Opaque id of the active tenant, the tenant the person is acting in, where one applies. */
+        /** Opaque id of the tenant the person is acting in, where one applies. */
         public ?string $tenantId = null,
 
         /** Id of the session, where one applies. */
@@ -120,8 +100,8 @@ final readonly class EventContext implements Arrayable
     ) {}
 
     /**
-     * Return the context as scalars, the record an audit sink keeps: snake_case
-     * keys, and the time as an ISO 8601 UTC string to the microsecond.
+     * Return the context with snake_case keys and the time as ISO 8601 UTC to
+     * the microsecond.
      *
      * @return array<string, ?string>
      */

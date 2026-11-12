@@ -11,13 +11,8 @@ use SineMacula\Laravel\Sso\Links\LinkSummary;
 use SineMacula\Laravel\Sso\Provisioning\Enums\ProvisioningStatus;
 
 /**
- * How a call of the provisioning helper ended (SSO-8.6): `created`, with the
- * link's summary; or refused, with a status and the failure reason it carries.
- *
- * A refusal is a value, never thrown, and wrote nothing: no link was made and
- * no event dispatched, and the grant's one use is spent all the same. A
- * listener rolls its own transaction back on one. It never says which identity
- * holds a subject already linked, and a summary never holds the subject.
+ * How a provisioning call ended; a refusal wrote nothing but still spends the
+ * grant, and never says which identity holds a linked subject.
  *
  * @api
  *
@@ -42,8 +37,7 @@ final readonly class ProvisioningResult implements \JsonSerializable
     ) {}
 
     /**
-     * The grant is not this dispatch's, is used or closed, or is bound to
-     * another result object.
+     * The grant is not this dispatch's, or is used or closed.
      *
      * @return self
      */
@@ -128,7 +122,7 @@ final readonly class ProvisioningResult implements \JsonSerializable
     }
 
     /**
-     * Whether the call was refused, with a reason.
+     * Whether the call was refused.
      *
      * @return bool
      */
@@ -138,7 +132,7 @@ final readonly class ProvisioningResult implements \JsonSerializable
     }
 
     /**
-     * The result, with snake_case keys: the status, the link and the reason.
+     * Snake_case keys.
      *
      * @return array{status: string, link: ?array<string, mixed>, reason: ?string}
      */

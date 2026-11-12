@@ -5,24 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Fetching;
 
 /**
- * Which IP addresses the outbound fetcher refuses to connect to (SSO-2.9):
- * loopback, private, shared, link-local (and with it the cloud metadata address
- * `169.254.169.254`), unique-local (and with it `fd00:ec2::254`), multicast,
- * reserved, documentation and benchmarking ranges, IPv4 and IPv6, and every
- * range the application adds in `sso.fetcher.refused_ranges`.
- *
- * An address is judged on its `inet_pton()` bytes, so how it is written
- * (leading zeros in IPv6 groups, upper or lower case, a compressed or a full
- * form) cannot move it out of a range. An IPv6 address that carries an IPv4
- * address (mapped, compatible, translated, NAT64 and 6to4) is judged by that
- * IPv4 address as well, so `::ffff:127.0.0.1`, `::127.0.0.1`,
- * `64:ff9b::a9fe:a9fe` and `2002:7f00:1::` are refused with the IPv4 ranges
- * they reach. Teredo (`2001::/32`) is refused whole, since the IPv4 address it
- * carries is obfuscated. Anything that is not a valid IP literal is refused.
- *
- * The configured ranges are read on each call (SSO-11.2); a malformed one fails
- * closed with the `InvalidArgumentException` of
- * `FetcherSettings::refusedRanges()`.
+ * The IP addresses the outbound fetcher refuses, judged on their bytes and on
+ * any IPv4 address an IPv6 address carries.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,7 +38,7 @@ final readonly class AddressPolicy
         '::/128',        // Unspecified (RFC 4291)
         '::1/128',       // Loopback (RFC 4291)
         '100::/64',      // Discard only (RFC 6666)
-        '2001::/32',     // Teredo (RFC 4380)
+        '2001::/32',     // Teredo, whose IPv4 address is obfuscated (RFC 4380)
         '2001:db8::/32', // Documentation (RFC 3849)
         'fc00::/7',      // Unique local, cloud metadata among them (RFC 4193)
         'fe80::/10',     // Link-local (RFC 4291)
@@ -62,7 +46,7 @@ final readonly class AddressPolicy
         'ff00::/8',      // Multicast (RFC 4291)
     ];
 
-    /** @var array<string, list<int>> The IPv6 forms that carry an IPv4 address, by range, with the offsets of the IPv4 address's four bytes. */
+    /** @var array<string, list<int>> The IPv6 ranges that carry an IPv4 address, with its byte offsets. */
     public const array IPV4_CARRIERS = [
         '::ffff:0:0/96'   => [12, 13, 14, 15], // IPv4-mapped (RFC 4291)
         '::/96'           => [12, 13, 14, 15], // IPv4-compatible (RFC 4291)
@@ -84,9 +68,8 @@ final readonly class AddressPolicy
     ) {}
 
     /**
-     * Whether the fetcher refuses to connect to the address: it is not a valid
-     * IP literal, it is in a refused range, or it carries an IPv4 address that
-     * is.
+     * Whether the address is invalid, in a refused range or carries an IPv4
+     * address that is.
      *
      * @param  string  $address
      * @return bool
@@ -113,8 +96,7 @@ final readonly class AddressPolicy
     }
 
     /**
-     * The address's `inet_pton()` bytes, or `null` when it is not a valid IP
-     * literal.
+     * The address's `inet_pton()` bytes, or `null` for an invalid IP literal.
      *
      * @param  string  $address
      * @return ?string
@@ -131,8 +113,7 @@ final readonly class AddressPolicy
     }
 
     /**
-     * The IPv4 addresses an IPv6 address carries, as bytes, one for each form
-     * it is in; none for an IPv4 address.
+     * The IPv4 addresses an IPv6 address carries, as bytes.
      *
      * @param  string  $bytes
      * @return list<string>
@@ -157,7 +138,7 @@ final readonly class AddressPolicy
     }
 
     /**
-     * Whether the address is within any of the ranges of its own family.
+     * Whether the address is within any of the ranges.
      *
      * @param  string  $bytes
      * @param  list<string>  $ranges
@@ -175,8 +156,7 @@ final readonly class AddressPolicy
     }
 
     /**
-     * Whether the address is within the range: the range is of the address's
-     * family, and the first prefix-length bits of the two are the same.
+     * Whether the address is within a range of its own family.
      *
      * @param  string  $bytes
      * @param  string  $range

@@ -32,13 +32,8 @@ use Tests\Fixtures\Fetching\StubHostResolver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the default fetcher's checks and transport options: only
- * `https`, no userinfo, fragment or ambiguous host, no IP literal written any
- * way but canonically, no refused address however the host resolves, the
- * checked address pinned, the transport options fixed, the size cap, failures
- * and refusals as reason codes, and one warning each with nothing of the
- * request or response in it (SSO-2.9). Every request goes to a mock handler and
- * every name to a stub resolver: nothing touches the network.
+ * Feature tests for the default fetcher's checks and transport options. Nothing
+ * touches the network.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -145,8 +140,7 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A URL carrying userinfo is refused, so nothing in it can be read as
-     * another host or as a credential.
+     * A URL carrying userinfo is refused.
      *
      * @param  string  $url
      * @return void
@@ -196,9 +190,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A URL that is malformed or ambiguous (a fragment, no host, a character
-     * parsers disagree on, an impossible port or host) is refused before
-     * anything is resolved or sent.
+     * A malformed or ambiguous URL is refused before anything is resolved or
+     * sent.
      *
      * @param  string  $url
      * @return void
@@ -212,8 +205,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * Rows of `[url]`: hosts that a parser may read as an IPv4 address but are
-     * not a canonical dotted quad, and IPv6 literals not written canonically.
+     * Rows of `[url]`: non-canonical IPv4 forms a parser may still read as an
+     * address, and non-canonical IPv6 literals.
      *
      * @return iterable<string, array{0: string}>
      */
@@ -245,9 +238,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * An IP literal written any way but canonically is refused before anything
-     * is resolved or sent, so no parser downstream can read it as an address
-     * the check did not see.
+     * A non-canonical IP literal is refused, so no downstream parser can read
+     * an unchecked address.
      *
      * @param  string  $url
      * @return void
@@ -280,8 +272,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A refused address given as a literal is refused without asking the
-     * resolver or sending anything.
+     * A refused address given as a literal is refused without a lookup or a
+     * send.
      *
      * @param  string  $url
      * @return void
@@ -314,8 +306,7 @@ final class GuzzleFetcherTest extends TestCase
 
     /**
      * A host resolving to any refused address is refused, whatever else it
-     * resolves to and in whatever order, so a split answer cannot slip a
-     * private address through; nothing is sent.
+     * resolves to.
      *
      * @param  list<string>  $addresses
      * @return void
@@ -366,9 +357,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * The connection is pinned with `CURLOPT_RESOLVE` to the first checked
-     * address, as `host:port:address` with an IPv6 address in brackets, and the
-     * request keeps the host name, so the certificate is verified against it.
+     * The first checked address is pinned with `CURLOPT_RESOLVE`, keeping the
+     * host name for TLS.
      *
      * @param  string  $url
      * @param  list<string>  $addresses
@@ -386,8 +376,7 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A canonical public IP literal is sent without a lookup or a pin: there is
-     * no name to resolve a second time.
+     * A canonical public IP literal is sent without a lookup or a pin.
      *
      * @return void
      */
@@ -406,10 +395,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * Every request is sent with redirects, HTTP errors, cookies, proxies and
-     * content decoding off, certificate verification on, `https` the only
-     * protocol and the configured time caps; on a Guzzle that leaves them to
-     * the caller, the matching cURL options are set too.
+     * Every request uses the fixed transport options, set as cURL options too
+     * where Guzzle leaves them.
      *
      * @return void
      */
@@ -447,8 +434,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * Rows of `[request, accept]`: a request of each purpose and the `Accept`
-     * header it carries.
+     * Rows of `[request, accept]`: a request of each purpose and its `Accept`
+     * header.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Fetching\FetchRequest, 1: string}>
      */
@@ -464,8 +451,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * Each purpose asks for its own media types, as `laravel-sso`, and never
-     * for an encoded body.
+     * Each purpose asks for its own media types, as `laravel-sso`, and never an
+     * encoded body.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  string  $accept
@@ -485,8 +472,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A declared length over the cap fails, through the headers callback that
-     * aborts the transfer before the body.
+     * A declared length over the cap fails in the headers callback, before the
+     * body.
      *
      * @return void
      */
@@ -523,9 +510,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A request's own timeout replaces the configured one for its transfer, and
-     * leaves the next request to the configured one; the connect timeout is
-     * capped to it.
+     * A request's own timeout replaces the configured one for that transfer
+     * only.
      *
      * @return void
      */
@@ -566,9 +552,7 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A request that carries its own cap is held to it in place of the
-     * configured one, both above and below it: the body is fetched up to it and
-     * fails as too large one byte past it.
+     * A request's own cap replaces the configured one, above or below it.
      *
      * @param  int  $bytes
      * @param  bool  $fetched
@@ -595,8 +579,7 @@ final class GuzzleFetcherTest extends TestCase
 
     /**
      * A declared length past the request's own cap stops the transfer before
-     * the body, and the sink takes no byte past it: nothing past the cap is
-     * read.
+     * the body.
      *
      * @return void
      */
@@ -620,9 +603,7 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * One request's own cap leaves every other request to the configured cap: a
-     * metadata request allowed 4 KiB, then a request with none, held to the
-     * configured 1 KiB.
+     * One request's own cap leaves other requests to the configured cap.
      *
      * @return void
      */
@@ -644,10 +625,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * The headers callback refuses a declared length over the cap and lets one
-     * at the cap, or none, through; the progress callback asks the transfer to
-     * stop once the bytes received pass the cap, which Guzzle 8 acts on (the
-     * sink stops it on every Guzzle).
+     * The headers and progress callbacks stop the transfer past the cap; Guzzle
+     * 8 honours the progress stop.
      *
      * @return void
      */
@@ -678,9 +657,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * The body is written into a sink that takes bytes up to the cap and
-     * refuses the write that would pass it, answering `0`, which makes cURL
-     * abort the transfer with a write error on every supported Guzzle.
+     * The sink refuses the write past the cap with `0`, which makes cURL abort
+     * on every Guzzle.
      *
      * @return void
      */
@@ -700,11 +678,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A body sent without a declared length is cut off at the cap, whatever the
-     * Guzzle version makes of the progress callback: a handler that writes it
-     * into the sink as cURL does, chunk by chunk, aborting on the first short
-     * write, is stopped at the first chunk past the cap; the hop fails as too
-     * large, and no more than the cap is ever held.
+     * A body without a declared length is cut off at the cap, whatever Guzzle
+     * does with progress.
      *
      * @return void
      */
@@ -741,10 +716,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A request Guzzle or PSR-7 refuses to build (a header value it rejects,
-     * say) fails like a transport error rather than escaping as an exception,
-     * logged with the exception's class and never its message, which can quote
-     * the value.
+     * A request Guzzle or PSR-7 cannot build fails like a transport error,
+     * logging only the class.
      *
      * @return void
      */
@@ -778,8 +751,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A transport or TLS failure fails the fetch, logged with the exception's
-     * class and never its message.
+     * A transport or TLS failure fails the fetch, logging only the exception's
+     * class.
      *
      * @param  \Closure(): \Throwable  $exception
      * @return void
@@ -798,8 +771,7 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A response of any HTTP status is fetched: whether a `400` is an error is
-     * the caller's to read; each header is answered with its first value.
+     * Any HTTP status is fetched, and each header answers with its first value.
      *
      * @return void
      */
@@ -819,8 +791,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A refusal and a failure carry their reason code only: no status, header
-     * or body, and nothing of the URL.
+     * A refusal or failure carries only its reason code, nothing of the URL or
+     * response.
      *
      * @return void
      */
@@ -842,9 +814,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * Each refusal and failure is logged once, as a warning with the allowed
-     * context only: never the URL's path or query, the form, a credential, the
-     * exception's message or the body.
+     * Each refusal and failure logs one warning holding only the allowed
+     * context.
      *
      * @return void
      */
@@ -876,8 +847,7 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * A refusal is logged under its own message, with the same allowed keys and
-     * no exception class.
+     * A refusal is logged under its own message, without an exception class.
      *
      * @return void
      */
@@ -962,8 +932,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * An internationalised host with a port keeps the port, and a path or query
-     * beyond ASCII is sent percent-encoded rather than rewritten.
+     * An internationalised URL keeps its port, and a non-ASCII path or query is
+     * percent-encoded.
      *
      * @return void
      */
@@ -978,8 +948,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * An injected handler is used even where `ext-curl` would be missing: only
-     * the default cURL handler needs it.
+     * An injected handler works without `ext-curl`; only the default cURL
+     * handler needs it.
      *
      * @return void
      */
@@ -993,9 +963,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * Build a fetcher over a mock handler answering with the responses in turn,
-     * a stub resolver of the hosts given, a capturing logger and a monotonic
-     * clock that stands still, so each request is given the whole timeout.
+     * A fetcher over a mock handler and a stub resolver, on a still clock so
+     * each request gets the whole timeout.
      *
      * @param  list<\Psr\Http\Message\ResponseInterface|\Throwable>  $responses
      * @param  array<string, list<string>>  $hosts
@@ -1102,8 +1071,8 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
-     * Whether the installed Guzzle sets the protocol, redirect and proxy cURL
-     * options itself (Guzzle 8 and later), so the fetcher leaves them out.
+     * Whether the installed Guzzle (8 and later) sets the protocol, redirect
+     * and proxy cURL options itself.
      *
      * @return bool
      */

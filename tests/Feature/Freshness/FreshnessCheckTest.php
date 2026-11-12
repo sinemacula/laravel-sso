@@ -13,10 +13,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[freshness]`: registered with the boot check, checked
- * while the package is in use, the block an array naming operations only, and
- * each operation's maximum age an integer from 1 to 3600 seconds, reported with
- * the message the gate would fail closed with.
+ * Feature tests for the `[freshness]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +33,7 @@ final class FreshnessCheckTest extends TestCase
         . 'domain_claim, domain_verify, domain_remove, enforcement_update, link_create, link_remove';
 
     /**
-     * The check is registered with the boot check and `sso:check` under
-     * `freshness`.
+     * The check is registered under `freshness`.
      *
      * @return void
      */
@@ -47,8 +43,7 @@ final class FreshnessCheckTest extends TestCase
     }
 
     /**
-     * Not checked while the package is not in use, however malformed; the
-     * shipped configuration passes once it is.
+     * The block is checked only while the package is in use.
      *
      * @return void
      */
@@ -71,8 +66,7 @@ final class FreshnessCheckTest extends TestCase
     }
 
     /**
-     * A malformed protocol switch counts as the package in use, so the maximum
-     * ages are checked rather than skipped.
+     * A malformed protocol switch counts as in use, so the ages are checked.
      *
      * @return void
      */
@@ -85,8 +79,7 @@ final class FreshnessCheckTest extends TestCase
     }
 
     /**
-     * An empty block, or none at all, passes: every operation takes the
-     * default.
+     * An empty or missing block passes.
      *
      * @return void
      */
@@ -121,8 +114,7 @@ final class FreshnessCheckTest extends TestCase
     }
 
     /**
-     * A block that is not an array is reported once; every operation then reads
-     * its default, so nothing else is.
+     * A block that is not an array is reported once.
      *
      * @param  mixed  $block
      * @return void
@@ -138,8 +130,7 @@ final class FreshnessCheckTest extends TestCase
     }
 
     /**
-     * A key that names no operation (a misspelt one would leave the operation
-     * meant at its default) is reported by name, with the operations there are.
+     * A key that names no operation is reported with the operations there are.
      *
      * @return void
      */
@@ -156,8 +147,7 @@ final class FreshnessCheckTest extends TestCase
     }
 
     /**
-     * Every unknown key is named in one problem, in the block's order, a key
-     * given as an operation's stable name and a list's index included.
+     * Every unknown key is named in one problem, in the block's order.
      *
      * @return void
      */
@@ -204,8 +194,7 @@ final class FreshnessCheckTest extends TestCase
     }
 
     /**
-     * Each operation's maximum age is checked against the range, and a
-     * malformed one reported naming its key.
+     * Each maximum age is checked against the range, naming its key.
      *
      * @param  mixed  $value
      * @param  bool  $malformed
@@ -226,8 +215,7 @@ final class FreshnessCheckTest extends TestCase
     }
 
     /**
-     * Every malformed age is reported, one problem each, in the order of the
-     * operations.
+     * Every malformed age is reported, in the order of the operations.
      *
      * @return void
      */
@@ -249,8 +237,7 @@ final class FreshnessCheckTest extends TestCase
     }
 
     /**
-     * An unknown key and a malformed age are both reported, the block's shape
-     * first.
+     * The block's shape is reported before the ages.
      *
      * @return void
      */

@@ -24,11 +24,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the default attempt limiter, on whichever engine the suite
- * runs against, with the shipped migration and a fixed clock: every attempt
- * counts up to the limit, a full limit refuses with the wait until its window
- * ends, all or none, each flow and scope counted apart, values counted in their
- * canonical form under keyed digests, and database errors propagated.
+ * Feature tests for the default database attempt limiter.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,8 +62,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     private FixedClock $clock;
 
     /**
-     * Bind the fixed clock, 15 seconds after 12:00, and give the test the
-     * package's tables.
+     * Bind the fixed clock at 12:00:15 and create the package's tables.
      *
      * @return void
      */
@@ -84,11 +79,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * In the last hour before a daylight-saving fall-back, a live window is
-     * still live: at 00:30 UTC (01:30 BST) the hour-long window ending at 01:00
-     * UTC (01:00 GMT) refuses the attempt past the limit, though in London's
-     * wall-clock time its end reads as earlier than now. A stored window read
-     * back, once the limit's window is shortened, is the same instant.
+     * A live window stays live through a daylight-saving fall-back.
      *
      * @return void
      */
@@ -128,8 +119,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Attempts are allowed up to the limit; the next is refused with the
-     * seconds until the window ends, and is not counted.
+     * Attempts up to the limit are allowed; the next is refused with the wait.
      *
      * @return void
      */
@@ -154,8 +144,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * The wait counts down to the window's end, and once the clock passes it
-     * the counter starts a new window with the attempt.
+     * A new window starts once the clock passes the old one's end.
      *
      * @return void
      */
@@ -180,8 +169,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * All or none: with the IP address's limit full and the email domain's
-     * free, the attempt is refused and the domain's counter is not touched.
+     * A full IP limit leaves the email domain's counter untouched.
      *
      * @return void
      */
@@ -200,9 +188,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * All or none: with the email domain's limit full, the slot already taken
-     * from the IP address's counter is given back, and the wait is the
-     * domain's.
+     * A full email domain limit gives the IP slot back.
      *
      * @return void
      */
@@ -221,8 +207,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * All or none at a completion: a full connection limit gives the IP
-     * address's slot back.
+     * A full connection limit gives the IP slot back.
      *
      * @return void
      */
@@ -240,8 +225,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Each flow and each scope is counted apart: one that is full refuses
-     * nothing of another.
+     * Each flow and scope is counted apart.
      *
      * @return void
      */
@@ -270,9 +254,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A `null` IP address or email domain is not counted: the attempt is
-     * counted against what the subject gives, and one that gives nothing is
-     * allowed without a counter.
+     * A `null` IP address or email domain is not counted.
      *
      * @return void
      */
@@ -296,8 +278,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * An IPv4 address carried in IPv6 counts with the IPv4 address, and IPv6
-     * addresses in one /64 count together.
+     * An IP address counts in its canonical form, IPv6 by /64.
      *
      * @return void
      */
@@ -318,8 +299,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * An email domain's case, a trailing dot and its Unicode and ASCII forms
-     * count together.
+     * An email domain counts in its canonical form.
      *
      * @return void
      */
@@ -337,8 +317,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * The table holds keyed digests and counts only: no IP address, email
-     * domain or connection id, as given or in its canonical form.
+     * The table holds keyed digests and counts, no raw value.
      *
      * @return void
      */
@@ -371,8 +350,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A malformed limit fails closed before anything is counted, even for a
-     * subject whose value for that scope is not given.
+     * A malformed limit fails closed before anything is counted.
      *
      * @return void
      */
@@ -392,8 +370,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A database error propagates: a limiter that cannot count lets nothing
-     * through.
+     * A database error propagates.
      *
      * @return void
      */
@@ -407,9 +384,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A counter whose window was started under a longer `decay_seconds` keeps
-     * that window until it ends: full, it refuses until then; with room, it is
-     * counted in.
+     * A window started under a longer decay is kept until it ends.
      *
      * @return void
      */
@@ -435,8 +410,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A slot taken from a stored window is given back to that window when a
-     * later limit is full.
+     * A slot taken from a stored window goes back to it.
      *
      * @return void
      */
@@ -457,8 +431,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A slot is given back only to the window it was taken from: a counter that
-     * has moved on to another window keeps its count.
+     * A slot goes back only to the window it was taken from.
      *
      * @return void
      */
@@ -479,8 +452,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A counter created by another request between this one's update and its
-     * insert is counted in by the update that follows.
+     * A counter created concurrently is counted by the update that follows.
      *
      * @return void
      */
@@ -497,8 +469,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A counter that ends or goes before it is read refuses the attempt for one
-     * second, rather than letting it through uncounted.
+     * A counter gone before it is read refuses for one second.
      *
      * @return void
      */
@@ -514,8 +485,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A counter whose stored window ended before it was read refuses for one
-     * second too.
+     * A counter ended before it is read refuses for one second.
      *
      * @return void
      */
@@ -531,8 +501,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A stored window filled by another request before it is read refuses the
-     * attempt until it ends.
+     * A stored window filled before it is read refuses until it ends.
      *
      * @return void
      */
@@ -549,8 +518,8 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * A stored window filled by another request between this one's read and its
-     * increment refuses the attempt until it ends, without exceeding the limit.
+     * A stored window filled before the increment refuses without exceeding the
+     * limit.
      *
      * @return void
      */
@@ -567,8 +536,7 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * With `sso.rate_limits.connection` set, the counters are read and written
-     * on that connection, and the storage connection holds none.
+     * Counters are kept on `sso.rate_limits.connection` when it is set.
      *
      * @return void
      */
@@ -616,9 +584,8 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Start the IP address's redemption counter in an hour-long window with the
-     * attempts given, then shorten the limit's window to a minute, so the
-     * stored window no longer ends where the limiter computes.
+     * Start an hour-long redemption window, then shorten the limit's window to
+     * a minute.
      *
      * @param  int  $max
      * @param  int  $attempts
@@ -636,9 +603,8 @@ final class DatabaseAttemptLimiterTest extends TestCase
     }
 
     /**
-     * Run the callback once, just before the first statement on the default
-     * connection matching the pattern, as another request would between two of
-     * the limiter's.
+     * Run the callback once before the first default-connection statement
+     * matching the pattern.
      *
      * @param  string  $pattern
      * @param  \Closure(): mixed  $callback

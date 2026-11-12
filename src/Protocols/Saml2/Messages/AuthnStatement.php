@@ -8,10 +8,7 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues;
 
 /**
- * One `AuthnStatement` of a verified assertion (SAML 2.0 Core §2.7.2), as the
- * SAML adapter read it: `AuthnInstant`, `SessionIndex` and
- * `SessionNotOnOrAfter`, and its `AuthnContext`'s `AuthnContextClassRef`, each
- * `null` when absent but the instant, which the schema requires (SSO-6.10).
+ * One `AuthnStatement` of a verified assertion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

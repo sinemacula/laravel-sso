@@ -16,11 +16,8 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeServiceProvider;
 
 /**
- * The IdP-initiated worked example of the testing guide (SSO-5.8, SSO-12.4): an
- * unsolicited SAML response, made for the service provider the connection's
- * metadata describes, signs nobody in; it sends the browser to the
- * application's start URL, which starts an ordinary SP-initiated sign-in that
- * the provider answers. The same response posted again is refused.
+ * The testing guide's IdP-initiated example: an unsolicited SAML response
+ * re-initiates an ordinary sign-in, and a replay is refused.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,9 +57,8 @@ final class IdpInitiatedExampleTest extends ExampleTestCase
     }
 
     /**
-     * The unsolicited response is re-initiated to the start URL naming the
-     * connection, and the sign-in the start route then begins completes for the
-     * person the subject is linked to.
+     * An unsolicited response is sent to the start URL, and the sign-in that
+     * starts completes.
      *
      * @return void
      *
@@ -103,8 +99,7 @@ final class IdpInitiatedExampleTest extends ExampleTestCase
     }
 
     /**
-     * An unsolicited response is recorded once it is re-initiated, so the same
-     * response posted again is rejected as `replayed`, with no redirect.
+     * The same unsolicited response posted again is rejected as `replayed`.
      *
      * @return void
      */
@@ -129,8 +124,7 @@ final class IdpInitiatedExampleTest extends ExampleTestCase
     }
 
     /**
-     * The response the provider makes for the service provider the metadata
-     * describes is unsolicited: it names no request.
+     * A response made for the described service provider names no request.
      *
      * @return void
      */

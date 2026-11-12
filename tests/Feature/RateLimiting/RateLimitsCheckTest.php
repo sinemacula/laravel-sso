@@ -11,9 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[rate_limits]`: checked while the package is in use, each
- * flow's limits read as the limiter reads them, and a limit the package does
- * not count reported rather than ignored.
+ * Feature tests for the `[rate_limits]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,8 +55,7 @@ final class RateLimitsCheckTest extends TestCase
     }
 
     /**
-     * A malformed protocol switch counts as the package in use, so the limits
-     * are checked rather than skipped.
+     * A malformed protocol switch counts as in use, so the limits are checked.
      *
      * @return void
      */
@@ -71,8 +68,8 @@ final class RateLimitsCheckTest extends TestCase
     }
 
     /**
-     * Rows of `[setting, value, problems]`: changes to the limits and what each
-     * reports.
+     * Rows of `[setting, value, problems]`: changes to the limits and their
+     * problems.
      *
      * @return iterable<string, array{0: string, 1: mixed, 2: list<string>}>
      */
@@ -163,8 +160,7 @@ final class RateLimitsCheckTest extends TestCase
     }
 
     /**
-     * Every flow is checked, and every problem found is reported in one run,
-     * the limits the package does not count named together.
+     * Every problem across every flow is reported in one run.
      *
      * @return void
      */
@@ -191,8 +187,7 @@ final class RateLimitsCheckTest extends TestCase
     }
 
     /**
-     * A limits block that is not a block at all reports every flow's limits as
-     * missing, and nothing more.
+     * A limits block that is not a block reports every flow's limits missing.
      *
      * @return void
      */

@@ -9,19 +9,9 @@ use SimpleSAML\XML\Type\IDValue;
 use SimpleSAML\XMLSecurity\XML\ds\Signature;
 
 /**
- * A signed `EntityDescriptor` or `EntitiesDescriptor` as the library verifies
- * it, and nothing more: its `ID`, its own `ds:Signature` and the element it was
- * read from (SSO-6.2, SSO-6.11).
- *
- * The library's own descriptors build a typed model of everything they hold,
- * every member of an aggregate included, and refuse the whole aggregate when
- * any member holds a value stricter rules refuse (a relative `mdui:Logo`, an
- * `OrganizationURL` with no scheme, a non-ASCII email address). A signature
- * covers bytes, never that model, so the metadata reader verifies through this
- * element instead and reads only the pinned entity strictly. The library's
- * signature handling is used unchanged: the policy `PinnedVerifier` holds the
- * signature to, the digest over the element's own `ID` reference and the
- * element answered rebuilt from the digested bytes. It is never written.
+ * A signed metadata descriptor reduced to its `ID`, signature and element. The
+ * library's own model refuses a whole aggregate over one lax member, so the
+ * signature is verified through this instead.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,8 +32,8 @@ final class SignedDescriptor extends AbstractSignedMdElement
     ) {}
 
     /**
-     * The descriptor read from the element: its `ID` and its one signature, if
-     * any, with the element kept for the digest.
+     * Read the `ID` and at most one signature, keeping the element for the
+     * digest.
      *
      * @param  \DOMElement  $xml
      * @return static
@@ -88,7 +78,7 @@ final class SignedDescriptor extends AbstractSignedMdElement
     }
 
     /**
-     * A signed descriptor is only ever read, never written.
+     * Refuse: a signed descriptor is only ever read.
      *
      * @param  ?\DOMElement  $parent
      * @return \DOMElement
@@ -102,7 +92,7 @@ final class SignedDescriptor extends AbstractSignedMdElement
     }
 
     /**
-     * The element the descriptor was read from, which the signature covers.
+     * The element the signature covers.
      *
      * @return \DOMElement
      */

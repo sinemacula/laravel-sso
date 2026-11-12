@@ -5,31 +5,11 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Results;
 
 /**
- * What a protocol driver verified in an identity provider's response, once
- * every check of SSO-6 or SSO-7 passed (SSO-8.1): the issuer, the subject and,
- * for a SAML `NameID`, its format; the raw attributes or claims the
- * connection's attribute mapping reads from, by the name the provider gave
- * them; the provider's authentication context; where linking by a verified
- * domain applies, the linking email the protocol asserted; and, for OIDC, the
- * email the provider asserted with its `email_verified`, whichever its value.
+ * What a protocol driver verified in a response, built only from its verified
+ * element.
  *
- * Only a driver builds it, and only from its verified element (SSO-6.3); the
- * completion pipeline maps the attributes and adds the connection, tenant,
- * protocol, application, purpose and request reference to make the
- * `VerifiedResult`. It holds no assertion, token or secret, but it holds raw
- * provider values, so it lives only for the completion that verified it: a dump
- * shows the names of the attributes and never their values; `json_encode()`,
- * and a logger's normaliser that falls back to it, write the issuer, the NameID
- * format, each attribute's name with its kind and the redacted forms of the
- * authentication context, the linking email and, when there is one, the
- * asserted email, never the subject or a value the provider asserted; and it
- * refuses to be serialised or unserialised.
- *
- * The issuer and subject are 1 to 1024 bytes and kept exactly as received,
- * never trimmed or normalised (SSO-6.9); a NameID format is 1 to 255 bytes. A
- * driver refuses a response that breaks these as a value before building it: a
- * value that reaches the constructor broken is the driver's mistake
- * (`InvalidArgumentException`).
+ * It holds raw provider values, so it lives only for the completion: dumps and
+ * JSON omit them, and it refuses serialisation.
  *
  * @api
  *
@@ -59,7 +39,7 @@ final readonly class VerifiedClaims implements \JsonSerializable
         /** The person's stable identifier at the provider, exactly as received. */
         public string $subject,
 
-        /** The SAML `NameID` format the subject was asserted in; `null` for OIDC or an attribute subject. */
+        /** The SAML `NameID` format; `null` for OIDC or an attribute subject. */
         public ?string $nameIdFormat,
 
         /** The raw attributes or claims the mapping reads from, by name. */
@@ -68,7 +48,7 @@ final readonly class VerifiedClaims implements \JsonSerializable
         /** The provider's authentication context. */
         public AuthenticationContext $authenticationContext,
 
-        /** The linking email the protocol asserted, where linking by a verified domain applies. */
+        /** The protocol-asserted email, where domain linking applies. */
         public ?LinkingEmail $linkingEmail = null,
 
         /** The email and `email_verified` an OIDC provider asserted, from one source. */
@@ -80,8 +60,7 @@ final readonly class VerifiedClaims implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the issuer, the NameID format and the names of the
-     * attributes, never the subject or an attribute's value.
+     * A dump without the subject or attribute values.
      *
      * @return array<string, mixed>
      */
@@ -96,8 +75,7 @@ final readonly class VerifiedClaims implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: the claims live only for the completion that
-     * verified them.
+     * Refuse to be serialised.
      *
      * @return array<string, mixed>
      *
@@ -127,10 +105,7 @@ final readonly class VerifiedClaims implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: the issuer, the NameID format, each
-     * attribute's name with the kind of its value, and the redacted forms of
-     * the authentication context, the linking email and, when there is one, the
-     * asserted email; never the subject or an attribute's value.
+     * JSON without the subject or attribute values; attributes show their type.
      *
      * @return array<string, mixed>
      */

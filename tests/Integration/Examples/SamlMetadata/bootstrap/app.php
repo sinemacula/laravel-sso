@@ -3,11 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The SAML metadata guide's `bootstrap/app.php` (SSO-2.8, SSO-11.12,
- * SSO-12.5), from the builder on: an application's file starts from
- * `Application::configure()`, and `SamlMetadataScheduleExampleTest` hands in
- * the builder of the application under test instead, since configuring a
- * second application would replace it.
+ * The SAML metadata guide's `bootstrap/app.php`, from the builder on; the test
+ * hands in its own builder, since configuring a second application replaces it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

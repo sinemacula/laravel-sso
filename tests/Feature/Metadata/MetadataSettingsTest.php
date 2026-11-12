@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Metadata\MetadataSettings;
 use Tests\TestCase;
 
 /**
- * Feature tests for how the metadata refresh runs (SSO-2.8, SSO-11.12): each
- * default, each bound at, under and over, the backoff doubling to its most, the
- * stale limit's explicit none, and `[metadata]` checking each the same way,
- * only while the `metadata_refresh` feature is on.
+ * Feature tests for the metadata refresh settings and their boot check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,8 +44,8 @@ final class MetadataSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[key, read, least, most]`: each bounded setting, what reads it,
-     * and its bounds.
+     * Rows of `[key, read, least, most]`: each bounded setting, its reader and
+     * its bounds.
      *
      * @return iterable<string, array{0: string, 1: \Closure(\SineMacula\Laravel\Sso\Metadata\MetadataSettings): ?int, 2: int, 3: int}>
      */
@@ -67,8 +64,7 @@ final class MetadataSettingsTest extends TestCase
     }
 
     /**
-     * Each setting is read at its bounds and refused one past either, naming
-     * its key.
+     * Each setting is read at its bounds and refused one past either.
      *
      * @param  string  $key
      * @param  \Closure(\SineMacula\Laravel\Sso\Metadata\MetadataSettings): ?int  $read
@@ -126,9 +122,7 @@ final class MetadataSettingsTest extends TestCase
 
     /**
      * Rows of `[metadata connection, default connection, timeout, retry after,
-     * problem]`: the queue connection a refresh is sent to, by its own setting
-     * or the application's default, a timeout one under, at and one over its
-     * `retry_after`, and one that sets none.
+     * problem]`.
      *
      * @return iterable<string, array{0: ?string, 1: string, 2: int, 3: mixed, 4: ?string}>
      */
@@ -148,9 +142,8 @@ final class MetadataSettingsTest extends TestCase
     }
 
     /**
-     * A queued refresh must be allowed less time than the queue connection it
-     * is sent to waits before reserving it again, when that connection sets a
-     * `retry_after`; one that sets none bounds nothing.
+     * A queued refresh's timeout stays under its queue connection's
+     * `retry_after`, when one is set.
      *
      * @param  ?string  $connection
      * @param  string  $default
@@ -179,8 +172,7 @@ final class MetadataSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[value, connection]`: a queue connection setting and what is
-     * read, `null` for the default.
+     * Rows of `[value, connection]`; `null` is the default connection.
      *
      * @return iterable<string, array{0: mixed, 1: ?string}>
      */
@@ -211,8 +203,8 @@ final class MetadataSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[key, value, message]`: a queue connection or name refused, and
-     * the problem named.
+     * Rows of `[key, value, message]`: refused queue settings and the problem
+     * named.
      *
      * @return iterable<string, array{0: string, 1: mixed, 2: string}>
      */
@@ -227,9 +219,8 @@ final class MetadataSettingsTest extends TestCase
     }
 
     /**
-     * A queue connection or name that is malformed, or a connection no queue
-     * connection configures, fails closed naming its key; a name of 255 bytes
-     * is read.
+     * A malformed or unconfigured queue connection or name fails closed naming
+     * its key.
      *
      * @param  string  $key
      * @param  mixed  $value
@@ -268,8 +259,7 @@ final class MetadataSettingsTest extends TestCase
     }
 
     /**
-     * Rows of `[failures, wait]`: failures in a row, and the wait before the
-     * next attempt, under the defaults.
+     * Rows of `[failures, wait]` under the defaults.
      *
      * @return iterable<string, array{0: int, 1: int}>
      */
@@ -317,9 +307,8 @@ final class MetadataSettingsTest extends TestCase
     }
 
     /**
-     * `[metadata]` applies while the `saml2` or the `metadata_refresh` feature
-     * is on or its switch is malformed; it checks the size cap alone with SAML
-     * on, and every setting, the queue's included, with the refresh on.
+     * `[metadata]` checks the size cap with SAML on, and every setting with the
+     * refresh on.
      *
      * @return void
      */
@@ -351,9 +340,8 @@ final class MetadataSettingsTest extends TestCase
     }
 
     /**
-     * A size cap past its ceiling, a timeout past the claim, or a timeout not
-     * under the queue connection's `retry_after`, fails the boot check, each
-     * problem named.
+     * A cap past its ceiling, or a timeout past the claim or the queue's
+     * `retry_after`, fails the boot check.
      *
      * @return void
      */

@@ -30,12 +30,7 @@ use Tests\Fixtures\Queue\RecordsItsRun;
 use Tests\TestCase;
 
 /**
- * Shows the fixtures the operational acceptance tests stand on do what they
- * say, so a green test built on them means what it claims: the lagging replica
- * really lags and a stale copy really is stale, an injected failure really is
- * thrown at its statement and its commit, a broken and a lying cache really
- * break and lie, and one worker really keeps one application across requests
- * and jobs.
+ * Tests that the operational test fixtures do what they say.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -51,8 +46,7 @@ final class TestFixturesTest extends TestCase
     private bool $lagging = false;
 
     /**
-     * Bind a fixed clock, and make the tables where the running test needs
-     * them.
+     * Bind a fixed clock and create the tables the running test needs.
      *
      * @return void
      */
@@ -90,8 +84,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * A row written through the split connection is on the primary alone: a
-     * plain read misses it, and a read on the write connection finds it.
+     * A row written through the split connection is on the primary alone.
      *
      * @return void
      */
@@ -104,8 +97,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * A copy on the replica stays stale when the primary moves on, and a row
-     * deleted from the replica alone is lost there: both directions of a lag.
+     * A replica copy goes stale both ways when the primary moves on.
      *
      * @return void
      */
@@ -126,8 +118,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * An armed statement fails at its occurrence, once, as a `QueryException`; the
-     * statements before and after it run.
+     * An armed statement fails once at its occurrence.
      *
      * @return void
      */
@@ -147,8 +138,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * A failed commit throws and leaves nothing behind: the transaction is
-     * rolled back in the database, the connection usable.
+     * A failed commit throws and rolls the transaction back.
      *
      * @return void
      *
@@ -199,8 +189,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * A lying cache reports a write as made, loses it, and answers what it was
-     * told to; its locks are as free or as stuck as it was told.
+     * A lying cache loses writes and answers what it was told to.
      *
      * @return void
      */
@@ -220,11 +209,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * Each request runs in a fresh sandbox of one root application: a scoped
-     * binding is built once for each request however often it is resolved,
-     * something bound in a sandbox is not there for the next request, and the
-     * root is unchanged. A route that throws is a 500 and the next request runs
-     * in the same worker.
+     * Each request runs in a fresh sandbox of one root application.
      *
      * @return void
      */
@@ -267,10 +252,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * Jobs run one after another in the one queue worker, one that throws not
-     * stopping the next, with a scoped binding built anew for each: the
-     * worker's loop resets the scope before it takes a job. Work with nothing
-     * waiting returns, and builds nothing.
+     * Jobs run in one queue worker with the scope reset before each.
      *
      * @return void
      */
@@ -311,9 +293,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * The worker's loop leaves nothing on the process: each signal it takes
-     * over has its handler back, with signals delivered as they were, so that
-     * the suite can still be interrupted and a later fork inherits nothing.
+     * The worker's loop restores every signal handler it took over.
      *
      * @return void
      */
@@ -341,8 +321,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * `retainedBy()` finds a value a package object in the container holds, by
-     * the path to it, and nothing that is not held.
+     * `retainedBy()` finds a value a package object holds, by its path.
      *
      * @return void
      */
@@ -371,8 +350,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * `retainedBy()` reads through a `\SensitiveParameterValue`: a secret a
-     * kept object hides is still found, by the path to it.
+     * `retainedBy()` reads through a `\SensitiveParameterValue`.
      *
      * @param  object  $held
      * @param  string  $value
@@ -389,9 +367,7 @@ final class TestFixturesTest extends TestCase
     }
 
     /**
-     * `retainedByStatics()` finds a value in a static property of a package
-     * class, by the path to it, and nothing once it has gone: a class of its
-     * own here, since the package has no static property to show it on.
+     * `retainedByStatics()` finds a value in a static property, by its path.
      *
      * @return void
      */

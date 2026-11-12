@@ -21,13 +21,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/completing-a-flow.md` (SSO-5.6, SSO-12.5), on
- * the shared example harness: the completion service resolved for a request,
- * the completion routes of `routes/api.php` and their controller run over HTTP
- * for each protocol, and an application that allows unlinked handoffs. Each
- * asserts its outcome and a refusal: a replayed response, a response delivered
- * at another connection's route, and an unlinked sign-in where the application
- * does not allow unlinked handoffs.
+ * The examples of `docs/guides/completing-a-flow.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -55,8 +49,7 @@ final class CompletingAFlowExampleTest extends ExampleTestCase
     private IdentityReference $person;
 
     /**
-     * Serve the completion routes under the API prefix the base URL carries,
-     * and make the tenant's SAML connection and the person.
+     * Serve the completion routes and make the SAML connection.
      *
      * @return void
      */
@@ -74,9 +67,7 @@ final class CompletingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * The service resolved for a request completes the flow its response
-     * answers; the service the next request resolves is another, and the same
-     * response again names no request, so it is rejected as `request_unknown`.
+     * Each request resolves its own completion service; a replay is rejected.
      *
      * @return void
      */
@@ -108,10 +99,8 @@ final class CompletingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * The browser posts the SAML response to the assertion consumer service
-     * route, which redirects it with a `303` carrying the code and the
-     * request's reference, and the code links the subject; the same response
-     * posted again is a `400` with no redirect.
+     * The ACS route answers a SAML response with a `303` and a replay with a
+     * `400`.
      *
      * @return void
      */
@@ -130,10 +119,8 @@ final class CompletingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * The provider sends the browser to the callback route, which redirects it
-     * with a `302` carrying the code and the request's reference; the response
-     * to a request of that connection, delivered at another connection's
-     * callback, fails with `connection_mismatch` and no code.
+     * The callback route completes an OIDC flow and refuses another
+     * connection's response.
      *
      * @return void
      *
@@ -162,11 +149,8 @@ final class CompletingAFlowExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `sign_in` that resolves to no identity ends with `unlinked` by default;
-     * once the application allows unlinked handoffs, the same sign-in is issued
-     * a code that carries no linked identity, admitted with the verified
-     * result, so the application decides who signed in and writes no session
-     * here.
+     * An application that allows unlinked handoffs is issued a code for an
+     * unlinked sign-in.
      *
      * @return void
      *

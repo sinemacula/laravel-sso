@@ -10,26 +10,10 @@ use Illuminate\Database\Events\TransactionBeginning;
 
 /**
  * Marks the transaction records a failed commit left behind, so
- * `AfterCommitDispatcher` drops the events queued on them (SSO-10.5).
+ * `AfterCommitDispatcher` drops the events queued on them.
  *
- * Laravel 12 does not tell its transactions manager when the outermost commit
- * of `transaction()` fails, so the records of that transaction stay in the
- * manager, with their callbacks, and run on the next outermost commit on the
- * connection, which on a long-running worker can be another request's. When an
- * outermost transaction begins, its connection had none open, so every record
- * the manager still holds for it is stranded, but for the one just begun and
- * any savepoint inside it. A committing transaction is not among them: the
- * manager removes its records before running their callbacks, so a transaction
- * begun from one of those callbacks leaves them alone. Laravel 13 drops such
- * records itself.
- *
- * The provider's `TransactionBeginning` listener calls `begun()` on an
- * outermost begin, with the transactions manager of the container serving. A
- * beginning whose event is not delivered marks nothing, and a callback left on
- * such a record is dispatched as Laravel would. The marks are weak, so a record
- * is forgotten with its transaction. This is a singleton, resolved when the
- * provider boots, since the listener and the dispatcher must share it; it holds
- * no request's data (SSO-11.2).
+ * Laravel 12 keeps a failed outermost commit's records, callbacks and all, for
+ * the next commit on the connection; Laravel 13 drops them itself.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -7,11 +7,8 @@ namespace SineMacula\Laravel\Sso\Config;
 use Illuminate\Contracts\Config\Repository;
 
 /**
- * Reads a switch the one way every settings class reads one: a boolean, or the
- * forms `env()` and a deploy pipeline give for one (`1` and `0` as integers or
- * strings, `true` and `false` as strings). Anything else fails closed with an
- * `InvalidArgumentException` naming the key, rather than guessing whether a
- * feature was meant to be on.
+ * Reads a switch as a boolean or the forms `env()` gives, failing closed on
+ * anything else.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -20,7 +17,7 @@ use Illuminate\Contracts\Config\Repository;
  */
 final class BooleanSetting
 {
-    /** @var array<int|string, bool> The strings a switch may be given as, and what each means (PHP keys `1` and `0` as integers, and finds them by either). */
+    /** @var array<int|string, bool> The strings a switch may be given as; PHP keys `1` and `0` as integers. */
     private const array STRINGS = [
         '1'     => true,
         '0'     => false,

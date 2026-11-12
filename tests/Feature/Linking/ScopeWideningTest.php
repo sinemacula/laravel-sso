@@ -44,14 +44,7 @@ use Tests\Fixtures\Links\DelegatingLinkStorage;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Feature tests for what an application's principal mutation calls (SSO-8.8):
- * inside its transaction, an identity's links by a verified domain in every
- * connection of another tenant are suspended for good and the sessions
- * established through them revoked; its reservations in them are deleted, so a
- * principal added and removed between checks is caught; links of any other
- * provenance, identity or tenant are left; the lock order; a revocation that
- * fails rolls it back; the identity's guard comes first, and a row its plain
- * read missed refuses the whole change.
+ * Feature tests for what an application's principal mutation calls.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -121,7 +114,7 @@ final class ScopeWideningTest extends LinkingTestCase
             self::fail('It widened with no transaction open.');
         } catch (\LogicException $exception) {
             self::assertSame(
-                'A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection (decision D5).',
+                'A widened scope is reported inside the transaction that changes the person\'s principals, on the storage connection.',
                 $exception->getMessage(),
             );
         }
@@ -130,9 +123,8 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A principal of another tenant suspends the link, stored and latched,
-     * raises the links version, reports it after commit, and revokes the
-     * sessions established through exactly it, inside the transaction.
+     * A principal of another tenant suspends the link and revokes its sessions
+     * inside the transaction.
      *
      * @return void
      */
@@ -240,9 +232,7 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A principal added and removed between checks is caught: every later check
-     * answers `within_tenant`, and still the link stays suspended, resolving
-     * nothing, until a confirming `link`.
+     * A principal added and removed between checks leaves the link suspended.
      *
      * @return void
      */
@@ -261,9 +251,7 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A reservation made before the principal cannot activate once it is
-     * removed: it is deleted, raising the links version, with nothing to
-     * revoke; its code meets `reservation_invalid`.
+     * A reservation is deleted by a widening and never activates.
      *
      * @return void
      */
@@ -283,9 +271,7 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * The resolution that latched the link revoked its sessions once; the
-     * widening revokes them again, idempotently, with no second event, no
-     * version raised and its `suspended_at` unchanged.
+     * An already suspended link only has its sessions revoked again.
      *
      * @return void
      */
@@ -316,11 +302,7 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A resolution outside any transaction that finds the link outside the
-     * tenant latches it in the package's order: its first locking read ends
-     * with its statement, then, in the latch's own transaction, the link's
-     * connection is locked before the link is read again, locked; it is
-     * suspended, reported and revoked once.
+     * A latch outside any transaction locks the connection before the link.
      *
      * @return void
      */
@@ -349,10 +331,7 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A latch another resolution made between this one's read and its lock is
-     * never made twice: under the locks the link is found suspended, so this
-     * resolution answers `suspended` with no second suspension, event,
-     * revocation or version.
+     * A latch another resolution made first is not made again.
      *
      * @return void
      */
@@ -423,9 +402,8 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Every connection holding one of the identity's rows is locked in one
-     * statement, in ascending id order, before its links; a connection of the
-     * new principal's tenant is locked with them but left unchanged.
+     * Every connection holding the identity's rows is locked in one statement,
+     * in id order.
      *
      * @return void
      */
@@ -487,10 +465,7 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * A row its plain read did not see, which only a transaction with an older
-     * snapshot can come to, stands in a connection that was not locked, and
-     * that connection cannot be locked now: the whole change is refused, for a
-     * retry, with nothing changed and no revocation. The retry reaches it.
+     * A row the plain read missed refuses the whole change for a retry.
      *
      * @return void
      *
@@ -648,9 +623,7 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * Several identities are widened in one call: each one's links in a
-     * connection of another tenant are suspended and revoked, and the total is
-     * answered.
+     * Several identities are widened in one call, and the total is answered.
      *
      * @return void
      */
@@ -727,9 +700,8 @@ final class ScopeWideningTest extends LinkingTestCase
     }
 
     /**
-     * The connections holding any of the identities' rows are locked together,
-     * in one statement in ascending id order, after every guard and before the
-     * links.
+     * The identities' connections are locked in one statement, after every
+     * guard.
      *
      * @return void
      */

@@ -60,23 +60,10 @@ use Tests\Fixtures\Standalone\ApplicationSingleUseStore;
 use Tests\StandaloneTestCase;
 
 /**
- * A complete application integration, with no sibling (FEATURES "No dependency
- * on a sibling": events are the integration surface, routes are the
- * application's): every seam an application stands behind bound at once, by
- * `ApplicationSeams`, and each purpose run from start to redemption over both
- * protocols, with provisioning through the helper, enforcement with revocation,
- * and linking by a verified domain from reservation to activation; and every
- * statement those purposes run only reads or writes rows (SSO-11.7).
+ * Integration tests for a full application, every seam bound, with no sibling.
  *
- * What a sibling would consume is asserted from the events alone, with nothing
- * queried back from the package's tables, so each event is shown to carry
- * enough to act on, and nothing that must not leave a flow. What the
- * application's own adapters kept (its sessions, its store, its limiter) is
- * theirs to read.
- *
- * This shows the seams join up. It is not what shows the package stands alone:
- * `DefaultBindingsFlowsTest` and `DefaultBindingsRefusalsTest` are, and stand
- * without any of these.
+ * Sibling-facing behaviour is asserted from events alone, never by reading the
+ * package's tables.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -120,9 +107,8 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     private ApplicationSeams $seams;
 
     /**
-     * Configure the protocols, the endpoints and the application; create the
-     * package's tables, the application's own, and the routes it adds; bind
-     * every seam, with a caller who has just authenticated; and record events.
+     * Configure the application, create its tables and routes, bind every seam
+     * with a fresh caller, and record events.
      *
      * @return void
      */
@@ -177,8 +163,8 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Every seam is what the application bound, those it leaves alone are on
-     * their defaults, and no sibling came with it.
+     * Every seam is the application's or the default, and no sibling came with
+     * it.
      *
      * @return void
      */
@@ -207,10 +193,8 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * A `link`, then a `sign_in` through the link it made, then a
-     * `reauthenticate` of the session that established, from start to
-     * redemption: each reported in full by events, and what each adapter was
-     * asked is what it answered.
+     * A `link`, `sign_in` and `reauthenticate` run end to end, fully reported
+     * by events.
      *
      * @param  string  $protocol
      * @return void
@@ -236,10 +220,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Every statement a `link`, a `sign_in` and a `reauthenticate` run on the
-     * storage connection, from start to redemption, is a `SELECT`, an `INSERT`,
-     * an `UPDATE` or a `DELETE`: the package changes no schema at run time,
-     * whatever the engine.
+     * Every statement the flows run is DML: no schema change at run time.
      *
      * @param  string  $protocol
      * @return void
@@ -262,12 +243,11 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * A `sign_in` of a subject nobody holds is offered to a listener, which
-     * links a new identity through the helper with the grant and nothing it
-     * read back; the completion then finishes through that link, and it
-     * redeems. The listener is on `Contracts\SsoEvent`, so it runs after the
-     * recording listener, which then sees the offer before what is made of it;
-     * one on the event's own class would run first, and record the other way.
+     * An unlinked `sign_in` is linked by a listener, then completes and
+     * redeems.
+     *
+     * The listener is on `Contracts\SsoEvent`, so it runs after the recording
+     * one.
      *
      * @param  string  $protocol
      * @return void
@@ -323,10 +303,8 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * A tenant turns enforcement on: the revocation removes, in the change's
-     * transaction, the session the rule no longer allows, and the event carries
-     * the rule. A sign-in through another connection is then refused, and one
-     * through the satisfying connection carries the event's version.
+     * Turning enforcement on revokes the disallowed session and gates later
+     * sign-ins.
      *
      * @return void
      */
@@ -382,10 +360,8 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Linking by a verified domain, as a tenant's administrator and the person
-     * do it: the domain claimed and verified through the resolver, the policy
-     * turned on, then a `sign_in` that reserves the link for the person the
-     * application matched, and a redemption that activates it.
+     * Linking by a verified domain runs from claim to reservation to
+     * activation.
      *
      * @param  string  $protocol
      * @return void
@@ -439,8 +415,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * A `link` for the person: its events carry whom it was made for, and the
-     * caller was asked about twice, at its start and its redemption.
+     * A `link` for the person, asking about the caller at start and redemption.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return void
@@ -466,10 +441,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * A `sign_in` through the link: it writes its session in the redemption's
-     * transaction, with the evidence the application's policy accepted, and the
-     * provider's deadline limiting nothing, as the application says. Answers
-     * the link it established.
+     * A `sign_in` through the link that writes its session; answers the link.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return string
@@ -496,9 +468,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * A `reauthenticate` of the session: its time is renewed through the
-     * application's contract, with the evidence accepted, and its events name
-     * the session a sibling would act on.
+     * A `reauthenticate` that renews the session through the application.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $linkId
@@ -546,8 +516,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Link the person through the connection and sign them in, writing the
-     * session.
+     * Link the person through the connection and sign them in.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $session
@@ -564,9 +533,8 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Admit the code as a `sign_in`, in the transaction a redeemer opens,
-     * writing the session named in it, as a sign-in does once it answers
-     * `redeemed`.
+     * Admit the code as a `sign_in` in a redeemer's transaction and write its
+     * session.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $code
@@ -597,9 +565,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Claim the email's domain for the connection, publish its record and
-     * verify it through the helpers, which ask the application's freshness and
-     * resolver.
+     * Claim, publish and verify the email's domain for the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return void
@@ -621,9 +587,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Turn linking on for the connection through the helper, classifying its
-     * issuer as one organisation's, with the attribute a SAML connection reads
-     * the email from.
+     * Turn linking on for the connection, classified as one organisation's.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $protocol
@@ -665,8 +629,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Assert the event says, on its own, which flow and whom it concerns, as a
-     * sibling reads it.
+     * Assert the event alone says which flow and whom it concerns.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -690,9 +653,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * Assert no event recorded carries what must not leave a flow, in its
-     * context or as it serialises: the code, the verifier, the subject or the
-     * email the provider asserted.
+     * Assert no event carries the code, verifier, subject or asserted email.
      *
      * @param  string  ...$values
      * @return void
@@ -710,8 +671,7 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
     }
 
     /**
-     * The administrator the application has authenticated, on their session,
-     * whom its freshness contract judges.
+     * The authenticated administrator the freshness contract judges.
      *
      * @return \SineMacula\Laravel\Sso\Identities\Caller
      */

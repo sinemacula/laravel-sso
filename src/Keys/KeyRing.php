@@ -15,26 +15,7 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
  * The read side of a connection's keys and certificates, for the protocol
- * drivers (SSO-2.6, SSO-2.7, SSO-5.9): the key that signs, the keys published,
- * the keys that decrypt, the certificates trusted, and a key's private half.
- *
- * - `current()` and `next()` answer the key of a use in that state, if any.
- * - `published()` answers the current key, then the next one, so metadata and a
- *   JWKS carry both while a rotation is under way (SSO-5.9).
- * - `decryption()` answers the current encryption key, then each retiring one
- *   whose overlap has not ended by the clock's now, newest first, so a response
- *   encrypted for a key just replaced still decrypts (SSO-2.7).
- * - `trustedCertificates()` answers every certificate the connection trusts for
- *   the use (its identity provider's signing certificates by default, or its
- *   metadata signing anchors), oldest first, whatever its dates: expiry is
- *   reported, never enforced (SSO-2.6, SSO-2.8).
- * - `privateKey()` decrypts a key's private half for the call that signs or
- *   decrypts with it, as a `Secrets\Secret`; a key of another connection, or a
- *   trusted certificate, is a caller's mistake, a `LogicException`.
- *
- * Every read is on the write connection (SSO-11.3), constrained to the
- * connection's id, and holds nothing between calls (SSO-11.2). A database
- * error, or a ciphertext the encrypter cannot decrypt, propagates.
+ * drivers.
  *
  * @api
  *
@@ -87,8 +68,7 @@ final readonly class KeyRing
     }
 
     /**
-     * The keys of the use to publish: the current key, then the next one, each
-     * when there is one.
+     * The keys of the use to publish: the current key, then the next one.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
@@ -140,7 +120,7 @@ final readonly class KeyRing
 
     /**
      * Every certificate the connection trusts for the use, oldest first,
-     * whatever its dates.
+     * whatever its dates: expiry is reported, never enforced.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
@@ -223,7 +203,7 @@ final readonly class KeyRing
     }
 
     /**
-     * A query of the connection's keys and certificates, on the write
+     * A query of the connection's keys and certificates on the write
      * connection.
      *
      * @param  string  $connectionId

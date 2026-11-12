@@ -64,14 +64,7 @@ use Tests\Fixtures\Results\ExampleResults;
 
 /**
  * Adversarial tests of the `link` purpose through public completion and
- * redemption (SSO-5.11, SSO-8.5, SSO-8.8, SSO-9.9, SSO-2.12): possessing the
- * code and its verifier never proves the caller is the bound identity;
- * freshness and eligibility are asked again before anything is written, and
- * same-identity idempotence bypasses neither; each change to the subject's link
- * between completion and redemption comes to exactly its own refusal, naming
- * nobody; a confirming `link` clears suspension and provenance for good; and
- * every refusal after consumption leaves the code spent and reports exactly one
- * `FlowFailed`, naming only the identity the code is bound to.
+ * redemption.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -114,12 +107,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * An unlinked subject that is still unlinked is linked to the bound
-     * identity with the `link_purpose` origin: an active link, no session, no
-     * proof, no acknowledged sign-in, and the connection's links version raised
-     * once. Freshness and eligibility were each asked at both ends of the flow,
-     * freshness for the caller of each end: at redemption, the caller the
-     * redemption was made for, with its session, as given.
+     * An unlinked subject is linked to the bound identity, with freshness and
+     * eligibility asked at both ends.
      *
      * @return void
      */
@@ -164,9 +153,7 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * A `link` never reaches a session, a proof or an evidence policy, whether
-     * it creates a link or confirms one: the contracts bound here would fail
-     * the test if asked.
+     * A `link` never asks for a session, a proof or evidence.
      *
      * @return void
      */
@@ -227,10 +214,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * Possessing the code and its verifier proves nothing about who is calling:
-     * a caller that is not the bound identity byte for byte is refused before
-     * freshness or eligibility is asked again, nothing is linked, and the event
-     * names only the bound identity, never the caller.
+     * A caller other than the bound identity is refused before freshness or
+     * eligibility is asked.
      *
      * @param  ?array{0: string, 1: string}  $stranger
      * @return void
@@ -268,9 +253,7 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * A stale caller cannot start a `link`: `sso.link.create` is asked, with
-     * its maximum age, for the caller on the session it gave, and nothing is
-     * stored.
+     * A stale caller cannot start a `link`, and nothing is stored.
      *
      * @return void
      */
@@ -292,8 +275,7 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * Fresh at the start is not fresh at redemption: a caller gone stale
-     * between is refused before eligibility is asked again, with nothing
+     * A caller gone stale between start and redemption is refused, with nothing
      * written.
      *
      * @return void
@@ -317,9 +299,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * Same-identity idempotence does not bypass freshness: a stale caller is
-     * refused though the subject is already linked to it, and a suspension it
-     * would have confirmed stays.
+     * An idempotent `link` still needs a fresh caller, and the suspension
+     * stays.
      *
      * @return void
      */
@@ -404,9 +385,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * Unlinked at completion and now linked to the bound identity is idempotent
-     * success: the link stands as it was, under its own id, and nothing is
-     * raised.
+     * A link made since completion for the bound identity is idempotent
+     * success.
      *
      * @return void
      */
@@ -426,9 +406,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * Unlinked at completion and since made through a verified domain for the
-     * bound identity is success too, and confirms it: the person just proved
-     * the caller, freshness and eligibility, and control of the subject.
+     * A domain link made since completion for the bound identity succeeds and
+     * is confirmed.
      *
      * @return void
      */
@@ -455,10 +434,7 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * Linked to the bound identity at completion with that same link still
-     * there passes, by its id: the link is bound to the code at completion and
-     * answered at redemption, and one with no domain provenance is left as it
-     * was, with nothing raised.
+     * The same link still present passes by its id, left as it was.
      *
      * @return void
      */
@@ -481,9 +457,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * A link observed at completion, then deleted and made again for the very
-     * same identity, has another id: `link_changed`, and the new link is left
-     * as it is. Identity equality alone would have hidden it.
+     * A link deleted and made again for the same identity is `link_changed`, by
+     * its id.
      *
      * @return void
      */
@@ -529,9 +504,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * A link reassigned to another identity is `subject_already_linked`, and
-     * the refusal names nobody but the bound identity: the whole context is
-     * pinned in `assertRefused()`.
+     * A link reassigned to another identity is `subject_already_linked`, naming
+     * only the bound identity.
      *
      * @return void
      */
@@ -607,9 +581,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * A subject taken by a live reservation since completion is busy too, even
-     * for the identity the reservation matched; the other flow's reservation
-     * survives untouched, and its own redemption still activates it.
+     * A live reservation made since completion makes the subject busy and
+     * survives.
      *
      * @return void
      */
@@ -681,11 +654,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * An expired reservation is logically absent at completion and at
-     * redemption: the code is bound to no link, the row is replaced by an
-     * active link with its own id and no reservation fields, the links version
-     * is raised for the deletion and the creation, and the reservation's own
-     * handoff can never activate anything.
+     * An expired reservation is absent at both ends and is replaced by an
+     * active link.
      *
      * @param  int  $seconds
      * @return void
@@ -793,9 +763,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * A wrapper that answers absent while the row is there meets the unique
-     * index at insertion: `subject_already_linked`, nothing written, the row
-     * left as it was and the code spent.
+     * A unique collision at insertion is `subject_already_linked`, with nothing
+     * written and the code spent.
      *
      * @return void
      */
@@ -818,11 +787,7 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * A link suspended on the bound identity goes through completion, bound by
-     * its id; its redemption clears the suspension and the provenance, raises
-     * the links version once, and a sign-in then resolves through it whatever
-     * the person's scope has become, without the scope even being asked: for
-     * good.
+     * A confirming `link` clears a suspension and its provenance for good.
      *
      * @return void
      */
@@ -901,9 +866,7 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * A person whose scope widened since completion has their link suspended by
-     * the redemption's own resolution, and confirmed by it: the raise for each
-     * is one, and the link ends confirmed.
+     * A link suspended by the redemption's own resolution is confirmed by it.
      *
      * @return void
      */
@@ -1009,8 +972,7 @@ final class LinkBranchTest extends LinkingTestCase
 
     /**
      * A `link` code presented with anything it was not issued for is refused
-     * and spent: another purpose, application or connection, or a verifier that
-     * does not satisfy its challenge.
+     * and spent.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $application
@@ -1462,9 +1424,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * Assert the redemption was refused for the reason, reporting exactly one
-     * `FlowFailed` of the redemption flow and nothing else, whose whole context
-     * names only the identity the code is bound to, and left the code spent.
+     * Assert one `FlowFailed` of the redemption naming only the bound identity,
+     * and the code spent.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\RedemptionResult  $answer
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -1489,9 +1450,8 @@ final class LinkBranchTest extends LinkingTestCase
     }
 
     /**
-     * Assert the completion ended in a refusal for the reason, with no code,
-     * and reported exactly one `FlowFailed` of the callback flow, whose whole
-     * context names only the identity the flow was started for.
+     * Assert the completion refused with no code and one `FlowFailed` naming
+     * only the flow's identity.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $completion
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason

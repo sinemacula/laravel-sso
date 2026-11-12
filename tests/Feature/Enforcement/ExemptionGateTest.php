@@ -22,12 +22,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the exemption gate (SSO-4.4, SSO-9.3, SSO-10.5): the
- * default exempts nobody and reports nothing; a bound contract that exempts an
- * identity is reported once, with the enforcing tenant, the tenant the session
- * is active in, the application, the identity and the session, after the
- * storage connection's transaction commits; a policy that requires nothing asks
- * nothing; and an exception from the contract propagates.
+ * Feature tests for the exemption gate.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -81,9 +76,7 @@ final class ExemptionGateTest extends TestCase
     }
 
     /**
-     * An identity the bound contract exempts is admitted, and the exemption is
-     * reported once, with its context and the policy's version; anyone else is
-     * not, and nothing more is reported.
+     * An exempted identity is admitted and reported once.
      *
      * @return void
      */
@@ -119,8 +112,7 @@ final class ExemptionGateTest extends TestCase
     }
 
     /**
-     * A policy that requires nothing needs no exemption: the contract is not
-     * asked, and nothing is reported.
+     * A policy that requires nothing asks the contract nothing.
      *
      * @return void
      */
@@ -143,8 +135,7 @@ final class ExemptionGateTest extends TestCase
     }
 
     /**
-     * Inside a transaction on the storage connection the exemption is reported
-     * once it commits, and never when it rolls back.
+     * In a storage transaction the exemption is reported only once it commits.
      *
      * @return void
      */
@@ -173,8 +164,7 @@ final class ExemptionGateTest extends TestCase
     }
 
     /**
-     * An exemption contract that cannot answer propagates its exception, and
-     * nothing is reported.
+     * An exception from the contract propagates and nothing is reported.
      *
      * @return void
      */
@@ -234,7 +224,7 @@ final class ExemptionGateTest extends TestCase
     }
 
     /**
-     * A policy of a child tenant that inherits its parent's rule, required.
+     * A required policy of a child tenant inheriting its parent's rule.
      *
      * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy
      */

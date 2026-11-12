@@ -3,15 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The starts for a signed-in caller of `docs/guides/starting-a-flow.md`
- * (SSO-2.12, SSO-5.1, SSO-5.10, SSO-12.5), as the application's start endpoint
- * for its own authenticated user runs them, given the connection and the
- * challenge the client sends: the caller is the application's user, named by
- * its morph class and key, on the session the application's own authentication
- * holds, never the request body's. The package starts a `link` once the
- * freshness contract answers `fresh` for that caller, and a `reauthenticate`
- * once the identity is signed in through the connection on the session.
- * `StartingAFlowExampleTest` runs it and asserts both, and each refusal.
+ * The starts for a signed-in caller of `docs/guides/starting-a-flow.md`; the
+ * caller comes from the application's authentication, never the request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

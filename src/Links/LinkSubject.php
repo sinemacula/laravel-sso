@@ -7,20 +7,8 @@ namespace SineMacula\Laravel\Sso\Links;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * What a link is keyed by within its connection (SSO-8.2, SSO-6.9): the issuer,
- * the subject and, for SAML, the subject's `NameID` format, each kept exactly
- * as received. The subject is never trimmed or normalised: `Subject`, `subject`
- * and `subject ` are three subjects.
- *
- * `key()` is the stored `subject_key`, the one column a lookup compares, so no
- * collation can fold or trim a subject: the lower-case hex SHA-256 of a version
- * tag, then the issuer, the format and the subject, each prefixed with its
- * length in bytes, so no two different triples share an input. A missing format
- * and a set one are told apart by a marker byte, so a result without a format
- * never matches a link made with one.
- *
- * The issuer and subject are 1 to 1024 bytes, the format 1 to 255 when there is
- * one; anything else is an `InvalidArgumentException` that names no value.
+ * What a link is keyed by within its connection: issuer, subject and `NameID`
+ * format, byte for byte as received.
  *
  * @api
  *
@@ -32,7 +20,7 @@ final readonly class LinkSubject
     /** @var int The longest issuer, in bytes. */
     public const int MAX_ISSUER_LENGTH = 1024;
 
-    /** @var int The longest subject, in bytes (SSO-6.9). */
+    /** @var int The longest subject, in bytes. */
     public const int MAX_SUBJECT_LENGTH = 1024;
 
     /** @var int The longest NameID format, in bytes. */
@@ -83,9 +71,8 @@ final readonly class LinkSubject
     }
 
     /**
-     * The stored key: the lower-case hex SHA-256 of the version tag, a NUL
-     * byte, the length-prefixed issuer, `N` for no format or `F` and the
-     * length-prefixed format, and the length-prefixed subject.
+     * The stored `subject_key`, hashed from length-prefixed parts so no
+     * collation can fold a subject and no two triples collide.
      *
      * @return string
      */

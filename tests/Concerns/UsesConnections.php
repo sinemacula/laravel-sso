@@ -8,7 +8,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
  * Makes connections for a test to work on. A test that uses it calls
- * `usePackageTables()` in its `setUp()`, so the tables exist.
+ * `usePackageTables()` in its `setUp()`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -18,9 +18,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 trait UsesConnections
 {
     /**
-     * Make and save a connection: an OIDC connection of `tenant-1` named
-     * `Example`, disabled, with no settings or mapping, unless the attributes
-     * given say otherwise.
+     * Make and save a disabled OIDC connection, unless overridden.
      *
      * @param  array<string, mixed>  $attributes
      * @return \SineMacula\Laravel\Sso\Models\Connection

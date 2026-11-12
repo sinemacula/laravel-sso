@@ -9,9 +9,8 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[operations]`: the operations schedule's settings, while the package is in
- * use (SSO-11.11, SSO-11.12), each read as `OperationsSettings` reads it, so
- * the check and the schedule judge it the same way.
+ * `[operations]`: checks the schedule settings the same way
+ * `OperationsSettings` reads them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

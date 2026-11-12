@@ -7,10 +7,8 @@ namespace SineMacula\Laravel\Sso\Keys;
 use SineMacula\Laravel\Sso\Keys\Enums\ExpiryNotice;
 
 /**
- * What one run of `Keys\ExpiryReport` did (SSO-2.6, SSO-11.12): how many keys
- * and certificates it listed, how many of them have expired, and how many ended
- * with each notice. A key is handed to the caller as it is read rather than
- * kept here, so a run takes no memory for how many keys there are.
+ * The counts of one run of `Keys\ExpiryReport`; the keys go to the caller as
+ * read, so a run's memory does not grow with them.
  *
  * @api
  *
@@ -34,7 +32,7 @@ final readonly class ExpiryRun implements \JsonSerializable
         /** How many of them have expired. */
         public int $expired = 0,
 
-        /** How many ended with each notice, by the notice's value; a warning is sent whether or not the key is listed. */
+        /** How many keys, listed or not, ended with each notice, by its value. */
         public array $notices = [],
     ) {}
 
@@ -72,8 +70,7 @@ final readonly class ExpiryRun implements \JsonSerializable
     }
 
     /**
-     * Whether a dispatch threw, so that a later run has a warning to send
-     * again.
+     * Whether a dispatch threw, leaving a warning for a later run.
      *
      * @return bool
      */
@@ -83,7 +80,7 @@ final readonly class ExpiryRun implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: the counts, every notice's included.
+     * What `json_encode()` writes, with a count for every notice.
      *
      * @return array{listed: int, expired: int, notices: array<string, int>}
      */

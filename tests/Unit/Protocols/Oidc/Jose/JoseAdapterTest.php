@@ -19,11 +19,8 @@ use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for the JOSE adapter's library calls (SSO-7.3, RFC 7523): every
- * allowed algorithm verifies a token signed by hand with OpenSSL (never by the
- * library), and nothing verifies once the signature, the payload, the key, the
- * algorithm or the allow-list is wrong; client assertions are signed with PS256
- * or ES256 and the claims RFC 7523 asks for, and verify without the library.
+ * Unit tests for the JOSE adapter, checked against tokens signed by hand with
+ * OpenSSL.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -132,10 +129,8 @@ final class JoseAdapterTest extends TestCase
     }
 
     /**
-     * A header the library reads differently from the package's reading is
-     * refused, though its signature is valid: the package keeps the digits of a
-     * number too large for an integer, the library reads a float. The same
-     * signature path over a plain header verifies.
+     * A header the library reads differently, such as an oversized number it
+     * reads as a float, never verifies.
      *
      * @return void
      *
@@ -165,10 +160,8 @@ final class JoseAdapterTest extends TestCase
     }
 
     /**
-     * A client assertion is signed by the key's algorithm under its thumbprint
-     * and `typ` `JWT`, with `iss` and `sub` the client, `aud` the token
-     * endpoint exactly, a fresh `jti` and `exp` a minute after `iat`, and
-     * verifies without the library.
+     * A client assertion carries the claims RFC 7523 asks for and verifies
+     * without the library.
      *
      * @param  string  $key
      * @param  string  $algorithm
@@ -399,9 +392,8 @@ final class JoseAdapterTest extends TestCase
     }
 
     /**
-     * What the library throws while it signs is answered with a fixed message
-     * and nothing of the library's: no previous exception and no frame holding
-     * the private JWK. A key with no private half makes the library throw.
+     * A library failure while signing carries a fixed message, no previous
+     * exception and no private JWK.
      *
      * @return void
      */
@@ -427,9 +419,8 @@ final class JoseAdapterTest extends TestCase
     }
 
     /**
-     * A key's public JWK carries its `kid` (its RFC 7638 thumbprint), `use`
-     * `sig` and the algorithm it signs with, and nothing private; a dump shows
-     * no private member and the key refuses to be serialised.
+     * A key's public JWK carries its `kid`, `use` and `alg` and nothing
+     * private, and the key is never serialised.
      *
      * @return void
      */

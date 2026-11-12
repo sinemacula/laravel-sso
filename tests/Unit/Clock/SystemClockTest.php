@@ -14,9 +14,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Clock\SystemClock;
 
 /**
- * Unit tests for the default clock: always a `CarbonImmutable`, the instant
- * Laravel's test clock is set to, whatever class the date factory makes, and
- * read afresh on every call.
+ * Unit tests for the default clock.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -30,8 +28,7 @@ final class SystemClockTest extends TestCase
     private const string INSTANT = '2026-10-31T12:00:00.123456Z';
 
     /**
-     * Restore Laravel's date factory and test clock, so no test leaks into the
-     * next.
+     * Restore Laravel's date factory and test clock.
      *
      * @return void
      */
@@ -45,8 +42,7 @@ final class SystemClockTest extends TestCase
     }
 
     /**
-     * The instant is a `CarbonImmutable` itself, never a subclass or a mutable
-     * date, so a caller can add to it without changing what another holds.
+     * The instant is exactly a `CarbonImmutable`.
      *
      * @return void
      */
@@ -58,8 +54,7 @@ final class SystemClockTest extends TestCase
     }
 
     /**
-     * Freezing Laravel's clock with `Carbon::setTestNow()` freezes the
-     * package's, to the microsecond, and moving it moves the package's.
+     * The clock follows `Carbon::setTestNow()` to the microsecond.
      *
      * @return void
      */
@@ -106,8 +101,7 @@ final class SystemClockTest extends TestCase
     }
 
     /**
-     * Whatever class the application's date factory makes, the clock answers
-     * the frozen instant as a `CarbonImmutable`.
+     * Whatever class the date factory makes, the clock is a `CarbonImmutable`.
      *
      * @param  ?class-string<\DateTimeInterface>  $class
      * @return void
@@ -161,8 +155,7 @@ final class SystemClockTest extends TestCase
     }
 
     /**
-     * Each call reads the time again, and an instant answered earlier is not
-     * changed by a later one.
+     * Each call reads the time again without changing an earlier instant.
      *
      * @return void
      */

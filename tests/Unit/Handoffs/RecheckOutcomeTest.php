@@ -11,8 +11,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
 
 /**
- * Unit tests for what a handoff's recheck comes to: its four outcomes, their
- * stable values, and the failure reason each refusal reports.
+ * Unit tests for the handoff recheck outcomes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

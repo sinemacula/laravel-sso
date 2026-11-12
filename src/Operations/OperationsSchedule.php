@@ -9,31 +9,10 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\Features;
 
 /**
- * Registers the package's operations on the application's schedule (SSO-11.11,
- * SSO-11.12), in one call from `withSchedule()` or a service provider:
+ * Registers the package's maintenance commands on the application's schedule.
  *
- * | Task               | Command                | Default cadence |
- * | ------------------ | ---------------------- | --------------- |
- * | `prune`            | `sso:prune`            | hourly          |
- * | `domain_recheck`   | `sso:domains:recheck`  | hourly          |
- * | `metadata_refresh` | `sso:metadata:refresh` | every 5 minutes |
- * | `expiry_report`    | `sso:keys:expiring`    | daily           |
- *
- * Every command is safe to run on several servers at once, by what it does in
- * the database, so by default each runs on every server and no task it
- * registers reads or writes a cache: a stale mutex can never suppress
- * maintenance (SSO-11.6). `schedule:run` is the framework's own: on Laravel 13
- * it reads its pause signal from the default cache before any task, unless the
- * application calls `Schedule::withoutInterruptionPolling()`, which this class
- * leaves to it as a choice for every task the application has.
- * `sso.operations.cache_mutexes` opts in to `withoutOverlapping()` and
- * `onOneServer()`, which save work and guarantee nothing. They use the
- * schedule's own cache store, which `Schedule::useCache()` chooses for every
- * task of the application, so the package leaves that choice alone.
- *
- * It registers nothing while the package is not in use, when the tables a
- * command reads may not exist. It holds the settings, which keep nothing
- * (SSO-11.2).
+ * No cache mutex by default: every command is safe on several servers at once,
+ * so a stale mutex can never suppress maintenance.
  *
  * @api
  *
@@ -66,7 +45,7 @@ final readonly class OperationsSchedule
     ) {}
 
     /**
-     * Add each task with a cadence to the schedule.
+     * Add each task with a cadence; nothing while the package is not in use.
      *
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
      * @return void

@@ -3,12 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The published `config/sso.php` of `docs/guides/rate-limits.md` (SSO-11.8,
- * SSO-12.5): every flow's limits, each kept, with the starts allowed from one
- * IP address raised for an office behind one NAT address, and the table and
- * its connection left to their defaults. `RateLimitsExampleTest` lays it over
- * the package's configuration, as Laravel lays a published file over a
- * package's, and counts attempts under it.
+ * The published `config/sso.php` of `docs/guides/rate-limits.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

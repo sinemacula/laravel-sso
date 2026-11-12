@@ -82,20 +82,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the completion pipeline (SSO-5.6, SSO-8.6, SSO-11.3,
- * SSO-11.4): a stage for each step, run in exactly `CompletionStep::cases()`'s
- * order; the first three outside any transaction and every locked one inside
- * one; a refusal ending the pipeline; the request's `completed_at` set whether
- * it completed or was refused; a request voided, or a connection disabled or
- * gone, while the response was validated, refused under the lock; and a
- * misconfiguration that propagates and rolls the completion back. An
- * unsolicited response handed over by the correlation step is answered by
- * re-initiation (SSO-5.8): no request consumed, its record made under the
- * connection's lock alone through the replay step's stage, a connection changed
- * since validation refused, and each outcome reported once; a step other than
- * correlation handing over is a misconfiguration. Metadata a refresh applied
- * that lapses while a response is validated, solicited or not, and a start URL
- * changed or turned off since validation, are refused under the lock.
+ * Feature tests for the completion pipeline and unsolicited re-initiation.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -143,9 +130,7 @@ final class CompletionPipelineTest extends TestCase
     private \ArrayObject $script;
 
     /**
-     * Bind a fixed clock, the recording issuer and a linker, register the
-     * application and the driver, and create the tables and a usable
-     * connection.
+     * Bind a fixed clock, the issuer and a linker, and create a connection.
      *
      * @return void
      */
@@ -213,9 +198,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * The stages run in exactly the steps' order: the first three outside any
-     * transaction, every locked one inside the one transaction, before the
-     * request is marked completed.
+     * The stages run in step order, the locked ones in one transaction.
      *
      * @return void
      */
@@ -237,8 +220,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * The locked stages are given the connection's and the request's rows as
-     * they were locked, not as they were read before.
+     * The locked stages are given the rows as they were locked.
      *
      * @return void
      */
@@ -264,8 +246,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A refusal ends the pipeline: a refused response runs no locked stage, and
-     * a locked stage's refusal runs none after it.
+     * A refusal ends the pipeline.
      *
      * @return void
      */
@@ -293,9 +274,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * The request's `completed_at` is set when it completes, when its response
-     * is refused and when its consumption is refused; a response that matches
-     * no request marks nothing.
+     * The request's `completed_at` is set whether it completed or was refused.
      *
      * @return void
      */
@@ -328,9 +307,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A request a change to its connection voided while its response was
-     * validated is refused under the lock with `connection_unavailable`,
-     * redirected, with no locked stage run and no code issued.
+     * A request voided during validation is refused under the lock.
      *
      * @return void
      */
@@ -355,10 +332,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A request whose connection's trust version was raised after it started,
-     * by a change that voided nothing it could see, is refused with
-     * `connection_unavailable` at its consumption, before the driver validates
-     * anything or calls the provider: no validation runs and no code is issued.
+     * A request of an older trust version is refused before validation.
      *
      * @return void
      */
@@ -386,9 +360,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A trust version raised while the response was validated, without the
-     * request being voided, is refused under the lock with
-     * `connection_unavailable`, with no locked stage run and no code issued.
+     * A trust version raised during validation is refused under the lock.
      *
      * @return void
      */
@@ -413,8 +385,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A connection disabled while the response was validated is refused under
-     * the lock with `connection_unavailable`, and issues nothing.
+     * A connection disabled during validation is refused under the lock.
      *
      * @return void
      */
@@ -433,9 +404,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A connection whose row went while the response was validated is refused
-     * under the lock, and its request still marked completed; a request whose
-     * row went is refused too, with nothing to mark.
+     * A connection or request row gone during validation is refused.
      *
      * @return void
      */
@@ -465,12 +434,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * With the feature on, the locked steps' transaction locks the tenant's
-     * enforcement row first (an upsert, then a locking read), then the
-     * connection and the rule's connections in one statement in ascending id
-     * order, then the request; the enforcement step judges the policy the
-     * locked rows give, carried on the state, with no further read of the rule,
-     * and a code is issued.
+     * The locked steps lock enforcement, connections by id, then the request.
      *
      * @return void
      */
@@ -502,8 +466,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Under a rule the connection does not satisfy, the locked policy refuses
-     * with `enforcement_unsatisfied`, redirected, with no code issued.
+     * The locked policy refuses a connection that does not satisfy it.
      *
      * @return void
      */
@@ -521,10 +484,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * The completion never asks the exemption contract: an identity it would
-     * exempt is still refused `enforcement_unsatisfied` through a connection
-     * the rule does not list, and the contract is never asked. Only the
-     * adapter's gate asks it.
+     * The completion never asks the exemption contract.
      *
      * @return void
      */
@@ -545,8 +505,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A tenant with no rule stored is locked through an unconfigured row that
-     * requires nothing, at no version, and a code is issued.
+     * A tenant with no rule is locked through an unconfigured row.
      *
      * @return void
      */
@@ -562,10 +521,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * With the feature off, the locked steps lock the connection and then the
-     * request: no statement names the enforcement table, no row is inserted,
-     * and the inheritance contract is never asked; nor is it for a completion
-     * already refused with the feature on.
+     * No enforcement is locked with the feature off or once refused.
      *
      * @return void
      */
@@ -592,10 +548,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * An inheritance contract that names another enforcing tenant under the
-     * lock than when it was taken refuses with `connection_unavailable`,
-     * running no locked step and issuing nothing; the request is still marked
-     * completed.
+     * An enforcing tenant that moved since the lock is refused.
      *
      * @return void
      */
@@ -617,8 +570,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A step whose stage resolves to something else is a misconfiguration: it
-     * propagates, rolls the completion back and reports nothing.
+     * A step whose stage is not a stage propagates and rolls back.
      *
      * @return void
      */
@@ -641,9 +593,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A redirect URI resolver that answers what no redirect URI may be is a
-     * misconfiguration: it propagates, the completion rolls back with its code,
-     * and nothing is reported.
+     * A misconfigured redirect URI resolver propagates and rolls back.
      *
      * @return void
      */
@@ -681,11 +631,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * An unsolicited response handed over by the correlation step is
-     * re-initiated: no other step runs but the replay step's stage, inside the
-     * one transaction; the browser goes to the start URL; the assertion is
-     * recorded once; the request in flight is neither consumed nor completed;
-     * and `UnsolicitedResponseReinitiated` alone is reported.
+     * An unsolicited response is re-initiated without consuming a request.
      *
      * @return void
      */
@@ -709,9 +655,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A re-initiation the driver refuses is rejected with its reason, with no
-     * further stage run, nothing recorded and exactly one `FlowFailed` for the
-     * assertion flow naming the connection alone.
+     * A refused re-initiation reports one failure and records nothing.
      *
      * @return void
      */
@@ -733,8 +677,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Rows of `[change]`: what happens to the connection once the driver
-     * validated the response and before its row is locked.
+     * Rows of `[change]` made to the connection between validation and lock.
      *
      * @return iterable<string, array{0: \Closure(string): void}>
      */
@@ -755,10 +698,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A connection gone, no longer usable or whose trust version moved since
-     * the driver validated the response is refused under the lock with
-     * `connection_unavailable`: the replay step's stage never runs and nothing
-     * is recorded.
+     * A connection changed since validation is refused under the lock.
      *
      * @param  \Closure(string): void  $change
      * @return void
@@ -780,9 +720,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Rows of `[start URL, reason]`: what the driver answers for the locked
-     * connection once it validated the response, and the reason it is refused
-     * for under the lock.
+     * Rows of `[start URL, reason]` the driver answers under the lock.
      *
      * @return iterable<string, array{0: ?string, 1: string}>
      */
@@ -793,10 +731,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A connection that no longer allows IdP-initiated sign-in, or whose start
-     * URL changed, since the driver validated the response is refused under the
-     * lock with the reason: the replay step's stage never runs, nothing is
-     * recorded and the old start URL never reaches the caller.
+     * A start URL changed since validation is refused under the lock.
      *
      * @param  ?string  $startUrl
      * @param  string  $reason
@@ -824,10 +759,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Rows of `[limit, seconds, reason]`: what a refresh applied lapsing a
-     * minute after now, by its `validUntil` or by the stale limit, the seconds
-     * the clock moves on while the response is validated, and the reason the
-     * completion is refused for under the lock, if it is.
+     * Rows of `[limit, seconds, reason]` for metadata lapsing in a minute.
      *
      * @return iterable<string, array{0: string, 1: int, 2: ?string}>
      */
@@ -841,10 +773,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Metadata a refresh applied that lapses while the response is validated
-     * refuses the completion under the lock with `metadata_expired`, with no
-     * locked stage run and no code issued; a second before it lapses, the
-     * completion completes.
+     * Metadata that lapsed during validation is refused under the lock.
      *
      * @param  string  $limit
      * @param  int  $seconds
@@ -873,9 +802,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Metadata a refresh applied that lapses while an unsolicited response is
-     * validated refuses it under the lock with `metadata_expired`, recording
-     * nothing; a second before it lapses, it is re-initiated.
+     * Metadata that lapsed during unsolicited validation is refused.
      *
      * @param  string  $limit
      * @param  int  $seconds
@@ -905,9 +832,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * The record is made as the replay step makes any: one whose expiry is now
-     * is `assertion_expired`, recording nothing; one a second later is recorded
-     * and re-initiated, then `replayed`.
+     * The re-initiation's record is made as the replay step makes any.
      *
      * @return void
      */
@@ -929,8 +854,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A re-initiation locks the connection's row alone, even with enforcement
-     * on: no enforcement statement, no request.
+     * A re-initiation locks the connection's row alone.
      *
      * @return void
      */
@@ -949,9 +873,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A step other than correlation that hands the completion to re-initiation
-     * is a misconfiguration: it propagates, before the lock or rolling the
-     * locked steps back, and reports nothing.
+     * Only the correlation step may hand a completion to re-initiation.
      *
      * @return void
      */
@@ -983,8 +905,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A stage that stops at the provisioning boundary, but is not the
-     * provisioning step's, is a misconfiguration, reported nowhere.
+     * Only the provisioning step may stop at its boundary.
      *
      * @return void
      */
@@ -1006,8 +927,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Rows of `[what the stage's state holds, the message]`: a completion
-     * answered with less than it consumed is a misconfiguration.
+     * Rows of `[what the stage's state holds, the message]`.
      *
      * @return iterable<string, array{0: bool, 1: string}>
      */
@@ -1018,8 +938,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A stage answering with a state that lost what the completion consumed
-     * rolls the completion back, and is answered to no one.
+     * A state that lost what the completion consumed rolls back.
      *
      * @param  bool  $consumed
      * @param  string  $message
@@ -1050,9 +969,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Re-initiation runs only for a state the correlation step handed over: one
-     * with no unsolicited correlation, with no connection, or at a driver that
-     * does not re-initiate is a `LogicException`, reported nowhere.
+     * Re-initiation needs an unsolicited response at a re-initiating driver.
      *
      * @return void
      *
@@ -1082,8 +999,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Spy on every step, recording the transaction level each ran at, then
-     * running the stage registered for it and recording what it answered.
+     * Spy on every step, recording its transaction level and answer.
      *
      * @return void
      */
@@ -1122,8 +1038,7 @@ final class CompletionPipelineTest extends TestCase
                 ) {}
 
                 /**
-                 * Record the step, run its stage and record what it answered,
-                 * and whether its request was completed when it ran.
+                 * Record the step, run its stage and record what it answered.
                  *
                  * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
                  * @return \SineMacula\Laravel\Sso\Completion\StageOutcome
@@ -1145,8 +1060,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * What the spy of the step answered, and whether its request was completed
-     * when it ran.
+     * What the step's spy answered, and whether its request was completed.
      *
      * @param  string  $step
      * @return array{0: \SineMacula\Laravel\Sso\Completion\StageOutcome, 1: bool}
@@ -1201,8 +1115,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Store a `sign_in` request for `web` through the connection, started with
-     * the state and the reference, unless the attributes say otherwise.
+     * Store a `sign_in` request for `web` unless the attributes say otherwise.
      *
      * @param  array<string, mixed>  $attributes
      * @return \SineMacula\Laravel\Sso\Models\AuthorizationRequest
@@ -1229,8 +1142,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A stage for the enforcement step that refuses every state for the reason,
-     * recording that it ran.
+     * An enforcement stage that refuses every state, recording that it ran.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @return \SineMacula\Laravel\Sso\Contracts\CompletionStage
@@ -1272,9 +1184,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * A usable connection over a driver registered under `reinitiating`, which
-     * reads every response as unsolicited and re-initiates it with the answer
-     * the script holds, running the script's change first, if any.
+     * A connection whose driver re-initiates every response as scripted.
      *
      * @return \SineMacula\Laravel\Sso\Models\Connection
      */
@@ -1382,8 +1292,7 @@ final class CompletionPipelineTest extends TestCase
             }
 
             /**
-             * Run the script's change, if any, once, then answer the script's
-             * re-initiation.
+             * Run the script's change once, if any, then answer as scripted.
              *
              * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
              * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
@@ -1430,8 +1339,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Complete at the connection's assertion consumer service with a post the
-     * scripted driver never reads.
+     * Complete at the assertion consumer service with an unread post.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return \SineMacula\Laravel\Sso\Completion\CompletionResult
@@ -1447,8 +1355,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * Have what a refresh applied to the connection lapse a minute after now:
-     * by its `validUntil`, or by the default stale limit since its last fetch.
+     * Make what a refresh applied lapse a minute after now.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $limit
@@ -1476,8 +1383,7 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * The connection, tenant and protocol the context names, once its request,
-     * application, purpose and identity are known to be absent.
+     * The connection, tenant and protocol the context names.
      *
      * @param  \SineMacula\Laravel\Sso\Events\EventContext  $context
      * @return list<?string>

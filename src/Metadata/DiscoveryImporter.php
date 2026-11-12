@@ -24,46 +24,10 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
- * Imports an OpenID provider's discovery document and JWKS from its issuer and
- * answers the settings they propose (SSO-2.8, SSO-2.11), for an administrator
- * to review: an import writes and trusts nothing, and reports no event. What it
- * proposes is trusted only once saved through
- * `Connections\ImportSaver::save()`, with freshness, which stamps the fetch the
- * proposal carries so the stale limit counts from it.
+ * Imports an OpenID provider's discovery document and JWKS and proposes
+ * settings for an administrator to review; it writes and trusts nothing.
  *
- * `import()` follows one order. While OIDC is not available
- * (`sso.features.oidc` off) it is `protocol_unavailable` before anything else;
- * an issuer that is not a valid setting is `settings_invalid`; a connection
- * named must be the tenant's OIDC connection, read on the write connection
- * (otherwise `connection_not_found`), and the attempt then counts against its
- * metadata limit (`sso.rate_limits.metadata`) before anything is fetched; past
- * it, it is rate limited with the seconds until the window ends. Only then does
- * it fetch.
- *
- * `fetch()` is the fetch and whole validation an import and a refresh share,
- * pinned to the issuer given:
- *
- * - the document at the issuer with any trailing `/` removed and
- *   `/.well-known/openid-configuration` appended, path included (OpenID Connect
- *   Discovery §4, never RFC 8414's insertion), through the package's fetcher as
- *   a discovery request held to `sso.oidc.max_discovery_bytes` (SSO-2.9): a
- *   refused or failed fetch is `fetch_refused` or `fetch_failed`, a response
- *   that is not `2xx` included, and the document is read by
- *   `DiscoveryDocument`;
- * - the JWKS at the document's `jwks_uri` as a JWKS request held to
- *   `sso.oidc.max_jwks_bytes`, failing alike, and read by
- *   `Protocols\Oidc\Jose\ProviderKeySet`, under the caps and the allow-list
- *   given or, with none, the document's own algorithms in the package's order:
- *   a JWKS refused is `jwks_invalid`.
- *
- * Each is noted the moment it validated, so each resource's stale limit counts
- * from its own validated fetch, and what a proposal saves counts from the
- * document's (`ProposedOidcSettings::fetch()`). The import fetches while it is
- * called, so it refuses to run inside a transaction on the storage connection
- * (a `LogicException`), and logs nothing. A database error propagates
- * (SSO-11.4). It holds the protocols, the lookup, the limiter, the fetcher, the
- * limits and the clock, none of which keeps anything of one request for the
- * next (SSO-11.2).
+ * Call outside any transaction on the storage connection.
  *
  * @api
  *
@@ -110,9 +74,8 @@ final readonly class DiscoveryImporter
     ) {}
 
     /**
-     * The settings the issuer's discovery document proposes, held to the
-     * allow-list of the tenant's connection named, and counted against its
-     * limit, when one is named.
+     * The settings the issuer's discovery document proposes, held to the named
+     * connection's allow-list and counted against its limit.
      *
      * @param  string  $tenantId
      * @param  string  $issuer
@@ -145,9 +108,8 @@ final readonly class DiscoveryImporter
     }
 
     /**
-     * Fetch and validate the issuer's discovery document, pinned to that
-     * issuer, then its JWKS under the allow-list given or, with none, the
-     * document's own algorithms: what an import proposes and a refresh writes.
+     * Fetch and validate the issuer's discovery document, then its JWKS under
+     * the allow-list or, with none, the document's own algorithms.
      *
      * @param  string  $issuer
      * @param  ?\SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -175,10 +137,8 @@ final readonly class DiscoveryImporter
     }
 
     /**
-     * Fetch and validate the JWKS at the URL given under the allow-list given,
-     * noting the moment it validated, with no discovery document: what a
-     * connection whose document is not fetched refreshes from (`ProviderKeySet`
-     * as the document).
+     * Fetch and validate the JWKS at the URL under the allow-list, with no
+     * discovery document.
      *
      * @param  string  $jwksUri
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -202,9 +162,7 @@ final readonly class DiscoveryImporter
 
     /**
      * The tenant's OIDC connection named, `null` when none is named, or the
-     * refusal of the import: an unavailable protocol or invalid issuer before
-     * anything is looked up, and a connection that is unknown, another tenant's
-     * or not OIDC.
+     * refusal of the import.
      *
      * @param  string  $tenantId
      * @param  string  $issuer
@@ -250,8 +208,8 @@ final readonly class DiscoveryImporter
     }
 
     /**
-     * The document's JWKS fetched and read under the allow-list, noting the
-     * moment it validated, or why there is none.
+     * The document with its JWKS fetched under the allow-list, or why there is
+     * none.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\DiscoveryDocument  $document
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed

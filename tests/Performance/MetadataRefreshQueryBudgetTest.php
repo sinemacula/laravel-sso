@@ -26,41 +26,8 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Keys\Certificates;
 
 /**
- * Query budgets for a metadata refresh (SSO-2.8, SSO-11.12). Before it fetches,
- * a refresh reads the connection (an administrator's by its id, the schedule's
- * in the due listing), counts an administrator's refresh against the
- * connection's metadata limit (the counter's conditional update and its
- * insert-unless-exists, two writes on a fresh window), reads its anchors and
- * its trusted certificates (the claim's snapshot), and claims it with one
- * conditional update that writes the claim's token; after, in one transaction,
- * it reads the connection locked and its certificates and anchors locked in one
- * statement, compares them with the snapshot, and writes only what changed:
- *
- * - a refresh now that adds a certificate: 7 reads (the connection, the anchors
- *   and the certificates; the connection and the snapshot's fingerprints
- *   locked; the certificates locked to replace them; the fingerprints judged
- *   before the insert) and 5 writes (the counter's two, the claim, the insert,
- *   the connection's refresh);
- * - a refresh now that removes a certificate and moves the endpoint: 6 reads
- *   and 8 writes (the counter's two, the claim, the delete, the requests and
- *   the handoff codes voided, the trust version raised once, the connection's
- *   settings and refresh in one update);
- * - a scheduled refresh of one connection that changes nothing: 6 reads (the
- *   listing, the anchors, the certificates, then the three locked reads) and 2
- *   writes (the claim, the refresh), the schedule counting nothing;
- * - listing connections with a URL and no switch, however many: 2 reads (the
- *   listing, then the anchors of all of them at once), and with a switch set,
- *   1,
- *   since a connection that never refreshes stays due and is read on every run;
- * - a failed refresh: 5 reads (the connection, the anchors, the certificates,
- *   the connection and the fingerprints locked) and 4 writes (the counter's
- *   two, the claim, the failure);
- * - a refresh now whose claim another server holds: 3 reads, the counter's two
- *   writes and the claim's update, which changes no row;
- * - a refresh now past the metadata limit: 2 reads (the connection, then the
- *   full counter for its wait) and the counter's 3 writes (its conditional
- *   update, its insert-unless-exists and the update tried again), none of which
- *   changes a row; nothing is claimed or fetched.
+ * Query budgets for a metadata refresh: a counted, claimed fetch, then one
+ * transaction that writes only what changed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -104,7 +71,8 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now that adds a certificate is seven reads and five writes.
+     * The connection, anchors, certificates, three locked reads and the
+     * insert's check; the counter's two, the claim, the insert and refresh.
      *
      * @return void
      */
@@ -120,8 +88,8 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Listing connections whose refresh depends on an anchor reads the anchors
-     * once, however many there are, and only the one that has one is due.
+     * The listing and the anchors of all of them at once; only the connection
+     * with an anchor is due.
      *
      * @return void
      */
@@ -137,7 +105,7 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Listing connections whose switch decides for them reads no anchor.
+     * A connection whose switch decides for it reads no anchor.
      *
      * @return void
      */
@@ -151,8 +119,8 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now that removes a certificate and moves the endpoint is six
-     * reads and nine writes, the trust version raised once.
+     * The counter's two writes, the claim, the delete, the voiding's four
+     * writes and one update of settings and refresh; trust is raised once.
      *
      * @return void
      */
@@ -168,8 +136,8 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A scheduled refresh of one connection that changes nothing is six reads
-     * and two writes.
+     * The listing, anchors, certificates and three locked reads; the claim and
+     * the refresh, with nothing counted.
      *
      * @return void
      */
@@ -184,7 +152,8 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A failed refresh is five reads and four writes.
+     * The connection, anchors, certificates and two locked reads; the counter's
+     * two writes, the claim and the failure.
      *
      * @return void
      */
@@ -200,8 +169,8 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now whose claim another server holds is three reads, the
-     * counter's two writes and the claim's update, and fetches nothing.
+     * A claim another server holds: three reads, the counter's two writes and a
+     * claim update that changes no row.
      *
      * @return void
      */
@@ -217,8 +186,8 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refresh now past the metadata limit is two reads and the counter's
-     * three writes, and claims and fetches nothing.
+     * The connection and the full counter; its update, refused insert and
+     * update again, none changing a row. Nothing is fetched.
      *
      * @return void
      */
@@ -238,8 +207,7 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refreshing SAML connection of the tenant trusting the certificates,
-     * with the attributes given.
+     * A refreshing SAML connection trusting the certificates.
      *
      * @param  list<string>  $certificates
      * @param  array<string, mixed>  $attributes

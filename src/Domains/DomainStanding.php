@@ -9,18 +9,8 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * Where a claim of a domain stands at an instant (SSO-3.1 to SSO-3.3, SSO-8.8),
- * judged the one way every part of the package judges it: the claims helpers,
- * the scheduled rechecks, discovery and linking by a verified domain.
- *
- * - A pending claim has expired at its expiry, or at once when it has none.
- * - A domain routes discovery, and marks an email as belonging to its
- *   connection, while it is verified and before the end of a grace period, even
- *   before a recheck marks it lapsed.
- * - A domain allows linking by email while it routes, linking is not suspended,
- *   and its last successful check is no later than the instant and no older
- *   than the maximum age, which is never more than a day, so a stopped
- *   scheduler cannot extend it.
+ * Where a claim of a domain stands at an instant, judged the same way across
+ * the package.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,8 +25,8 @@ final class DomainStanding
     private function __construct() {}
 
     /**
-     * The name the claim's TXT record is looked up at: the record name under
-     * the domain, `_sso-verification.example.com`.
+     * The name the claim's TXT record is looked up at, such as
+     * `_sso-verification.example.com`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @return string
@@ -47,7 +37,7 @@ final class DomainStanding
     }
 
     /**
-     * Whether the claim is pending and has expired by the instant.
+     * Whether the claim is pending and has expired; one with no expiry has.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \Carbon\CarbonImmutable  $now
@@ -63,8 +53,8 @@ final class DomainStanding
     }
 
     /**
-     * Whether the domain routes discovery and marks an email as belonging to
-     * its connection at the instant (SSO-3.3, SSO-3.4, SSO-8.1).
+     * Whether the domain routes discovery at the instant: verified and within
+     * any grace period, even before a recheck marks it lapsed.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \Carbon\CarbonImmutable  $now
@@ -80,9 +70,8 @@ final class DomainStanding
     }
 
     /**
-     * Whether the domain allows linking by email at the instant (SSO-3.3,
-     * SSO-8.8), with a last successful check within the maximum age, capped at
-     * a day.
+     * Whether the domain allows linking by email at the instant; the age cap
+     * stops a stopped scheduler extending it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \Carbon\CarbonImmutable  $now
@@ -99,8 +88,8 @@ final class DomainStanding
     }
 
     /**
-     * Whether the claim's last successful check was no later than the instant
-     * and no more than the seconds before it.
+     * Whether the last successful check is not in the future and no older than
+     * the seconds given.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
      * @param  \Carbon\CarbonImmutable  $now

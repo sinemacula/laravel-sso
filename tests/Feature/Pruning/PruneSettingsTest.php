@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Pruning\PruningCheck;
 use Tests\TestCase;
 
 /**
- * Feature tests for the clean-up's settings and their boot check (SSO-11.11):
- * the shipped defaults, the defaults when nothing is set, both edges of each
- * range, what is refused, and the check judging as the settings do, while the
- * package is in use.
+ * Feature tests for the clean-up settings and their boot check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +23,8 @@ use Tests\TestCase;
 final class PruneSettingsTest extends TestCase
 {
     /**
-     * The shipped configuration is a day's retention, a thousand rows a batch
-     * and a hundred thousand a kind.
+     * The shipped configuration is a day's retention, 1000 rows a batch and
+     * 100000 a kind.
      *
      * @return void
      */
@@ -41,8 +38,7 @@ final class PruneSettingsTest extends TestCase
     }
 
     /**
-     * A configuration published before the settings existed takes the same
-     * defaults.
+     * Unset settings take the same defaults.
      *
      * @return void
      */
@@ -133,8 +129,7 @@ final class PruneSettingsTest extends TestCase
     }
 
     /**
-     * The check runs each setting as the clean-up reads it, once the package is
-     * in use.
+     * The check judges each setting as the clean-up reads it.
      *
      * @return void
      */

@@ -13,10 +13,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
 use Tests\TestCase;
 
 /**
- * Feature tests for the SAML settings (SSO-2.3, SSO-5.8, SSO-6.7 to SSO-6.9):
- * their defaults, every rule with its code and path, the settings that need a
- * feature switched on, completeness, and the classification they take from
- * `Saml2Setting`.
+ * Feature tests for the SAML settings.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -81,9 +78,8 @@ final class Saml2SettingsTest extends TestCase
     }
 
     /**
-     * What is given is kept as given, in the order the settings are named, a
-     * `null` is a setting not given, and a name the protocol does not have is
-     * never stored.
+     * What is given is kept in the settings' order, `null` is not given, and an
+     * unknown name is never stored.
      *
      * @return void
      */
@@ -306,9 +302,8 @@ final class Saml2SettingsTest extends TestCase
     }
 
     /**
-     * An explicit metadata refresh needs the metadata URL, whatever the feature
-     * says, since the feature stops only the schedule; the URL alone is
-     * allowed.
+     * An explicit metadata refresh needs the metadata URL whatever the feature
+     * says, which stops only the schedule.
      *
      * @return void
      */

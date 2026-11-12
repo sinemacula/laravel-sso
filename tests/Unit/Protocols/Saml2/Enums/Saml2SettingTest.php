@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
 
 /**
- * Unit tests for the names of a SAML connection's settings and how a change to
- * each is classified: the freshness it needs, and whether it may change what
- * existing subjects mean.
+ * Unit tests for the SAML settings and how a change to each is classified.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,10 +36,8 @@ final class Saml2SettingTest extends TestCase
     }
 
     /**
-     * Trust, endpoints, subject, what a signature or algorithm must be, what
-     * the provider's authentication must prove and the metadata refresh need
-     * `sso.connection.trust`; IdP-initiated sign-in needs its own; request
-     * options need none.
+     * Trust-affecting settings need `sso.connection.trust`, IdP-initiated
+     * sign-in its own, and request options none.
      *
      * @return void
      */
@@ -76,8 +72,8 @@ final class Saml2SettingTest extends TestCase
     }
 
     /**
-     * The entity id, the subject source and attribute, and the NameID format
-     * may change what existing subjects mean (SSO-2.13).
+     * The entity id, subject source and attribute, and NameID format may change
+     * what existing subjects mean.
      *
      * @return void
      */

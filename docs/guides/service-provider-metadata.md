@@ -216,7 +216,7 @@ Route::get(config()->string('sso.endpoints.paths.jwks'), static function (string
 any cache lifetime short: a next key has to reach the provider before it is made current.
 
 Prefer the URL where the provider can fetch one: a rotation then needs nothing from you at the provider. With the inline
-export, you must **register again** every time a next key is added or made current, or the provider stops accepting the
+export, you must register again every time a next key is added or made current, or the provider stops accepting the
 connection's assertions. A provider that takes a file or a form field takes the inline `jwks` member, and most ask for
 only some of these values: enter what yours asks for.
 
@@ -236,9 +236,9 @@ gives the same bytes.
 The public keys follow the key ring, as SAML metadata does. Only `private_key_jwt` connections have keys to rotate:
 
 1. While a key is only `current`, it is the only one listed.
-2. Add the next key with `KeyService::addNext($tenantId, $connectionId, KeyUse::CLIENT_ASSERTION)`: the JWKS now lists
-   the current key, then the next one. The current key still signs. Let the provider refetch the URL or, with the inline
-   export, register again, so the provider knows the new key before it is used.
+2. Add the next key with `KeyService::addNext($tenantId, $connectionId, KeyUse::CLIENT_ASSERTION, $client)`: the JWKS
+   now lists the current key, then the next one. The current key still signs. Let the provider refetch the URL or, with
+   the inline export, register again, so the provider knows the new key before it is used.
 3. Make the next key current with `KeyService::makeCurrent()`: the JWKS lists only the new key, and every client
    assertion is signed with it from that moment. The replaced key is `retiring`, and is no longer listed: a retiring
    key decrypts for a SAML connection during its overlap, but signs nothing, so it has no further use here. Remove it

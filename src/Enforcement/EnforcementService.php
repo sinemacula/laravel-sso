@@ -28,62 +28,8 @@ use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * The management helper of a tenant's enforcement (SSO-4.1, SSO-4.3, SSO-4.5,
- * SSO-2.11, SSO-2.12): read it, and turn it on or off or change which of the
- * tenant's connections satisfy it, for the application's own administration
- * screens; who may call it is the application's authorisation, never the
- * package's.
- *
- * A change goes in one order, and a refusal at any step writes, revokes and
- * reports nothing:
- *
- * 1. While the `enforcement` feature is off it is `feature_disabled`.
- * 2. The connection ids are validated as a whole: each a string of 1 to 26
- *    bytes (`connection_ids.<n>`, `invalid_type` or `invalid_format`),
- *    de-duplicated silently, at most `MAX_CONNECTIONS` (`too_many`), at least
- *    one while turning it on (`required`), and each a connection of this tenant
- *    (`unknown`, the same for another tenant's connection as for none, so no
- *    other tenant is revealed). A violation is `invalid`.
- * 3. A change to what is stored already (the same switch and the same set of
- *    ids, in any order) is `unchanged`, with nothing asked.
- * 4. Turning it on needs one of the connections given to be enabled and to have
- *    completed a sign-in, so a misconfigured connection cannot lock the tenant
- *    out (SSO-4.3): otherwise `completed_sign_in_required`.
- * 5. The freshness contract is asked with `sso.enforcement.update` and its
- *    maximum age: `stale` is `freshness_required`.
- * 6. In one transaction on the storage connection, the tenant's row is locked
- *    (through `EnforcementLock`, which inserts it unconfigured first when there
- *    is none), then the connections given are locked in id order, the lock
- *    order every caller keeps; steps 2 to 4 are judged again on the locked
- *    rows, an unconfigured row counting as no rule; the row is written with a
- *    new version, a fresh lower-case ULID; when the rule is now on,
- *    `Contracts\SessionRevocation`, resolved from the container at that moment,
- *    is called with the tenant's policy as it now is
- *    (`RevocationScope::tenant()`); and the change is reported through
- *    `Administration\EnforcementEvents`, after commit.
- *
- * Turning it off revokes nothing. The revocation runs inside the transaction,
- * so an adapter that writes through the same Laravel connection commits or
- * rolls back with the change; an exception it throws rolls the whole change
- * back, with no row, no new version and no event, and propagates. A row is
- * never found by a plain read under the lock: each read that decides the write
- * is a locking read, so a caller's own `REPEATABLE READ` snapshot cannot hide a
- * concurrent change. A tenant's first row is inserted unconfigured by an upsert
- * that leaves an existing row as it is, so racing first changes queue on the
- * row rather than on MySQL's gap locks; an unconfigured row reads as no rule,
- * so one a refused change leaves behind stores nothing, and it is kept, since a
- * redemption or a completion may be waiting to lock it. The revocation, inside
- * the change's transaction, uses current reads and writes, so it sees every
- * session an admission that held the lock first committed. A deadlock is
- * retried, up to `ATTEMPTS` times, when the helper's transaction is the
- * outermost one; inside the application's own, it propagates, as does
- * PostgreSQL's serialisation failure, for the caller to retry its whole
- * transaction.
- *
- * A database error propagates (SSO-11.4); an empty or overlong tenant id is an
- * `InvalidArgumentException`. It holds the lookups, the freshness gate, the
- * clock, the reporter and the container, none of which keeps anything of one
- * request for the next (SSO-11.2). Resolve it from the container per request.
+ * Reads and changes a tenant's enforcement; a refused change writes, revokes
+ * and reports nothing. Authorising the caller is the application's job.
  *
  * @api
  *
@@ -95,13 +41,13 @@ final readonly class EnforcementService
     /** @var int The most connections that may satisfy one tenant's enforcement. */
     public const int MAX_CONNECTIONS = 50;
 
-    /** @var int How many times a transaction a deadlock rolled back is tried in all. */
+    /** @var int Total tries of a transaction a deadlock rolled back. */
     private const int ATTEMPTS = 3;
 
     /** @var int The longest connection id, a ULID. */
     private const int MAX_ID_LENGTH = 26;
 
-    /** @var string The connection ids, as a violation names them. */
+    /** @var string The setting a violation names. */
     private const string CONNECTION_IDS = 'connection_ids';
 
     /**
@@ -132,7 +78,7 @@ final readonly class EnforcementService
         /** The clock every change is stamped from. */
         private Clock $clock,
 
-        /** Reports each change, inside its transaction. */
+        /** Reports each change. */
         private EnforcementEvents $events,
 
         /** Resolves the revocation contract at each change. */
@@ -140,8 +86,7 @@ final readonly class EnforcementService
     ) {}
 
     /**
-     * The tenant's enforcement as it is stored: off, with no connection and no
-     * version, when it never had one.
+     * The tenant's enforcement as stored, off when it never had one.
      *
      * @param  string  $tenantId
      * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementSummary
@@ -182,9 +127,8 @@ final readonly class EnforcementService
             ? self::ruleRefusal($tenantId, $stored, $enabled, $ids, $connections)
             : EnforcementResult::invalid($violations);
 
-        // A rule that looks unchanged asks no freshness, but is answered only
-        // once the locked read agrees: the first read may come from a caller's
-        // transaction's snapshot, older than a change committed since.
+        // An apparently unchanged rule is confirmed under the lock, since the
+        // first read may come from the caller's stale transaction snapshot
         $unchanged = $refusal?->status === EnforcementStatus::UNCHANGED;
         $refusal   = $unchanged ? null : ($refusal ?? $this->staleRefusal($caller));
 
@@ -192,10 +136,8 @@ final readonly class EnforcementService
     }
 
     /**
-     * The valid ids given, each once, by the position it was first given at;
-     * every violation, in the order given, a violation of the whole list
-     * first; and the tenant's connections among the ids, found one by one
-     * through the tenant-scoped lookup, unless there are too many to look up.
+     * The valid ids by first position, every violation in order, and the
+     * tenant's connections among the ids.
      *
      * @param  string  $tenantId
      * @param  bool  $enabled
@@ -227,8 +169,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * The tenant's connections with the ids, found one by one through the
-     * tenant-scoped lookup on the write connection.
+     * The tenant's connections with the ids, through the tenant-scoped lookup.
      *
      * @param  string  $tenantId
      * @param  array<int, string>  $ids
@@ -244,8 +185,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * The refusal of a caller whose authentication is not fresh enough to
-     * change enforcement, or `null` when it is.
+     * The refusal of a caller whose authentication is stale, `null` when fresh.
      *
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return ?\SineMacula\Laravel\Sso\Enforcement\EnforcementResult
@@ -261,11 +201,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * Make the change in one transaction on the storage connection, against the
-     * tenant's row and the connections given, each locked and judged again;
-     * retried when a deadlock rolled back the outermost transaction. A caller
-     * whose freshness was not asked, because the rule looked unchanged, is
-     * asked once the locked read finds a change to make.
+     * Lock, judge again and write the change in one retried transaction.
      *
      * @param  string  $tenantId
      * @param  bool  $exists
@@ -301,10 +237,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * The tenant's row, configured or not, locked for update. One the first
-     * read saw configured is locked by a locking read; otherwise, or when that
-     * finds none, the lock inserts it unconfigured unless one exists, and reads
-     * it locked.
+     * The tenant's row locked for update, inserted unconfigured if missing.
      *
      * @param  string  $tenantId
      * @param  bool  $exists
@@ -322,8 +255,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * Write the change to the locked row with a new version, revoke the
-     * sessions the rule, when on, no longer allows, and report the change.
+     * Write a new version, revoke what an enabled rule disallows, and report.
      *
      * @param  \SineMacula\Laravel\Sso\Models\TenantEnforcement  $locked
      * @param  ?string  $previousVersion
@@ -368,9 +300,8 @@ final readonly class EnforcementService
     }
 
     /**
-     * The ids given that could be connection ids, each once, by the position it
-     * was first given at, and a violation, by position, for each that could
-     * not.
+     * Well-formed ids, deduplicated, and a violation per malformed one, keyed
+     * by position.
      *
      * @param  list<mixed>  $given
      * @return array{0: array<int, string>, 1: array<int, \SineMacula\Laravel\Sso\Connections\SettingViolation>}
@@ -400,7 +331,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * Whether the string is as long as a connection's id may be: 1 to 26 bytes.
+     * Whether the string is 1 to 26 bytes, as a connection id may be.
      *
      * @param  string  $value
      * @return bool
@@ -413,9 +344,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * The violation of a value at the position that cannot be a connection's
-     * id: `invalid_format` for a string of the wrong length, `invalid_type` for
-     * anything else.
+     * `invalid_format` for a string of the wrong length, else `invalid_type`.
      *
      * @param  int  $position
      * @param  mixed  $value
@@ -427,8 +356,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * An `unknown` violation, by position, for each id that is none of the
-     * connections found, compared byte for byte.
+     * An `unknown` violation, by position, for each id not found.
      *
      * @param  array<int, string>  $ids
      * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $connections
@@ -452,10 +380,8 @@ final readonly class EnforcementService
     }
 
     /**
-     * Why the change is not made, judged against the stored row and the
-     * connections given: `unchanged` when it would store what is stored, and
-     * `completed_sign_in_required` when it turns the rule on without an enabled
-     * connection that has completed a sign-in; `null` otherwise.
+     * `unchanged`, `completed_sign_in_required` (so a misconfigured connection
+     * cannot lock the tenant out), or `null` when the change may go ahead.
      *
      * @param  string  $tenantId
      * @param  ?\SineMacula\Laravel\Sso\Models\TenantEnforcement  $stored
@@ -479,8 +405,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * Whether the stored rule is already the one given: the same switch and the
-     * same set of ids, in whatever order.
+     * Whether the stored rule has the same switch and set of ids.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementSummary  $stored
      * @param  bool  $enabled
@@ -493,7 +418,7 @@ final readonly class EnforcementService
     }
 
     /**
-     * A new lower-case ULID.
+     * Lower-case ULID.
      *
      * @return string
      */

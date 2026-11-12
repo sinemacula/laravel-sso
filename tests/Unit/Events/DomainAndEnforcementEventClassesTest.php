@@ -22,10 +22,7 @@ use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\ExemptionUsed;
 
 /**
- * Unit tests for the domain and enforcement events (SSO-3, SSO-4.4, SSO-4.5,
- * SSO-10.3, SSO-10.4): each is a final, read-only package event returning its
- * context, survives a queue unchanged, and holds exactly its declared public
- * properties, none of them a token, a record, a secret or a value.
+ * Unit tests for the domain and enforcement events.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,7 +39,7 @@ use SineMacula\Laravel\Sso\Events\ExemptionUsed;
 #[CoversClass(ExemptionUsed::class)]
 final class DomainAndEnforcementEventClassesTest extends TestCase
 {
-    /** @var list<string> Names no such event may give a property, compared without case or underscores. */
+    /** @var list<string> Forbidden property names, ignoring case and underscores. */
     private const array FORBIDDEN = ['token', 'verificationtoken', 'record', 'records', 'secret', 'value'];
 
     /** @var string The claim the domain events concern. */
@@ -82,8 +79,7 @@ final class DomainAndEnforcementEventClassesTest extends TestCase
     }
 
     /**
-     * Each event is a package event, final and read-only, and returns the
-     * context it was given.
+     * Each event is a final, read-only package event returning its context.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties
@@ -102,8 +98,7 @@ final class DomainAndEnforcementEventClassesTest extends TestCase
     }
 
     /**
-     * A serialise and unserialise round trip, as a queue makes, gives an equal
-     * event.
+     * A serialise round trip, as a queue makes, gives an equal event.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties
@@ -133,8 +128,7 @@ final class DomainAndEnforcementEventClassesTest extends TestCase
     }
 
     /**
-     * Each event holds exactly the public properties it declares, each
-     * read-only, and none named after a token, a record, a secret or a value.
+     * Each event holds exactly its declared properties, none sensitive.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties

@@ -80,19 +80,9 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\StandaloneTestCase;
 
 /**
- * What the package does alone (FEATURES "No dependency on a sibling": no
- * dependency, useful alone, sensible behaviour alone, routes are the
- * application's): nothing bound but what the provider binds, the real drivers
- * against the fake providers, and the package's own storage, transactions and
- * commands. Defaults are not all refusals, so each of these is what the default
- * deliberately does.
+ * Integration tests for what the package deliberately does on its defaults.
  *
- * Only the outside world is faked: an OIDC completion's token request goes to a
- * `FakeFetcher`, which is the one seam a test here replaces, and says so. A
- * test of what a default deliberately does not do (revoking a session, with a
- * change no default caller is fresh enough to make) replaces `Freshness` to
- * reach it, and says so too. What a default refuses is
- * `DefaultBindingsRefusalsTest`'s.
+ * Only the outside world is faked; a test that replaces a seam says so.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -135,8 +125,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
 
     /**
      * Stop Laravel's clock, which the default clock follows, configure the
-     * protocols, the endpoints and the applications, create the tables and the
-     * routes an application adds, and record events. Nothing is bound.
+     * applications and record events. Nothing is bound.
      *
      * @return void
      */
@@ -173,8 +162,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * No sibling is reachable at run time: none of its configuration, none of
-     * its classes, and nothing that would autoload one.
+     * No sibling's configuration or classes are reachable.
      *
      * @return void
      */
@@ -207,12 +195,9 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * Every seam is on the default the provider binds, and every route is one
-     * the test's application added, from a closure of its own. Nothing but
-     * those seven is there, under any path, and none of them comes from the
-     * package. Only a route the framework defines in its own source is left
-     * aside, such as the `storage/{path}` routes Laravel 12 serves the local
-     * disk's files on.
+     * Every seam is on its default and every route is the application's.
+     *
+     * Framework routes, such as Laravel 12's `storage/{path}`, are left aside.
      *
      * @return void
      */
@@ -253,9 +238,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * A configured SAML start redirects to the provider's single sign-on URL,
-     * with the request and the relay state its binding carries, and stores one
-     * request whose challenge is the verifier the package generated.
+     * A SAML start redirects to the provider and stores one request.
      *
      * @return void
      */
@@ -280,9 +263,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * A configured OIDC start redirects to the provider's authorisation
-     * endpoint with the authorisation code request, and fetches nothing, so it
-     * runs on the default fetcher.
+     * An OIDC start redirects to the provider and fetches nothing.
      *
      * @return void
      */
@@ -322,10 +303,8 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * A completion through the default linker offers `ResultUnlinked`
-     * synchronously, with no transaction open and no code, then ends
-     * `unlinked`: a redirect with the failure code and the reference, and no
-     * code on it.
+     * The default linker offers `ResultUnlinked`, then the flow ends
+     * `unlinked`.
      *
      * @param  string  $protocol
      * @return void
@@ -375,11 +354,9 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * With unlinked handoffs on, the default store issues a code, holding only
-     * its digest, and the default redemption redeems it, with no identity; the
-     * code is then spent, and the connection has completed no sign-in. The
-     * redemption signs nobody in, sets no cookie and issues no token: what the
-     * application makes of the result is its own (FEATURES "Useful alone").
+     * With unlinked handoffs on, the default store issues and redeems a code.
+     *
+     * The redemption signs nobody in; the result is the application's to use.
      *
      * @param  string  $protocol
      * @return void
@@ -425,8 +402,8 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * The default store records a key once on its real table, keeping only a
-     * digest, refuses it while it holds, and records it again once it expired.
+     * The default single-use store records a digest and refuses it until
+     * expiry.
      *
      * @return void
      */
@@ -453,8 +430,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * A flow's response carrying an assertion already recorded is refused on
-     * the real table, though it answers a request of its own.
+     * A response carrying an assertion already recorded is refused.
      *
      * @return void
      */
@@ -475,9 +451,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * The default limiter counts in the database, with a cache that fails on
-     * every call: the attempt past the limit is `429` with its wait, its
-     * counter gives back no IP address, and the cache was never touched.
+     * The default limiter counts in the database and never touches the cache.
      *
      * @return void
      */
@@ -512,10 +486,9 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * The default revocation deliberately does nothing, and no change waits on
-     * it: disabling a connection and changing enforcement each succeed and
-     * report their event. `Freshness` is replaced, since its default lets no
-     * caller make either change, and every other seam stays on its default.
+     * The default revocation does nothing and changes still succeed.
+     *
+     * `Freshness` is replaced, since its default allows no change.
      *
      * @return void
      */
@@ -546,10 +519,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * The default enforcement reads the database and is off until a tenant turns
-     * it on: with the feature on and no rule, a sign-in goes through; with a
-     * rule stored, a connection outside it is refused and one inside it goes
-     * through, carrying the rule's version.
+     * The default enforcement is off until a tenant stores a rule.
      *
      * @return void
      */
@@ -592,9 +562,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * With the feature on, discovery routes an email by the domain verified for
-     * a connection, and a domain routed nowhere leads to the application's
-     * fallback in the same shape, with no request stored for it.
+     * Discovery routes an email by its verified domain, or to the fallback.
      *
      * @return void
      */
@@ -646,10 +614,9 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * Service provider metadata of each protocol and a connection's public keys
-     * are served. The key is made under a fresh caller, the only way a key
-     * comes to be, and the default is then put back, since serving it asks
-     * nothing of a caller.
+     * Metadata and public keys are served.
+     *
+     * The key needs a fresh caller to make; serving it needs none.
      *
      * @return void
      */
@@ -678,8 +645,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * `sso:prune` deletes one row of each kind on the defaults, says so on one
-     * line, and finds nothing the second time.
+     * `sso:prune` deletes one row of each kind, then finds nothing.
      *
      * @return void
      */
@@ -705,8 +671,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * `sso:keys:expiring` lists a certificate that ends tomorrow and warns of
-     * it once on the defaults; a second run lists it and sends nothing.
+     * `sso:keys:expiring` warns of an expiring certificate once.
      *
      * @return void
      */
@@ -738,8 +703,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
 
     /**
      * Whether the class exists and is not one of the example harness's
-     * stand-ins, which mirror a sibling's API under its namespace and are
-     * declared in tests/Integration/Examples.
+     * stand-ins.
      *
      * @param  string  $class
      * @return bool
@@ -757,9 +721,10 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * A usable connection over the protocol at a host of its own. An OIDC
-     * completion reaches its provider, the one part of the outside world that
-     * needs a seam replaced, so its fake fetcher is bound first.
+     * A usable connection over the protocol at a host of its own.
+     *
+     * An OIDC driver keeps what it was built with, so the fetcher is bound
+     * first.
      *
      * @param  string  $protocol
      * @param  string  $host
@@ -777,8 +742,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * Assert nothing but the outside world the protocol needs has been
-     * replaced.
+     * Assert nothing but the protocol's outside world has been replaced.
      *
      * @param  string  $protocol
      * @return void
@@ -795,7 +759,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * Assert the seams named are off their defaults, and every other is on its
+     * Assert the seams named are off their defaults and every other is on its
      * own.
      *
      * @param  class-string  ...$rebound
@@ -816,9 +780,8 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * Store the rule a tenant's own change would have stored, on the row the
-     * last flow's locks left unconfigured, so that no seam need be replaced to
-     * change it; answer its version.
+     * Store a rule on the row the last flow left unconfigured and answer its
+     * version.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $satisfying
      * @return string
@@ -874,8 +837,7 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
     }
 
     /**
-     * Run the command, and answer its exit code and the lines it printed,
-     * without blank ones.
+     * Run the command and answer its exit code and non-blank lines.
      *
      * @param  string  $command
      * @return array{0: int, 1: list<string>}

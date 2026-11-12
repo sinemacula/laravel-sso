@@ -55,18 +55,7 @@ use Tests\Fixtures\Protocols\ExampleDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the scheduled and on-demand refresh of SAML metadata
- * (SSO-2.8, SSO-2.9, SSO-11.12), through the fake fetcher and the fake
- * identity provider's metadata: which connections are due (the feature, the
- * switch, the URL, the backoff and the claim); the saved URL fetched as a
- * metadata request; an additive certificate voiding nothing, a removed one or
- * a moved endpoint voiding the flows in flight; another entity, a missing
- * signature and a failed fetch recorded as failures, backing off and logged
- * with the reason and the fetch's status alone; a malformed aggregate expiry,
- * or a reader that throws, recorded as a failure of that connection alone, the
- * run going on; a refresh now skipping the backoff but never a held claim; a
- * refused refresh now; no run inside a transaction; and what a refresh applied
- * expiring at the driver after the stale limit, or never with no limit.
+ * Feature tests for the scheduled and on-demand refresh of SAML metadata.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -103,9 +92,8 @@ final class MetadataRefresherTest extends TestCase
     private FakeFetcher $fetcher;
 
     /**
-     * Bind a fixed clock and a fake fetcher serving the provider's metadata,
-     * switch SAML and the refresh on, create the tables (the rate limit
-     * counters' among them), and record events.
+     * Bind a fixed clock and a fetcher serving the provider's metadata, enable
+     * SAML and refresh, create the tables and record events.
      *
      * @return void
      */
@@ -131,9 +119,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A due connection is refreshed once, through the saved URL fetched as a
-     * metadata request with no credential, and is due again only after the
-     * refresh interval.
+     * A due connection is refreshed once through its saved URL, with no
+     * credential, and is due again after the interval.
      *
      * @return void
      */
@@ -160,8 +147,7 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Rows of `[attributes, settings, due]`: a connection's refresh state and
-     * settings, and whether it is due now.
+     * Rows of `[attributes, settings, due]` for a connection's refresh state.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: array<string, mixed>, 2: bool}>
      */
@@ -186,8 +172,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Only a SAML connection switched on with an `https` metadata URL, whose
-     * next refresh is due and on which no claim holds, is refreshed.
+     * Only an enabled SAML connection with an `https` URL, due and unclaimed,
+     * is refreshed.
      *
      * @param  array<string, mixed>  $attributes
      * @param  array<string, mixed>  $settings
@@ -220,9 +206,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * With SAML switched off and OIDC on, nothing of SAML refreshes: it is not
-     * listed as due nor refreshed, a queued job skips it and an administrator
-     * is refused, with nothing fetched, written or reported.
+     * With SAML off nothing of it refreshes, is queued or is refreshed by an
+     * administrator, and nothing is fetched.
      *
      * @return void
      */
@@ -249,8 +234,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A protocol switched off does not stop another that is on, and its
-     * connections page past in the listing.
+     * A protocol switched off does not stop another, and its connections page
+     * past in the listing.
      *
      * @return void
      */
@@ -286,8 +271,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Rows of `[change]`: what another server writes to a connection after the
-     * run listed it.
+     * Rows of `[change]` another server writes after the run listed the
+     * connection.
      *
      * @return iterable<string, array{0: array<string, int|string>}>
      */
@@ -300,8 +285,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A connection another server claims or refreshes after the run listed it
-     * is skipped, with nothing fetched for it.
+     * A connection another server claims or refreshes after listing is skipped
+     * without a fetch.
      *
      * @param  array<string, int|string>  $change
      * @return void
@@ -329,8 +314,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A certificate the provider publishes beside the one trusted is trusted,
-     * and the flow in flight is not voided.
+     * A certificate published beside the trusted one is trusted without voiding
+     * the flow in flight.
      *
      * @return void
      */
@@ -351,8 +336,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A certificate no longer published, or a moved single sign-on URL, voids
-     * the flow in flight and raises the trust version.
+     * A removed certificate or moved SSO URL voids the flow in flight and
+     * raises the trust version.
      *
      * @return void
      */
@@ -382,8 +367,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Rows of `[response, reason, fetch status]`: a fetch that brought no
-     * metadata, the reason the refresh failed for, and the fetch's status.
+     * Rows of `[response, reason, fetch status]` for a fetch that brought no
+     * metadata.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Fetching\FetchResult, 1: \SineMacula\Laravel\Sso\Events\Enums\FailureReason, 2: string}>
      */
@@ -397,8 +382,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A fetch that brought no metadata records a failure, keeps the last good
-     * settings, and is logged with the reason and the fetch's status alone.
+     * A failed fetch records a failure, keeps the last good settings and logs
+     * only the reason and fetch status.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $response
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -433,8 +418,7 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Rows of `[metadata, anchored, reason]`: metadata the refresh refuses,
-     * whether the connection has an anchor, and the reason.
+     * Rows of `[metadata, anchored, reason]` for metadata the refresh refuses.
      *
      * @return iterable<string, array{0: \Closure(): string, 1: bool, 2: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -457,8 +441,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Metadata the reader refuses is recorded as a failure with its reason, and
-     * changes nothing: the entity id is pinned, and a refresh never moves it.
+     * Refused metadata is recorded as a failure and changes nothing; the pinned
+     * entity id never moves.
      *
      * @param  \Closure(): string  $xml
      * @param  bool  $anchored
@@ -484,11 +468,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * An aggregate whose `validUntil` names no real instant fails its
-     * connection's refresh as invalid metadata: the failure is recorded, the
-     * next attempt backs off, the claim is released, nothing is applied and the
-     * value is logged nowhere; the run goes on to refresh the next connection
-     * due.
+     * A malformed aggregate `validUntil` fails only its connection as invalid
+     * metadata, without logging the value, and the run goes on.
      *
      * @return void
      */
@@ -523,9 +504,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A reader that throws rather than refusing the document fails the refresh
-     * as invalid metadata, recorded like any other failure, with the exception
-     * logged by its class alone.
+     * A reader that throws fails the refresh as invalid metadata, logging the
+     * exception's class alone.
      *
      * @return void
      */
@@ -535,8 +515,7 @@ final class MetadataRefresherTest extends TestCase
 
         $connection = $this->saml();
 
-        // The cap is read again by the reader once the fetch is done, and
-        // throws then
+        // The reader re-reads the cap after the fetch, and throws then
         $this->fetcher->respond(self::URL, static function (): FetchResult {
             config()->set('sso.metadata.max_bytes', 'unreadable');
 
@@ -554,8 +533,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A connection with no pinned entity id finds no entity, so its refresh
-     * fails and changes nothing.
+     * A connection with no pinned entity id finds no entity and changes
+     * nothing.
      *
      * @return void
      */
@@ -584,8 +563,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Failures in a row are retried as each backoff ends, 5 minutes doubling to
-     * 6 hours, not a second before; a success resets the backoff.
+     * Failures back off from 5 minutes doubling to 6 hours, and a success
+     * resets the backoff.
      *
      * @return void
      */
@@ -639,9 +618,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A refresh now never skips a claim another server holds: it is
-     * `in_progress`, fetches nothing and reports nothing; a claim run out is
-     * taken.
+     * A refresh now is `in_progress` against a held claim, but takes one that
+     * has run out.
      *
      * @return void
      */
@@ -662,10 +640,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A refresh now counts against the connection's metadata limit before it
-     * claims or fetches anything: past the limit it is `rate_limited` with the
-     * seconds until the window ends, claims, fetches, writes and reports
-     * nothing; the schedule is never counted.
+     * A refresh now is rate limited before it claims or fetches; the schedule
+     * is never counted.
      *
      * @return void
      */
@@ -705,10 +681,7 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A refresh now and a URL import naming the connection draw from one limit,
-     * either way round: imports that fill it leave a refresh now
-     * `rate_limited`, and refreshes now that fill it leave an import so, each
-     * having fetched nothing more.
+     * A refresh now and a URL import of the connection share one limit.
      *
      * @return void
      */
@@ -733,9 +706,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A refresh fetches through the metadata cap, never the fetcher's: the
-     * request carries the cap, and a document over it fails the fetch, at it is
-     * applied.
+     * A refresh fetches under the metadata cap, not the fetcher's, and a
+     * document over it fails.
      *
      * @return void
      */
@@ -761,8 +733,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * The fetch a refresh records is the moment the document was validated,
-     * after the fetch, never a moment before it.
+     * The recorded fetch time is when the document was validated, after the
+     * fetch.
      *
      * @return void
      */
@@ -783,8 +755,7 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A claim is written with a fresh random token, which the write that ends
-     * the refresh releases with the claim.
+     * A claim carries a fresh random token that the ending write releases.
      *
      * @return void
      */
@@ -811,8 +782,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A refresh whose claim expired and was taken over while it fetched writes
-     * nothing, and leaves the new owner's claim; a failed fetch likewise.
+     * A refresh whose claim was taken over while it fetched writes nothing, on
+     * success or failure.
      *
      * @return void
      */
@@ -842,9 +813,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * An administrator's certificate added while the refresh fetched is kept:
-     * the refresh, which would have replaced the certificates exactly, is a
-     * conflict and writes nothing.
+     * A certificate an administrator added during the fetch is kept, and the
+     * refresh is a conflict.
      *
      * @return void
      */
@@ -865,10 +835,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * The schedule lists the ids of the connections due that refresh, in id
-     * order, and nothing while the refresh is off; a queued refresh refreshes
-     * its connection while it is still due, and is `skipped` once it is not,
-     * for a connection gone, or one that no longer refreshes.
+     * The schedule lists due connections in id order; a queued refresh runs
+     * while due and is `skipped` once not.
      *
      * @return void
      */
@@ -902,7 +870,7 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Rows of `[feature, switch]`: where the schedule would not refresh the
+     * Rows of `[feature, switch]` where the schedule would not refresh the
      * connection.
      *
      * @return iterable<string, array{0: bool, 1: ?bool}>
@@ -919,9 +887,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * An administrator with a fresh authentication depends on neither the
-     * feature nor the connection's switch, recovering what the schedule does
-     * not touch, and is asked once, for the connection's trust.
+     * A fresh administrator can refresh with the feature or switch off, asked
+     * once for the connection's trust.
      *
      * @param  bool  $feature
      * @param  ?bool  $switch
@@ -942,9 +909,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A stale administrator cannot make a refresh the schedule would not: it is
-     * refused before it is counted, claimed or fetched, so a certificate the
-     * connection holds stays and the limit is not spent.
+     * A stale administrator is refused a refresh the schedule would not make,
+     * before it is counted or fetched.
      *
      * @param  bool  $feature
      * @param  ?bool  $switch
@@ -990,9 +956,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Where the schedule would refresh the connection anyway, opted in or
-     * anchored, an administrator's refresh writes no more than it would, so no
-     * freshness is asked and a stale one is no refusal.
+     * Where the schedule would refresh anyway, an administrator's refresh asks
+     * no freshness.
      *
      * @param  ?bool  $switch
      * @param  bool  $anchored
@@ -1033,8 +998,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * An administrator's refresh recovers a connection whose stale limit has
-     * passed, and it is usable again at once.
+     * An administrator's refresh recovers a connection past its stale limit at
+     * once.
      *
      * @return void
      */
@@ -1054,10 +1019,9 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * The schedule leaves a connection whose switch is off, and with the
-     * feature off leaves every one, though each still expires and an
-     * administrator can still refresh it; a connection whose switch is unset
-     * refreshes exactly while it has a URL and an anchor.
+     * The schedule honours the switch and feature, while every connection still
+     * expires and stays refreshable by an administrator; an unset switch
+     * follows the URL and anchor.
      *
      * @return void
      */
@@ -1084,8 +1048,7 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Rows of `[kind, reason]`: a refresh now that is refused before anything
-     * runs.
+     * Rows of `[kind, reason]` for a refresh now refused before anything runs.
      *
      * @return iterable<string, array{0: string, 1: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -1101,9 +1064,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A refresh now of no such connection, or of one whose protocol is off or
-     * that has nothing to fetch, is refused with nothing fetched, written or
-     * reported.
+     * A refresh now of a missing, switched-off or unfetchable connection is
+     * refused, touching nothing.
      *
      * @param  string  $kind
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -1132,8 +1094,7 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * No refresh, nor the listing of the due connections, runs inside a
-     * transaction on the storage connection.
+     * Neither refresh, nor the due listing, runs inside a storage transaction.
      *
      * @return void
      *
@@ -1162,9 +1123,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * What a refresh applied stops being used the stale limit after it: the
-     * driver refuses a start with `metadata_expired` from that instant, and not
-     * a second before.
+     * What a refresh applied is refused `metadata_expired` at the driver from
+     * the stale limit on.
      *
      * @return void
      */
@@ -1201,8 +1161,7 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A connection of a protocol an application registered has no source, so a
-     * queued refresh naming it is skipped.
+     * A queued refresh of a protocol with no source is skipped.
      *
      * @return void
      */
@@ -1236,8 +1195,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * The outcome, connection, changed settings, metadata version and trust
-     * change of each result.
+     * Each result's outcome, connection, changed settings, metadata version and
+     * trust change.
      *
      * @param  list<\SineMacula\Laravel\Sso\Metadata\RefreshResult>  $results
      * @return list<list<mixed>>
@@ -1251,8 +1210,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * The connection's metadata version, failures in a row, next refresh, claim
-     * and claim token, as stored.
+     * The stored metadata version, failure count, next refresh, claim and claim
+     * token.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $row
      * @return list<mixed>
@@ -1280,9 +1239,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * A refreshing SAML connection of the tenant, trusting the provider's
-     * certificate, with the settings and attributes given; a setting given as
-     * `null` is left out.
+     * A refreshing SAML connection trusting the provider's certificate; a
+     * `null` setting is left out.
      *
      * @param  array<string, mixed>  $settings
      * @param  array<string, mixed>  $attributes

@@ -25,14 +25,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlSubject;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation;
 
 /**
- * Reads a verified assertion into the package's own values (SSO-6.3): every
- * value comes from the object the library rebuilt from the bytes a trusted
- * signature covered, or from its decrypted form, through the library's getters,
- * or, for what the library does not model (statements and conditions of other
- * kinds, `Advice`), from that same verified element's children. Strings are
- * taken raw, as received, never trimmed or normalised (SSO-6.9), and instants
- * in UTC. Nothing here judges a value; it holds nothing between calls
- * (SSO-11.2).
+ * Maps a verified assertion into the package's values without judging them.
+ * Strings stay raw, never trimmed or normalised; instants are UTC.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -51,8 +45,8 @@ final readonly class AssertionMapper
     private const array MODELLED_CONDITIONS = ['AudienceRestriction', 'OneTimeUse', 'ProxyRestriction'];
 
     /**
-     * The verified assertion, as the package's value, with the verified element
-     * it was read from.
+     * The assertion; what the library does not model is read from the verified
+     * element.
      *
      * @param  \SimpleSAML\SAML2\XML\saml\Assertion  $assertion
      * @param  \DOMElement  $element
@@ -166,8 +160,8 @@ final readonly class AssertionMapper
     }
 
     /**
-     * The conditions, with the audiences of each restriction and the names of
-     * every condition the package does not model.
+     * The conditions, with each restriction's audiences and the names of any
+     * unmodelled condition.
      *
      * @param  ?\SimpleSAML\SAML2\XML\saml\Conditions  $conditions
      * @param  \DOMElement  $assertion
@@ -231,7 +225,7 @@ final readonly class AssertionMapper
     }
 
     /**
-     * One attribute, each value's text raw, `null` for one that is not text.
+     * One attribute, each value raw, or `null` for a non-text value.
      *
      * @param  \SimpleSAML\SAML2\XML\saml\Attribute  $attribute
      * @return \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute
@@ -276,8 +270,7 @@ final readonly class AssertionMapper
     }
 
     /**
-     * The element's children of the SAML assertion namespace with the local
-     * name, in order.
+     * The element's SAML assertion children of the local name, in order.
      *
      * @param  \DOMElement  $element
      * @param  string  $name
@@ -300,8 +293,7 @@ final readonly class AssertionMapper
     }
 
     /**
-     * The qualified names (`{namespace}local`) of the element's children that
-     * are not one of the SAML parts named, in order.
+     * The `{namespace}local` names of the children that are not a named part.
      *
      * @param  \DOMElement  $element
      * @param  list<string>  $parts
@@ -324,10 +316,8 @@ final readonly class AssertionMapper
     }
 
     /**
-     * Whether the element is one of the parts named, a SAML element of the
-     * name. The assertion's own `ds:Signature` never reaches here: the element
-     * is parsed from the bytes that signature digested, which its enveloped
-     * transform removed it from, and the schema allows it no other.
+     * Whether the element is a named SAML part. The assertion's `ds:Signature`
+     * never reaches here; the enveloped transform removed it.
      *
      * @param  \DOMElement  $element
      * @param  list<string>  $parts

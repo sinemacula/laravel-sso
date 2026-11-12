@@ -15,10 +15,7 @@ use SineMacula\Laravel\Sso\Events\JwksRefreshed;
 use SineMacula\Laravel\Sso\Events\JwksRefreshFailed;
 
 /**
- * Unit tests for the events the OIDC driver reports beside the flow and
- * metadata events (SSO-7.3, SSO-10.3, SSO-10.4): each is a final, read-only
- * package event holding its context and exactly its declared properties, none
- * named after a key, URL or token, and each survives a queue's round trip.
+ * Unit tests for the OIDC driver's own events.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,7 +26,7 @@ use SineMacula\Laravel\Sso\Events\JwksRefreshFailed;
 #[CoversClass(JwksRefreshFailed::class)]
 final class OidcEventClassesTest extends TestCase
 {
-    /** @var list<string> Names no event here may give a property, compared without case or underscores. */
+    /** @var list<string> Forbidden property names, ignoring case and underscores. */
     private const array FORBIDDEN = ['jwks', 'keys', 'key', 'url', 'jwksuri', 'token', 'idtoken', 'accesstoken', 'value', 'values', 'kid'];
 
     /**
@@ -50,8 +47,7 @@ final class OidcEventClassesTest extends TestCase
     }
 
     /**
-     * Each event is a package event, final and read-only, and returns the
-     * context it was given.
+     * Each event is a final, read-only package event returning its context.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties
@@ -71,8 +67,7 @@ final class OidcEventClassesTest extends TestCase
     }
 
     /**
-     * A serialise and unserialise round trip, as a queue makes, gives an equal
-     * event.
+     * A serialise round trip, as a queue makes, gives an equal event.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties
@@ -92,8 +87,7 @@ final class OidcEventClassesTest extends TestCase
     }
 
     /**
-     * Each event holds exactly the public, read-only properties it declares,
-     * none named after what it must never carry.
+     * Each event holds exactly its declared properties, none sensitive.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties

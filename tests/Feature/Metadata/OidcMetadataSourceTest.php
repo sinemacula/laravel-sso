@@ -54,13 +54,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the scheduled and administrator's refresh of an OIDC
- * connection's discovery document and JWKS (SSO-2.8, SSO-2.13, SSO-7.3,
- * SSO-11.12), through the shared machinery with the fake provider: which
- * connections refresh, the snapshot and claim, each resource's validated
- * moment, the issuer pinned, what a refresh may and may never change, exact
- * replacement of the keys, when it voids and raises the trust version, its
- * refusals under the lock, and the compare and set.
+ * Feature tests for refreshing an OIDC connection's discovery document and
+ * JWKS.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -108,8 +103,8 @@ final class OidcMetadataSourceTest extends TestCase
     private FakeOpenIdProvider $provider;
 
     /**
-     * Bind a fixed clock and a fake fetcher serving the provider, switch OIDC
-     * and the refresh on, create the tables and capture logs.
+     * Bind a fixed clock and a fetcher serving the provider, enable OIDC and
+     * refresh, create the tables and capture logs.
      *
      * @return void
      */
@@ -164,8 +159,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A connection refreshes while it is OIDC, its switch is on and its issuer
-     * is valid, and is then listed as due.
+     * A connection refreshes, and is listed due, while it is OIDC with its
+     * switch on and a valid issuer.
      *
      * @param  array<string, mixed>  $attributes
      * @param  array<string, mixed>  $settings
@@ -205,9 +200,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * The claim holds the snapshot, in a fixed order whatever order the
-     * settings were saved in, with a setting not held as `null`, and writes its
-     * token; a second claim while it holds is `null`.
+     * The claim writes its token and snapshots the trust in a fixed order; a
+     * second claim is `null`.
      *
      * @return void
      *
@@ -243,8 +237,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A fetch reads the saved issuer's document, then the JWKS it names, each
-     * under its own cap, and notes the moment each validated.
+     * A fetch reads the document then its JWKS, each under its own cap, noting
+     * when each validated.
      *
      * @return void
      */
@@ -276,8 +270,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A document naming another issuer is `issuer_mismatch`: a refresh never
-     * changes the issuer, keeps the last good settings and fetches no JWKS.
+     * A document naming another issuer is `issuer_mismatch` and fetches no
+     * JWKS.
      *
      * @return void
      */
@@ -298,8 +292,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * The JWKS is read under the connection's own allow-list, whatever the
-     * document supports.
+     * The JWKS is read under the connection's allow-list, whatever the document
+     * supports.
      *
      * @return void
      */
@@ -318,9 +312,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * An allow-list that cannot be built from what is stored is contained: the
-     * refresh records `settings_invalid`, nothing is fetched, and the exception
-     * is logged by its class alone, so a run goes on to the next connection.
+     * An allow-list that cannot be built records `settings_invalid`, fetches
+     * nothing and logs the exception's class alone.
      *
      * @return void
      */
@@ -355,8 +348,7 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Keys added alone are written, void nothing and leave the trust version as
-     * it was, and the refresh's bookkeeping is written with them.
+     * Added keys are written without voiding or raising the trust version.
      *
      * @return void
      */
@@ -386,8 +378,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Nothing changed writes the same keys under the next version and names
-     * nothing, with no trust change; the refetch's cooldown is left as it was.
+     * A refresh that changes nothing names nothing and leaves the refetch
+     * cooldown alone.
      *
      * @return void
      */
@@ -405,7 +397,7 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A key removed is replaced exactly, voids what is in flight and raises the
+     * A removed key is replaced exactly, voids what is in flight and raises the
      * trust version once.
      *
      * @return void
@@ -427,8 +419,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A key replaced under its `kid` is replaced, never kept beside, and voids
-     * what is in flight, whatever else stands.
+     * A key replaced under its `kid` is replaced, not kept beside, and voids
+     * what is in flight.
      *
      * @return void
      */
@@ -447,7 +439,7 @@ final class OidcMetadataSourceTest extends TestCase
 
     /**
      * Rows of `[document changes, stored settings, names changed, settings
-     * after]`: what a refresh may change.
+     * after]` a refresh may make.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: array<string, mixed>, 2: list<string>, 3: array<string, mixed>}>
      */
@@ -468,9 +460,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A refresh sets or moves an endpoint and turns `returns_iss` on, never
-     * removes an endpoint or turns it off; each change voids what is in flight
-     * and raises the trust version once, and nothing else does.
+     * A refresh may set or move an endpoint and turn `returns_iss` on, each
+     * voiding once; never remove or turn off.
      *
      * @param  array<string, mixed>  $changes
      * @param  array<string, mixed>  $stored
@@ -497,8 +488,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Every setting a refresh may change, and the keys, are named in the order
-     * `OidcSetting` names them, then `jwks`, and the trust version rises once.
+     * Changes are named in `OidcSetting` order, then `jwks`, and the trust
+     * version rises once.
      *
      * @return void
      */
@@ -523,9 +514,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Nothing else a connection holds is ever written, whatever the document
-     * supports: its issuer, client id and authentication, secrets, scopes,
-     * algorithms, mapping and whether it is enabled.
+     * A refresh never writes anything else the connection holds, whatever the
+     * document supports.
      *
      * @return void
      */
@@ -556,8 +546,7 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Rows of `[fetch UserInfo, document gives one, refreshed]`: a connection
-     * that fetches UserInfo needs an endpoint from the document.
+     * Rows of `[fetch UserInfo, document gives one, refreshed]`.
      *
      * @return iterable<string, array{0: bool, 1: bool, 2: bool}>
      */
@@ -572,9 +561,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A document with no UserInfo endpoint for a connection that fetches
-     * UserInfo is `discovery_invalid` under the lock, and keeps the last good
-     * settings.
+     * A connection fetching UserInfo with no endpoint in the document is
+     * `discovery_invalid` under the lock.
      *
      * @param  bool  $fetches
      * @param  bool  $given
@@ -600,8 +588,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds the fetch takes, stale limit, refreshed]`: the limit by
-     * the commit, from the document's validated moment.
+     * Rows of `[seconds the fetch takes, stale limit, refreshed]`, judged at
+     * commit.
      *
      * @return iterable<string, array{0: int, 1: int, 2: bool}>
      */
@@ -616,9 +604,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * What has passed its stale limit by the commit is `metadata_expired`,
-     * which keeps the last good settings and keys; each resource's validated
-     * fetch is stamped as its own.
+     * A refresh past its stale limit by commit is `metadata_expired` and keeps
+     * the last good settings and keys.
      *
      * @param  int  $seconds
      * @param  int  $limit
@@ -651,8 +638,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Rows of `[endpoint, response, reason]`: a refresh whose fetch brings no
-     * `2xx` response, or a JWKS refused.
+     * Rows of `[endpoint, response, reason]` for a non-`2xx` fetch or a refused
+     * JWKS.
      *
      * @return iterable<string, array{0: string, 1: \SineMacula\Laravel\Sso\Fetching\FetchResult, 2: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -676,8 +663,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A failure raises the failures in a row, backs off and releases the claim,
-     * keeping the last good settings and keys.
+     * A failure backs off and releases the claim, keeping the last good
+     * settings and keys.
      *
      * @param  string  $endpoint
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $response
@@ -701,8 +688,7 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Rows of `[columns, settings]`: what changes while the refresh fetches,
-     * each a conflict.
+     * Rows of `[columns, settings]` changed while the refresh fetches.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: array<string, mixed>}>
      */
@@ -727,7 +713,7 @@ final class OidcMetadataSourceTest extends TestCase
 
     /**
      * A refresh that lost to a change made while it fetched is `conflict` and
-     * writes nothing, on what it fetched or on a failure.
+     * writes nothing.
      *
      * @param  array<string, mixed>  $columns
      * @param  array<string, mixed>  $settings
@@ -756,8 +742,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A change of a setting a refresh neither depends on nor changes is no
-     * conflict, and stands.
+     * A change of a setting the refresh neither reads nor writes is no
+     * conflict.
      *
      * @return void
      */
@@ -774,9 +760,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * An administrator's refresh comes unchanged from the shared machinery: for
-     * the tenant's connection, skipping the backoff, never a claim, rate
-     * limited, and refused for a connection that does not refresh.
+     * An administrator's refresh is the shared machinery's, with its scoping,
+     * backoff, claim and rate limit.
      *
      * @return void
      */
@@ -804,9 +789,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A stale administrator cannot refresh a connection whose switch is off:
-     * its document or keys stay as they were, nothing is fetched, and the same
-     * caller on a connection the schedule refreshes is no refusal.
+     * A stale administrator cannot refresh a switched-off connection; a
+     * scheduled one is no refusal.
      *
      * @return void
      */
@@ -832,10 +816,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * With its switch off and no document ever fetched, a connection whose
-     * endpoints were saved by hand refreshes its keys alone: nothing asks for
-     * the document, an endpoint saved by hand stays, the keys are stamped and
-     * when the document was validated stays unset.
+     * A switched-off connection with hand-saved endpoints refreshes its keys
+     * alone and keeps its endpoints.
      *
      * @return void
      */
@@ -861,8 +843,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Rows of `[switch]`: a connection saved by hand at a provider that serves
-     * no discovery document.
+     * Rows of `[switch]` for a hand-saved connection at a provider with no
+     * discovery document.
      *
      * @return iterable<string, array{0: bool}>
      */
@@ -873,10 +855,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * An expired connection saved by hand, at a provider with no discovery
-     * document, recovers by an administrator's refresh, its endpoints
-     * unchanged: with its switch on the document's failure falls back to the
-     * saved JWKS.
+     * An expired hand-saved connection with no discovery document recovers by
+     * an administrator's refresh of its saved JWKS.
      *
      * @param  bool  $switch
      * @return void
@@ -906,9 +886,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A connection that has never validated a document, with its switch on,
-     * still follows the document when one is served: what it does save by hand
-     * is what the document replaces.
+     * A switched-on connection that never validated a document still follows
+     * one when served.
      *
      * @return void
      */
@@ -924,8 +903,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A connection a document was validated for does not fall back: its
-     * document must come back, or it would expire however fresh its keys are.
+     * A connection with a validated document does not fall back to its saved
+     * JWKS.
      *
      * @return void
      */
@@ -942,8 +921,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Both failing is the document's failure, recorded and backed off, the last
-     * good keys kept; the switch off, there is only the JWKS's.
+     * When both fail it is the document's failure; with the switch off only the
+     * JWKS's.
      *
      * @return void
      */
@@ -965,8 +944,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A refresh of keys alone that removes one voids what is in flight and
-     * raises the trust version once, under the same rules as a whole refresh.
+     * A keys-alone refresh that removes a key voids and raises the trust
+     * version once.
      *
      * @return void
      */
@@ -983,8 +962,7 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A refresh of keys alone that changes nothing names nothing, voids nothing
-     * and still renews the keys.
+     * A keys-alone refresh that changes nothing still renews the keys.
      *
      * @return void
      */
@@ -1000,8 +978,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds the commit takes, limit, refreshed]`: a refresh of keys
-     * alone is judged at commit, by the moment they were validated.
+     * Rows of `[seconds the commit takes, limit, refreshed]` for a keys-alone
+     * refresh.
      *
      * @return iterable<string, array{0: int, 1: int, 2: bool}>
      */
@@ -1013,8 +991,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A refresh of keys alone whose stale limit has passed by commit writes
-     * nothing but the failure, the last good keys kept.
+     * A keys-alone refresh past its stale limit by commit writes only the
+     * failure.
      *
      * @param  int  $seconds
      * @param  int  $limit
@@ -1046,8 +1024,7 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A change of the saved JWKS URL while a refresh of keys alone fetched is a
-     * conflict: nothing is written for a URL no longer saved.
+     * A JWKS URL changed during a keys-alone refresh is a conflict.
      *
      * @return void
      *
@@ -1069,8 +1046,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * With OIDC switched off nothing of it refreshes: it is not due, a queued
-     * job skips it and an administrator is refused, with nothing fetched.
+     * With OIDC off nothing of it refreshes, is queued or is refreshed by an
+     * administrator.
      *
      * @return void
      */
@@ -1093,9 +1070,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Keys a refetch stamped on a connection whose refresh is on but has never
-     * succeeded age out: the driver refuses it `metadata_expired` before any
-     * request, until a refresh succeeds.
+     * Refetched keys on a connection never successfully refreshed age out,
+     * refused `metadata_expired` until a refresh succeeds.
      *
      * @return void
      *
@@ -1118,8 +1094,7 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A refresh that moved a setting reports the settings it moved, and a key
-     * alone is not one.
+     * A refresh reports the settings it moved, and a key alone is not one.
      *
      * @return void
      */
@@ -1137,8 +1112,7 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A write of what is not an OIDC document records the failure, as a read
-     * that brought nothing does.
+     * Writing something other than an OIDC document records a failure.
      *
      * @return void
      *
@@ -1157,8 +1131,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * Change the connection while the document is fetched, then have the JWKS
-     * answer as given.
+     * Change the connection while the document is fetched, then answer the JWKS
+     * as given.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array<string, mixed>  $columns
@@ -1194,8 +1168,7 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * A refreshing connection of the tenant holding the settings given, `null`
-     * removing one.
+     * A refreshing connection of the tenant; a `null` setting is removed.
      *
      * @param  array<string, mixed>  $settings
      * @param  array<string, mixed>  $attributes
@@ -1238,8 +1211,8 @@ final class OidcMetadataSourceTest extends TestCase
     }
 
     /**
-     * The settings of a refreshing connection that matches the provider's
-     * document, with the changes laid over them, `null` removing one.
+     * Settings matching the provider's document with the changes applied;
+     * `null` removes one.
      *
      * @param  array<string, mixed>  $changes
      * @return array<string, mixed>

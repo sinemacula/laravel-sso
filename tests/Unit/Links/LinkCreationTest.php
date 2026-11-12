@@ -15,9 +15,7 @@ use SineMacula\Laravel\Sso\Links\LinkSummary;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for the result of a link's creation (SSO-8.4, outcomes
- * convention): the stable statuses and the reason each refusal carries, one
- * named constructor per outcome, the predicates, and the snake_case encoding.
+ * Unit tests for link creation results.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +29,7 @@ final class LinkCreationTest extends TestCase
     use TreatsWarningsAsErrors;
 
     /**
-     * The statuses are exactly these, by value, and each refusal carries its
-     * own reason.
+     * The statuses are fixed and each refusal carries its own reason.
      *
      * @return void
      */

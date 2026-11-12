@@ -23,22 +23,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 
 /**
- * Query budgets for enforcement (SSO-4.1, SSO-4.5, SSO-4.6). The contract reads
- * the enforcing tenant's row on every call, and its connections only when the
- * rule is on; a change reads each connection given and the tenant's row before
- * freshness is asked, then again in its transaction under the locks, and writes
- * only what it changes:
- *
- * - `policy()`: none while the feature is off; 1 read with no rule, or a rule
- *   that is off; 2 reads (the row, then its connections) with a rule on;
- * - `update()` making a tenant's first change: 4 reads (the connection and the
- *   row; then, locked, the row and the connection) and 2 writes (the upsert
- *   that creates the row unless it exists, and the update);
- * - `update()` changing a stored rule: the same 4 reads and 1 write;
- * - `update()` giving what is stored: 2 reads; refused by a stale caller or for
- *   want of a completed sign-in: 2 reads; refused while the feature is off:
- *   nothing; an unknown id: 1 read;
- * - `get()`: 1 read.
+ * Query budgets for reading and changing a tenant's enforcement.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +47,8 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
     private Connection $connection;
 
     /**
-     * Bind a freshness contract that answers `fresh`, switch the feature on and
-     * make a connection.
+     * Answer `fresh` to every freshness check, switch the feature on and make a
+     * connection.
      *
      * @return void
      */
@@ -82,9 +67,8 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * The contract reads nothing while the feature is off, the row alone while
-     * the rule is absent or off, and the row and its connections while it is
-     * on.
+     * Nothing while the feature is off, the row while the rule is absent or
+     * off, and the row and its connections while it is on.
      *
      * @return void
      */
@@ -115,8 +99,8 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A tenant's first change is four reads, the upsert and the update; a later
-     * change the same reads and the update.
+     * The connection and row, then both again under the locks; a first change
+     * also upserts the row before its update.
      *
      * @return void
      */
@@ -131,9 +115,8 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A change that gives what is stored is a change's four reads, the last two
-     * locked to confirm it, and a refusal stops where it is decided, with no
-     * write.
+     * Giving what is stored costs all four reads, the locked two confirming it;
+     * a refusal stops where it is decided. Neither writes.
      *
      * @return void
      */

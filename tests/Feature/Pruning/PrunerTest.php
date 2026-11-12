@@ -45,15 +45,7 @@ use Tests\Fixtures\Pruning\TickingClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the clean-up (SSO-11.11): each kind's eligibility at both
- * sides of its boundary, what each kind's state does and does not change, the
- * retention, keyset traversal across batches and ties, the eligibility repeated
- * in the delete, a batch another server emptied, one instant per run, the work
- * cap and the drain, the links version, partial failure and starting again, the
- * refusal of an open transaction on either connection, the write connection, a
- * connection of the storage's own and of the counters', renamed and
- * schema-qualified tables, the one log line and a log that cannot be written,
- * and no event.
+ * Feature tests for the pruner.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -134,9 +126,8 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A row is deleted from the very second its kind's boundary names, and a
-     * row a second short of it stands, with every other kind's count at
-     * nothing.
+     * A row goes from the second its kind's boundary names and not a second
+     * before.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @param  int  $before
@@ -175,8 +166,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A request is judged by its expiry alone: a finished one inside the
-     * retention stands, and an unfinished one past it goes.
+     * A request is judged by its expiry alone, finished or not.
      *
      * @param  string  $column
      * @return void
@@ -207,8 +197,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A code too is judged by its expiry alone: redeeming or voiding it does
-     * not bring its deletion forward.
+     * A code is judged by its expiry alone, redeemed, voided or not.
      *
      * @param  string  $column
      * @return void
@@ -237,8 +226,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Only a reservation goes: a row of another state stands, whatever its
-     * expiry says, and the links version stays.
+     * Only a reservation goes; a link of another state stands.
      *
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkState  $state
      * @return void
@@ -265,8 +253,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Only a pending claim goes: a verified or lapsed one stands, whatever its
-     * old expiry says.
+     * Only a pending claim goes; a verified or lapsed one stands.
      *
      * @param  \SineMacula\Laravel\Sso\Domains\Enums\DomainState  $state
      * @return void
@@ -281,8 +268,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * The retention moves the boundary of requests and codes, and only theirs;
-     * none at all takes them at their expiry.
+     * The retention moves only the boundary of requests and codes.
      *
      * @return void
      */
@@ -316,8 +302,8 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Every eligible row of every kind goes across batches, those sharing a
-     * second by their key, and the count is of what went.
+     * Batches traverse every eligible row, ties ordered by key, and count what
+     * went.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @param  int  $before
@@ -345,8 +331,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Each page continues after the last row of the one before it, in the order
-     * of the time and then the key, and names exactly as many rows as asked.
+     * Each page continues after the previous one's last row, by time then key.
      *
      * @return void
      */
@@ -370,8 +355,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A row that became ineligible after it was selected stands, and the count
-     * says what went rather than what was selected.
+     * A row made ineligible after it was selected stands and is not counted.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @param  int  $before
@@ -397,8 +381,8 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A reservation activated after it was selected stands and is no longer a
-     * reservation, and the links version rises only for what went.
+     * A reservation activated after it was selected stands, and no version
+     * rises for it.
      *
      * @return void
      */
@@ -417,8 +401,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A batch another server has already emptied does not end the scan: what
-     * comes after it still goes, and only that is counted.
+     * A batch another server already emptied does not end the scan.
      *
      * @return void
      */
@@ -443,9 +426,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A run reads the clock for its one instant: however long the run takes, a
-     * row eligible only by a later reading stands. The clock's second reading
-     * is for the duration alone.
+     * A run judges every kind by one reading of the clock.
      *
      * @return void
      */
@@ -476,9 +457,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A kind stops at its work cap with more eligible, and says so; every other
-     * kind still has its turn; the next run goes on; a batch is cut short to
-     * land on the cap exactly.
+     * A kind stops at its work cap exactly, without starving the other kinds.
      *
      * @return void
      */
@@ -512,8 +491,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A cap landing exactly on the last eligible row is complete: the run looks
-     * for more rather than guessing from a full batch.
+     * A cap landing on the last eligible row is complete.
      *
      * @return void
      */
@@ -578,9 +556,8 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Reservations go one short transaction for each connection, ascending, and
-     * raise each connection's links version once a batch for what went from it;
-     * another connection's and a connection with nothing eligible stay.
+     * Reservations raise each connection's links version once per batch for
+     * what went.
      *
      * @return void
      */
@@ -617,8 +594,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A reservation whose connection is gone is deleted just the same, with no
-     * version to raise.
+     * A reservation whose connection is gone is still deleted.
      *
      * @return void
      */
@@ -635,10 +611,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A failure stops the kind it came from, keeping the batches that committed
-     * before it; every other kind still has its turn; the exception that comes
-     * out names the kind and the class alone and holds the report; a run begun
-     * again finishes the rest.
+     * A failure keeps what committed, names the kind, and a later run finishes.
      *
      * @return void
      */
@@ -679,8 +652,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A failure among the selects stops that kind too, and two kinds failing
-     * are both named, the first chained.
+     * A failing select stops its kind, and every failed kind is named.
      *
      * @return void
      */
@@ -708,8 +680,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A failure raising the links version rolls back that connection's delete
-     * too: the reservation is there for the next run, and nothing is counted.
+     * A failure raising the links version rolls back that connection's delete.
      *
      * @return void
      */
@@ -734,9 +705,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Each connection's transaction in a batch of reservations commits alone: a
-     * failure on a later one keeps the count, the deletes and the version of
-     * the earlier, and leaves its own row for the next run, which reports it.
+     * A failure on a later connection keeps what the earlier ones committed.
      *
      * @return void
      */
@@ -779,9 +748,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Rows of `[what deadlocks, how many times, whether the kind then fails]`:
-     * a statement a deadlock rolled back is tried three times in all, and the
-     * transaction of a reservation with it.
+     * Rows of `[what deadlocks, how many times, whether the kind then fails]`.
      *
      * @return iterable<string, array{0: bool, 1: int, 2: bool}>
      */
@@ -794,8 +761,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A deadlock is tried again, at most three times in all, and only then
-     * fails the kind.
+     * A deadlock is tried at most three times in all before the kind fails.
      *
      * @param  bool  $reservation
      * @param  int  $times
@@ -819,8 +785,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A clock that goes back during a run reports a duration of none, never a
-     * negative one.
+     * A clock that goes back reports no duration.
      *
      * @return void
      */
@@ -832,8 +797,8 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Inside a transaction on the storage connection, a run refuses before
-     * anything is read or deleted, and logs nothing.
+     * A run refuses inside a transaction on the storage connection and logs
+     * nothing.
      *
      * @return void
      */
@@ -857,10 +822,8 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * With the counters on a connection of their own: they are pruned there,
-     * none of it depends on the storage connection, a transaction open there
-     * refuses the run as well, and the same rows go as `model:prune` would
-     * take.
+     * Counters on their own connection are pruned there, as `model:prune`
+     * would.
      *
      * @return void
      */
@@ -898,11 +861,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * With the storage on a connection of its own and nothing on the default,
-     * every kind goes, each version is raised, and every transaction of the run
-     * is opened there, none on the default. A transaction open there refuses
-     * the run. A failure raising the version rolls the delete back, which it
-     * could not if the two were not in one transaction on that connection.
+     * A run works entirely on a storage connection of its own.
      *
      * @return void
      */
@@ -967,8 +926,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Every read is made on the write connection: with the read connection
-     * unusable, the run goes on as ever.
+     * Every read is made on the write connection.
      *
      * @return void
      */
@@ -991,8 +949,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Renamed tables are pruned under their names, with their indexes named
-     * from them.
+     * Renamed tables are pruned under their names.
      *
      * @return void
      */
@@ -1074,8 +1031,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Rows of `[what fails, the level, the outcome]`: how a run logs how it
-     * ended.
+     * Rows of `[what fails, the level, the outcome]`.
      *
      * @return iterable<string, array{0: bool, 1: bool, 2: string, 3: string}>
      */
@@ -1087,10 +1043,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A run logs one line, at the level its end calls for, with the outcome,
-     * the duration and the counts, and on a failure the kind and the class
-     * alone: no identifier, no stored value, no message. It dispatches no
-     * event.
+     * A run logs one line with no identifier or value, and dispatches no event.
      *
      * @param  bool  $capped
      * @param  bool  $fails
@@ -1141,9 +1094,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A summary line the logger refuses after every kind committed throws the
-     * report all the same, the logger's exception chained and kept, and what
-     * was deleted stays deleted.
+     * A summary the logger refuses after success still throws the report.
      *
      * @return void
      */
@@ -1178,8 +1129,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A summary line the logger refuses after a kind failed keeps the report
-     * and the kind's failure, which stays the one chained, and names both.
+     * A summary the logger refuses after a failure keeps both failures.
      *
      * @return void
      */
@@ -1237,8 +1187,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * `model:prune` and a run take the same keys and counters on each side of
-     * the boundary, so the two entry points cannot disagree.
+     * `model:prune` and a run take the same rows at each boundary.
      *
      * @return void
      */
@@ -1299,8 +1248,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Run the callback once, before the first delete sent on the storage
-     * connection, as another server's change between the select and the delete.
+     * Run the callback once before the first delete on the storage connection.
      *
      * @param  \Closure(): void  $callback
      * @return void
@@ -1324,8 +1272,8 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * Make the row of the kind no longer eligible, as a renewal, a recording,
-     * an activation or a verification does.
+     * Make the row no longer eligible, as a renewal, recording, activation or
+     * verification does.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @param  string  $key
@@ -1347,8 +1295,7 @@ final class PrunerTest extends TestCase
     }
 
     /**
-     * A counter of the key given, of the column's full width, whose window ends
-     * at the instant.
+     * A full-width counter key whose window ends at the instant.
      *
      * @param  string  $letter
      * @param  \Carbon\CarbonImmutable  $at

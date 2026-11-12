@@ -5,13 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
 
 /**
- * Turns the public members of an RSA or elliptic curve JWK into the PEM
- * `SubjectPublicKeyInfo` OpenSSL reads (RFC 5280 §4.1.2.7, RFC 3279, RFC 5480),
- * and reads it back with OpenSSL, so a key is admitted only once OpenSSL has
- * accepted it: an elliptic curve point that is not on its curve, or an RSA
- * modulus OpenSSL refuses, is never stored.
- *
- * It holds nothing between calls (SSO-11.2).
+ * Encodes an RSA or EC JWK as a PEM `SubjectPublicKeyInfo` and has OpenSSL read
+ * it back, so only a key OpenSSL accepts is admitted.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -23,7 +18,7 @@ final class PublicKeyEncoding
     /** @var array<string, int> The bytes of each coordinate on each curve. */
     public const array COORDINATE_BYTES = ['P-256' => 32, 'P-384' => 48, 'P-521' => 66];
 
-    /** @var string The DER of the `rsaEncryption` algorithm identifier, with its NULL parameters. */
+    /** @var string The DER `rsaEncryption` algorithm identifier with NULL parameters. */
     private const string RSA_ALGORITHM = "\x30\x0d\x06\x09\x2a\x86\x48\x86\xf7\x0d\x01\x01\x01\x05\x00";
 
     /** @var string The DER of the `id-ecPublicKey` object identifier. */
@@ -42,8 +37,8 @@ final class PublicKeyEncoding
     private function __construct() {}
 
     /**
-     * The size in bits and the PEM of the RSA public key of the modulus and
-     * exponent given as big-endian bytes, or `null` when OpenSSL refuses it.
+     * The bits and PEM of the RSA key from big-endian modulus and exponent, or
+     * `null` when OpenSSL refuses it.
      *
      * @param  string  $modulus
      * @param  string  $exponent
@@ -57,9 +52,8 @@ final class PublicKeyEncoding
     }
 
     /**
-     * The size in bits and the PEM of the elliptic curve public key of the
-     * point on the curve named, or `null` when the curve is not one the package
-     * reads, a coordinate is not its length, or OpenSSL refuses the point.
+     * The bits and PEM of the EC key at the point, or `null` for an unknown
+     * curve, a wrong coordinate length or a point OpenSSL refuses.
      *
      * @param  string  $curve
      * @param  string  $x
@@ -91,8 +85,8 @@ final class PublicKeyEncoding
     }
 
     /**
-     * The size in bits OpenSSL reads from the DER `SubjectPublicKeyInfo`, with
-     * its PEM, or `null` when it refuses it.
+     * The bits OpenSSL reads from the DER and its PEM, or `null` when OpenSSL
+     * refuses it.
      *
      * @param  string  $der
      * @return ?array{bits: int, pem: string}

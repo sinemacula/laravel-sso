@@ -8,10 +8,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome;
 use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 
 /**
- * Which stored key verifies an ID token's signature (SSO-7.3): the one found,
- * or why there is none (`ProviderKeySet::select()`). A key found by the token's
- * own refetch, when that refetch removed a key, carries the receipt of the
- * trust change it made (`Protocols\TransitionReceipt`).
+ * The stored key that verifies an ID token, or why there is none, with the
+ * receipt of any trust change the token's own refetch made.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -81,8 +79,7 @@ final readonly class KeySelection
     }
 
     /**
-     * The selection, with the receipt of the trust change the token's own
-     * refetch made.
+     * Attach the receipt of the trust change the token's refetch made.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt
      * @return self
@@ -115,8 +112,7 @@ final readonly class KeySelection
     }
 
     /**
-     * Whether a trust change overtook the refetch, leaving no key for the
-     * token.
+     * Whether a trust change overtook the refetch.
      *
      * @return bool
      */

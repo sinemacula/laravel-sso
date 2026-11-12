@@ -9,25 +9,18 @@ use SineMacula\Laravel\Sso\Config\IntegerSetting;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 
 /**
- * The maximum age of the caller's authentication each operation SSO-2.12 lists
- * requires, in seconds, read from `sso.freshness.max_age_seconds.<operation>`
- * on each call (SSO-11.2).
- *
- * Each defaults to 300 seconds and may be set from 1 to 3600; a value that is
- * not an integer in that range, or the digit string `env()` gives for one,
- * fails closed with an `InvalidArgumentException` naming the key, rather than
- * loosening the requirement it was meant to set. `[freshness]` reports the same
- * at boot.
+ * Each operation's maximum authentication age, read on each call and failing
+ * closed when malformed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class MaximumAges
 {
-    /** @var string The key, under `sso.`, the maximum ages are configured under. */
+    /** @var string The key the maximum ages are configured under. */
     public const string BLOCK = 'sso.freshness.max_age_seconds';
 
-    /** @var int The maximum age an operation requires when none is configured, in seconds. */
+    /** @var int The default maximum age, in seconds. */
     public const int DEFAULT_SECONDS = 300;
 
     /** @var int The least maximum age that may be configured, in seconds. */

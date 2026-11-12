@@ -19,12 +19,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\ResponseWriter;
 use Tests\TestCase;
 
 /**
- * Feature tests for how a verified assertion is read into the package's values
- * (SSO-6.3), through the adapter: every optional value left out reads as
- * `null`, each kind of subject identifier, every confirmation in order, the
- * conditions the package counts, and the statements, conditions, advice and
- * encrypted attributes the library does not model, read from the verified
- * element.
+ * Feature tests for how a verified assertion is read into the package's values.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -55,9 +50,8 @@ final class AssertionMapperTest extends TestCase
     private static ?FakeSamlIdentityProvider $idp = null;
 
     /**
-     * Optional values the response leaves out read as `null`, the counted
-     * conditions and the advice are read, and the confirmations keep their
-     * order, one without data read as such.
+     * Omitted optional values read as `null`, counted conditions and advice are
+     * read, and confirmations keep their order.
      *
      * @return void
      */
@@ -110,9 +104,8 @@ final class AssertionMapperTest extends TestCase
     }
 
     /**
-     * Statements and conditions of kinds the package does not model are named
-     * in order, every one of them, and the encrypted attributes of every
-     * attribute statement are counted; the parts it models are not named.
+     * Statements and conditions the package does not model are named in order,
+     * and encrypted attributes are counted.
      *
      * @return void
      *
@@ -141,10 +134,8 @@ final class AssertionMapperTest extends TestCase
     }
 
     /**
-     * A response that leaves out every optional value it can, counts one
-     * `OneTimeUse` and one `ProxyRestriction`, and carries advice: a bearer
-     * confirmation with data but only a `NotBefore`, then a sender-vouches one
-     * with no data.
+     * A response leaving out every optional value it can, with counted
+     * conditions, advice and two kinds of confirmation.
      *
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
      */

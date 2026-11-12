@@ -3,11 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The application's French translation of `docs/guides/localization.md`
- * (SSO-12.6, SSO-12.5), at `lang/vendor/sso/fr/messages.php`: every message in
- * French. `LocalizationExampleTest` makes this directory's `lang` the
- * application's, as Laravel reads it, and reads each message in French through
- * it.
+ * The application's French translation of `docs/guides/localization.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

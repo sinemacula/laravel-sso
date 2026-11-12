@@ -11,12 +11,8 @@ use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 use SineMacula\Laravel\Sso\Exceptions\MissingExtensionException;
 
 /**
- * `[fetcher]`: the outbound fetcher's settings and its transport, while the
- * package is in use (SSO-2.9). Each setting is read as `FetcherSettings` reads
- * it, so the check and the fetcher judge it the same way; the connect timeout
- * must not exceed the timeout; and `ext-curl` must be loaded with Guzzle's cURL
- * handler available, since the fetcher pins the address it checked with
- * `CURLOPT_RESOLVE` and never falls back to PHP streams.
+ * Checks the `[fetcher]` settings through `FetcherSettings`, and that the cURL
+ * transport the fetcher pins addresses with is available.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,7 +56,7 @@ final readonly class FetcherCheck implements ConfigurationCheck
     }
 
     /**
-     * The fetcher is checked while the package is in use.
+     * Apply while the package is in use.
      *
      * @return bool
      */
@@ -71,7 +67,7 @@ final readonly class FetcherCheck implements ConfigurationCheck
     }
 
     /**
-     * Each setting, the two timeouts together, and the cURL transport.
+     * Read each setting, then check the timeouts together and the transport.
      *
      * @return list<\Closure(): mixed>
      */
@@ -96,8 +92,8 @@ final readonly class FetcherCheck implements ConfigurationCheck
     }
 
     /**
-     * Require the connect timeout to be no longer than the timeout, once both
-     * are well formed: a malformed one is reported by its own check.
+     * Require the connect timeout to be no longer than the timeout; a malformed
+     * one is left to its own check.
      *
      * @return void
      *

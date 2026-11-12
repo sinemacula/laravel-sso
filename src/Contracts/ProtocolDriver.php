@@ -14,32 +14,10 @@ use SineMacula\Laravel\Sso\Protocols\Start;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 
 /**
- * Protocol driver contract (SSO-2.2): one protocol behind one contract, which
- * reads a connection's settings, says whether they are complete, starts an
- * authorisation request, reads which request a response answers, validates the
- * response against that request, and describes the service provider side an
- * administrator registers at the identity provider.
+ * One identity protocol, registered on `Protocols\ProtocolManager` by name.
  *
- * Drivers are registered on the `Protocols\ProtocolManager` under the name a
- * connection's protocol holds. The package ships `saml2` and `oidc`; an
- * application registers its own with `extend()`. The manager keeps one instance
- * per name for one request or job, building it again by its creator for the
- * next, so a driver must hold no connection, tenant, flow or result state
- * between calls (SSO-11.2), and it never writes a session, issues a token or
- * consumes an authorisation request itself: the package's completion pipeline
- * does that, around the driver.
- *
- * A completion runs in a fixed order (SSO-5.6): `correlate()` reads the
- * request's state from the response without validating anything; the pipeline
- * looks the request up on the write connection and consumes it through the
- * single-use store, so it is consumed once whether the response then passes or
- * fails; `complete()` validates the response against the consumed request.
- * Neither touches the package's storage.
- *
- * Expected refusals are values: `start()` and `complete()` answer a refused
- * outcome with a `FailureReason`, `correlate()` an uncorrelated one, and
- * `describe()` an unavailable one. A database error, a misconfiguration or a
- * library failure propagates.
+ * Hold no state between calls and never touch the package's storage; answer
+ * expected refusals as values.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,7 +25,7 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
 interface ProtocolDriver
 {
     /**
-     * The connection settings the values give, typed for this protocol.
+     * Type the values as this protocol's settings.
      *
      * @param  array<array-key, mixed>  $values
      * @return \SineMacula\Laravel\Sso\Contracts\ProtocolSettings
@@ -55,9 +33,7 @@ interface ProtocolDriver
     public function settings(array $values): ProtocolSettings;
 
     /**
-     * Whether the connection has everything a flow through it needs: its
-     * settings, its secrets and its keys or certificates. Only a complete,
-     * enabled connection is used (SSO-2.1).
+     * Whether the connection's settings, secrets and keys are all present.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return bool
@@ -65,9 +41,7 @@ interface ProtocolDriver
     public function isComplete(SsoConnection $connection): bool;
 
     /**
-     * Start an authorisation request at the identity provider: the navigation
-     * that sends the browser there, and what the request must keep to complete
-     * it, or why it cannot start.
+     * Start an authorisation request at the identity provider, or refuse.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\StartRequest  $request
@@ -76,10 +50,8 @@ interface ProtocolDriver
     public function start(SsoConnection $connection, StartRequest $request): Start;
 
     /**
-     * Read which authorisation request the response at the connection's
-     * endpoint answers (the OIDC `state`; the SAML `RelayState` and
-     * `InResponseTo`), or that it is unsolicited or uncorrelated, without
-     * validating anything else in it.
+     * Read which request the response answers, validating nothing else; the
+     * pipeline consumes that request before `complete()` runs.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
@@ -88,11 +60,8 @@ interface ProtocolDriver
     public function correlate(SsoConnection $connection, CompletionRequest $request): Correlation;
 
     /**
-     * Validate the identity provider's response against the authorisation
-     * request the pipeline consumed for it, and everything SSO-6 or SSO-7
-     * requires, or say why it is refused. The client is the one the response
-     * arrived from, which any event the validation records carries (an OIDC
-     * driver's JWKS refetch, say); a driver never reads the request itself.
+     * Validate the response against the consumed request, or refuse. Any event
+     * the validation records carries the client.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
@@ -103,9 +72,7 @@ interface ProtocolDriver
     public function complete(SsoConnection $connection, CompletionRequest $request, ConsumedRequest $consumed, ClientContext $client): Completion;
 
     /**
-     * What an administrator registers at the identity provider (SSO-5.9): the
-     * service provider metadata for SAML, the callback URL and public JWKS for
-     * OIDC. It never holds a secret.
+     * What an administrator registers at the identity provider, with no secret.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription

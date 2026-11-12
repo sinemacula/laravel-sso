@@ -3,14 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The refresh endpoint of `docs/guides/saml-metadata.md` (SSO-2.8, SSO-11.12,
- * SSO-12.5), as the application's administration screen runs it when an
- * administrator asks for a connection's metadata at once, given the tenant,
- * the connection and the acting identity: the package refreshes the connection
- * in the request, past its backoff and whatever the schedule does. A refresh
- * past the connection's metadata limit goes back with the wait; any other is
- * answered with its outcome and the settings it changed, for the endpoint to
- * render.
+ * The refresh-now endpoint of `docs/guides/saml-metadata.md`, given `$input`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -32,10 +32,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for what a SAML connection refreshes from (SSO-2.8, SSO-11.12):
- * which connections refresh, the snapshot and anchors its claim holds, the
- * fetch through the package's fetcher and its failures, a reader's exception
- * contained, and the write through the applier.
+ * Feature tests for the SAML metadata refresh source.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,8 +60,8 @@ final class SamlMetadataSourceTest extends TestCase
     private FakeFetcher $fetcher;
 
     /**
-     * Bind a fixed clock and a fake fetcher serving the provider's metadata,
-     * switch SAML on and create the tables.
+     * Bind a fixed clock and a fetcher serving the metadata, enable SAML and
+     * create the tables.
      *
      * @return void
      */
@@ -108,9 +105,8 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * The schedule refreshes a connection that is SAML with a URL the package
-     * may fetch and an explicit switch on; left unset with no anchor, it does
-     * not.
+     * The schedule refreshes a SAML connection with a fetchable URL and its
+     * switch on, not one unset with no anchor.
      *
      * @param  array<string, mixed>  $attributes
      * @param  array<string, mixed>  $settings
@@ -125,8 +121,8 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * Rows of `[anchored, switch, refreshes]`: with a URL, an anchor makes an
-     * unset switch on, and `false` is off whatever the anchor.
+     * Rows of `[anchored, switch, refreshes]`: with a URL, an anchor turns an
+     * unset switch on and `false` is off.
      *
      * @return iterable<string, array{0: bool, 1: mixed, 2: bool}>
      */
@@ -144,8 +140,7 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * Whether the schedule refreshes the connection, one at a time and as a due
-     * listing judges it at once, for each anchor and switch.
+     * Single and listed dueness agree for each anchor and switch.
      *
      * @param  bool  $anchored
      * @param  mixed  $switch
@@ -166,8 +161,8 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * An anchor alone refreshes nothing with no URL, a certificate of another
-     * use is no anchor, and a connection of another protocol is never judged.
+     * An anchor without a URL refreshes nothing, another use's certificate is
+     * no anchor, and another protocol is never judged.
      *
      * @return void
      */
@@ -186,8 +181,7 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * What an administrator may refresh depends only on the protocol and the
-     * URL, never the switch.
+     * Administrator refreshability depends only on the protocol and URL.
      *
      * @return void
      */
@@ -201,9 +195,8 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * The claim holds the sorted fingerprints of both uses and the anchors'
-     * certificates, and writes its token; a second claim while it holds is
-     * `null`.
+     * The claim snapshots sorted fingerprints of both uses and the anchors and
+     * writes its token; a second claim is `null`.
      *
      * @return void
      *
@@ -226,8 +219,8 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * A fetch reads the saved URL, held to the metadata cap, for the pinned
-     * entity, with the moment it validated.
+     * A fetch reads the saved URL under the metadata cap for the pinned entity,
+     * noting when it validated.
      *
      * @return void
      *
@@ -266,8 +259,8 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * Each is refused with its reason and the fetch's status, and with no
-     * moment of validation.
+     * Each failed fetch is refused with its reason and fetch status and no
+     * validation time.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $response
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -287,8 +280,8 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * A reader that throws, rather than refusing the document, is contained as
-     * invalid metadata and logged by its class alone.
+     * A reader that throws is contained as invalid metadata and logged by class
+     * alone.
      *
      * @return void
      *
@@ -317,8 +310,7 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * A write of what was read applies it; a write of a refusal records the
-     * failure with its reason.
+     * Writing a read applies it; writing a refusal records the failure.
      *
      * @return void
      *
@@ -349,8 +341,7 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * A write of what is not SAML metadata records the failure, as a read that
-     * brought nothing does.
+     * Writing something other than SAML metadata records a failure.
      *
      * @return void
      *
@@ -366,9 +357,8 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * An anchor with no certificate is left out, and an anchor after it that
-     * has one still judges the document: what it signed is read, and what it
-     * did not sign is refused.
+     * An anchor with no certificate is skipped, and a later anchor still judges
+     * the signature.
      *
      * @return void
      *
@@ -417,7 +407,7 @@ final class SamlMetadataSourceTest extends TestCase
     }
 
     /**
-     * A refreshing SAML connection holding the settings given, `null` removing
+     * A refreshing SAML connection with the given settings, `null` removing
      * one, read back as stored.
      *
      * @param  array<string, mixed>  $settings

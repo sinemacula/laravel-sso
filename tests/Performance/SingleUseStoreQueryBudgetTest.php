@@ -10,10 +10,7 @@ use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 
 /**
- * Query budgets for the default single-use store on the paths every assertion,
- * authorisation request and handoff takes: it never reads, and it writes once
- * for a new key, twice for a key it holds, and three times for a key whose row
- * has expired.
+ * Query budgets for the default single-use store, which never reads.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,9 +39,8 @@ final class SingleUseStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A key still held is the insert its index refuses, a delete of an expired
-     * row that removes nothing, and the insert its index refuses again, which
-     * is what tells a live key from one a prune has just deleted.
+     * A held key is the refused insert, a delete that removes nothing and the
+     * refused insert again, which tells a live key from a just-pruned one.
      *
      * @return void
      */
@@ -58,8 +54,8 @@ final class SingleUseStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A key whose row has expired is the refused insert, the delete of the
-     * expired row, and the insert that records it again.
+     * An expired key is the refused insert, the expired row's delete and the
+     * insert again.
      *
      * @return void
      */

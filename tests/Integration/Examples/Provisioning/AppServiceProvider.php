@@ -9,9 +9,8 @@ use Illuminate\Support\ServiceProvider;
 use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 
 /**
- * The example application's service provider (SSO-8.6): it registers the
- * provisioning listener on the unlinked-result event's class, synchronously, so
- * the event reaches it during the completion, before any handoff is issued.
+ * Registers the provisioning listener synchronously, so it runs before any
+ * handoff is issued.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -11,9 +11,7 @@ use Tests\Concerns\TreatsWarningsAsErrors;
 use Tests\Fixtures\Protocols\IdentifiedConnection;
 
 /**
- * Unit tests for an OIDC connection's typed options (SSO-2.4): every setting
- * read with its default applied, and a setting a complete connection holds
- * refused as the caller's mistake when it is missing.
+ * Unit tests for an OIDC connection's typed options.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -5,28 +5,11 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Logging;
 
 /**
- * The redacted keys and the one way a key is matched against them, shared by
- * the context redactor and the diagnostic sanitiser, so a key one of them
- * redacts the other does too (SSO-5.7, SSO-9.8, SSO-11.9).
+ * Matches a key against the redacted keys, shared by the redactor and the
+ * sanitiser so both redact the same keys.
  *
- * A key matches when, decoded, a run of its words normalises to a redacted key
- * (see `LoggingSettings::normalizeKey()`). Decoding undoes percent-encoding,
- * and `+` for a space, as many times as the key was encoded, so
- * `client%5Fsecret`, `client%255Fsecret` and `client+secret` are all
- * `client_secret`; a key still encoded after `MAX_DECODES` passes matches,
- * since what cannot be read is taken for a secret's name. Its words are what
- * lies between anything but a letter, a digit and `_`, so `private key`, a
- * form's `user[password]`, a namespaced `oidc:client_secret`, a dotted
- * `credentials.password`, a path's `user/password` and a header's
- * `X-Client-Secret` all match, as does the whole of `Client-Secret`. A key
- * whose one word only contains a redacted key among other characters
- * (`error_code`, `token_type`) does not.
- *
- * A key found in text may also be named by the words just before it, run on
- * into it (`private key=…`, `SAML response: …`): `matchesAfter()` counts a run
- * of words that starts before the key and reaches into it, but never one that
- * ends before it, so a redacted key in the prose before a pair is not taken for
- * the pair's.
+ * A key matches when, fully decoded, a run of its words normalises to a
+ * redacted key, so `user[password]` matches but `error_code` does not.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,19 +18,19 @@ namespace SineMacula\Laravel\Sso\Logging;
  */
 final readonly class RedactedKeys
 {
-    /** @var int The most times a key is decoded; one still encoded after that is taken for a redacted one. */
+    /** @var int Decode passes; a key still encoded after them is redacted. */
     public const int MAX_DECODES = 8;
 
-    /** @var int The most bytes of the text before a key read for words that may name it. */
+    /** @var int Bytes of the text before a key read for words that may name it. */
     private const int LOOKBACK = 128;
 
-    /** @var string What separates the words of a key: anything but a letter, a digit and `_`. */
+    /** @var string What separates the words of a key. */
     private const string SEPARATORS = '/[^A-Za-z0-9_]+/';
 
-    /** @var array<string, int> The normalised redacted keys, as the keys of the array. */
+    /** @var array<string, int> The normalised redacted keys, as array keys. */
     private array $keys;
 
-    /** @var int The length of the longest normalised redacted key, past which no run of words can match. */
+    /** @var int The longest normalised redacted key, past which no run matches. */
     private int $longest;
 
     /**
@@ -62,8 +45,7 @@ final readonly class RedactedKeys
     }
 
     /**
-     * The redacted keys the settings give: the built-in ones and those
-     * configured.
+     * The built-in and configured redacted keys.
      *
      * @param  \SineMacula\Laravel\Sso\Logging\LoggingSettings  $settings
      * @return self
@@ -76,8 +58,7 @@ final readonly class RedactedKeys
     }
 
     /**
-     * Whether a value under the key is redacted: the key, decoded, has a run of
-     * words that normalises to a redacted key.
+     * Whether a value under the key is redacted.
      *
      * @param  string  $key
      * @return bool
@@ -88,9 +69,8 @@ final readonly class RedactedKeys
     }
 
     /**
-     * Whether a value under the key, found in text straight after the text
-     * given, is redacted: the key matches, or a run of words that starts in the
-     * last words of the text before it and reaches into the key does.
+     * Whether a key found in text is redacted, counting runs that start in the
+     * preceding words (`private key=`) but never runs ending before the key.
      *
      * @param  string  $before
      * @param  string  $key
@@ -111,9 +91,8 @@ final readonly class RedactedKeys
     }
 
     /**
-     * Whether a run of the words, ending at or after the word at the index
-     * given, normalises to a redacted key. A run is not read past the length of
-     * the longest key, so the words are read in time linear in their number.
+     * Whether a run ending at or after `$first` is a redacted key; capping runs
+     * at the longest key keeps this linear.
      *
      * @param  list<string>  $words
      * @param  int  $first
@@ -141,9 +120,7 @@ final readonly class RedactedKeys
     }
 
     /**
-     * The words of the key, or `null` when it is `null` (encoded past reading)
-     * or cannot be split (a PCRE limit), either of which the caller takes for a
-     * match.
+     * The words of the key; `null`, taken for a match, when unreadable.
      *
      * @param  ?string  $key
      * @return ?list<string>
@@ -156,8 +133,7 @@ final readonly class RedactedKeys
     }
 
     /**
-     * The key with its percent-encoding and `+` for a space undone until
-     * nothing is left to undo, or `null` when something still is after
+     * URL-decode the key repeatedly; `null` if still encoded after
      * `MAX_DECODES` passes.
      *
      * @param  string  $key

@@ -22,25 +22,9 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 
 /**
- * Reports the changes the management helpers make to connections, keys and
- * certificates (SSO-10.3): each method builds the event's context through the
- * one projection (`Events\EventContexts`), from the connection's id, tenant and
- * protocol and, as the acting identity, the identity of the caller the
- * application passed (`Identities\Caller`, whose session is never carried), and
- * hands the event to `Events\AfterCommitDispatcher`, so it reaches listeners
- * once the change commits and never when it rolls back (SSO-10.5).
+ * Dispatches the events for management changes to connections and keys.
  *
- * A helper calls it inside the transaction that made the change, after the
- * write, once per change: never for a refused or a no-op call, which changed
- * nothing. `connectionUpdated()` takes the names of the settings that changed,
- * never their values, and reports nothing when none did. A key's events carry
- * its id, use and fingerprint, never its private key.
- *
- * Every method takes the client the action is taken for (`Http\ClientContext`),
- * whose IP address and user agent the event's context carries; nothing reads
- * the request being served. It holds the projection and the dispatcher, which
- * read the clock and the transaction from the container on each call, so
- * nothing of one request is kept for the next (SSO-11.2).
+ * Call inside the change's transaction, after the write, once per real change.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -80,8 +64,7 @@ final readonly class AdministrationEvents
     }
 
     /**
-     * Report the settings of a connection that changed, by name; nothing when
-     * none did.
+     * Report a connection's changed setting names; nothing when none changed.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  list<string>  $changedSettings
@@ -133,8 +116,7 @@ final readonly class AdministrationEvents
     }
 
     /**
-     * Report a connection deleted. Called with the connection as it was read
-     * before the delete, in the delete's transaction.
+     * Report a connection deleted, given the row as read before the delete.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -165,8 +147,7 @@ final readonly class AdministrationEvents
     }
 
     /**
-     * Report a key made current, and the key it replaced, now retiring, when
-     * there was one.
+     * Report a key made current, and the key it replaced, if any.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
@@ -183,8 +164,8 @@ final readonly class AdministrationEvents
     }
 
     /**
-     * Report a key or certificate retired and removed. Called with the row as
-     * it was read before the delete, in the delete's transaction.
+     * Report a key retired and removed, given the row as read before the
+     * delete.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
@@ -200,8 +181,8 @@ final readonly class AdministrationEvents
     }
 
     /**
-     * Report a key or certificate whose validity has come within the threshold,
-     * or has ended. A key with no end of validity is never reported.
+     * Report a key within the expiry threshold or expired; never one without an
+     * end of validity.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key

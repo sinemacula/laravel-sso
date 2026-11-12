@@ -8,46 +8,8 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * How large an identity provider's metadata may be, how the scheduled refresh
- * of a connection's metadata runs, and how long what it applied is used
- * (SSO-2.8, SSO-11.12), read from `sso.metadata` on each call, so nothing is
- * kept across requests (SSO-11.2), each failing closed with an
- * `InvalidArgumentException` naming its key when it is malformed; `[metadata]`
- * reports the same at boot.
- *
- * - `max_bytes`: the most bytes a metadata document may hold, given as XML or
- *   fetched, for an import and a refresh alike, in place of the fetcher's
- *   `max_response_bytes`: 64 KiB to 256 MiB (default 1 MiB). The whole document
- *   is held in memory, parsed and its signature checked in one piece, so a
- *   large federation aggregate needs memory of several times its size and
- *   seconds of processing (`metadata-refresh.md`).
- * - `refresh_interval_seconds`: how long after a successful refresh the next is
- *   due, an hour to a week (default a day).
- * - `backoff_initial_seconds` and `backoff_max_seconds`: after a failed refresh
- *   the next is due after the initial wait, doubling with each failure in a row
- *   up to the maximum, a minute to an hour (default 5 minutes) and from the
- *   initial wait to a day (default 6 hours); a success resets it.
- * - `stale_limit_seconds`: how long after its own last validated fetch each
- *   fetched resource is still used, whether its refresh is scheduled or not, a
- *   day to a year (default 30 days), or `0` for no limit, which an application
- *   must set explicitly; checked again when a refresh or a refetch commits.
- * - `claim_seconds`: how long a server's claim on a connection's refresh holds
- *   while it fetches, so racing servers refresh it once, 30 seconds to an hour
- *   (default 5 minutes); an administrator's refresh skips the backoff, never
- *   the claim.
- *
- * - `queue`: where the scheduled command sends each connection's refresh, as a
- *   `RefreshConnectionMetadata` job: `connection` and `name` (`null` for the
- *   application's default queue connection and that connection's default
- *   queue; a connection must be one `queue.connections` configures),
- *   `timeout_seconds` (30 seconds to an hour, default a minute, never longer
- *   than `claim_seconds`, so a job never outlives its claim, and shorter than
- *   the queue connection's `retry_after` where it sets one, so a refresh still
- *   running is never reserved by a second worker) and `tries` (1 to 10,
- *   default 1: a failed refresh is retried by the backoff, not the queue).
- *
- * The scheduled command must run more often than the initial backoff, so a
- * failed refresh is retried when it falls due.
+ * The `sso.metadata` settings, read on each call; a malformed one fails closed
+ * naming its key.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -84,7 +46,7 @@ final readonly class MetadataSettings
     /** @var int The hard ceiling of the cap a metadata document may be held to (256 MiB). */
     public const int MAX_MAX_BYTES = 268435456;
 
-    /** @var int How long a queued refresh may run when none is configured, in seconds (a minute, under the stock `retry_after` of 90). */
+    /** @var int How long a queued refresh may run by default, in seconds (under the stock `retry_after` of 90). */
     public const int DEFAULT_TIMEOUT_SECONDS = 60;
 
     /** @var int How many times a queued refresh is attempted when none is configured. */
@@ -154,9 +116,8 @@ final readonly class MetadataSettings
     }
 
     /**
-     * The wait before the next attempt after the number of failures in a row,
-     * one or more: the first wait doubled for each failure after the first, up
-     * to the longest.
+     * The wait after the failures in a row: the first wait doubled for each
+     * failure after the first, up to the longest.
      *
      * @param  int  $failures
      * @return int
@@ -250,10 +211,8 @@ final readonly class MetadataSettings
     }
 
     /**
-     * How long a queued refresh may run, in seconds, never longer than a claim
-     * holds and shorter than the queue connection's `retry_after` where it sets
-     * one. A claim or a connection that is malformed is left to its own check
-     * to report, once.
+     * How long a queued refresh may run, in seconds, within its claim and under
+     * the queue's `retry_after`; a malformed claim is left to its own check.
      *
      * @return int
      *
@@ -290,9 +249,8 @@ final readonly class MetadataSettings
     }
 
     /**
-     * The queue connection a refresh is sent to, by name, and the `retry_after`
-     * it sets, `null` when it sets none (as `sync` and `sqs` do) or names no
-     * connection that can be read.
+     * The queue connection a refresh is sent to and its `retry_after`, `null`
+     * when it sets none (as `sync` and `sqs` do) or cannot be read.
      *
      * @return array{0: string, 1: ?int}
      */
@@ -309,8 +267,8 @@ final readonly class MetadataSettings
     }
 
     /**
-     * The name configured under the key: `null` for none or an empty string, a
-     * string of at most 255 bytes otherwise.
+     * The name configured under the key, at most 255 bytes, or `null` for none
+     * or an empty string.
      *
      * @param  string  $key
      * @return ?string

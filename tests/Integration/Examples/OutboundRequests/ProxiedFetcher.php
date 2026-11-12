@@ -21,25 +21,11 @@ use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 
 /**
- * The application's own fetcher, for a network whose outbound traffic must
- * leave through an egress proxy (SSO-2.9), keeping what the package's fetcher
- * guarantees:
- *
- * - `https` only, through the proxy named by `services.egress.proxy`, with the
- *   certificate and host name verified, and no proxy from the environment;
- * - no user information or fragment in the URL, no IP address written but in
- *   its plain form, and no IP address the package's `AddressPolicy` refuses,
- *   the application's own refused ranges included; a host name is resolved and
- *   connected to by the proxy, whose allow-list refuses the same addresses;
- * - no redirect followed, for any purpose, so a `3xx` comes back as the
- *   response it is, which the package treats as a failure;
- * - the request's own timeout, or `sso.fetcher.timeout_seconds`, for the whole
- *   request, and its own size cap, or `sso.fetcher.max_response_bytes`, the
- *   transfer stopped once the body passes it;
- * - the request's one credential sent as its kind says, and nothing else: no
- *   cookie and no compressed response;
- * - a refusal or failure answered as a result, never thrown, and nothing of the
- *   request's form, credential or the response's body logged or reported.
+ * A fetcher that sends through the egress proxy in `services.egress.proxy` and
+ * keeps the package fetcher's guarantees: https only, no redirects, the time
+ * and size caps, refused addresses refused, and failures returned, not thrown.
+ * Host names are resolved by the proxy, whose allow-list refuses the same
+ * addresses.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,13 +34,13 @@ use SineMacula\Laravel\Sso\Fetching\FetchResult;
  */
 final readonly class ProxiedFetcher implements Fetcher
 {
-    /** @var string The `client_assertion_type` of a signed client assertion (RFC 7523 §2.2). */
+    /** @var string The `client_assertion_type` of a signed client assertion (RFC 7523 section 2.2). */
     private const string ASSERTION_TYPE = 'urn:ietf:params:oauth:client-assertion-type:jwt-bearer';
 
-    /** @var string A host whose last label is a number, which a parser may read as an IPv4 address. */
+    /** @var string A last label a parser may read as an IPv4 address. */
     private const string NUMERIC_LAST_LABEL = '/(?:^|\.)(?:0x[0-9a-f]*|[0-9]+)$/iD';
 
-    /** @var \GuzzleHttp\Client The client every request leaves through, by way of the proxy. */
+    /** @var \GuzzleHttp\Client The client every request leaves through. */
     private Client $client;
 
     /**
@@ -75,11 +61,10 @@ final readonly class ProxiedFetcher implements Fetcher
         /** The package's time and size caps. */
         private FetcherSettings $settings,
 
-        /** The addresses the package refuses, the application's ranges included. */
+        /** The addresses the package refuses. */
         private AddressPolicy $policy,
 
-        // Not promoted: Guzzle's own handler stands in when none is given; a
-        // test gives one that answers without a network
+        // Not promoted: only passed to the handler stack; tests give one
         ?callable $handler = null,
     ) {
         $proxy = $config->get('services.egress.proxy');
@@ -128,9 +113,8 @@ final readonly class ProxiedFetcher implements Fetcher
     }
 
     /**
-     * Whether the URL may not be sent: it is not `https`, has no host, carries
-     * user information or a fragment, writes an IP address in any but its plain
-     * form, or names an IP address that is refused.
+     * Whether the URL is not `https`, has no host, carries user information or
+     * a fragment, or names an IP address that is non-canonical or refused.
      *
      * @param  string  $url
      * @return bool
@@ -159,8 +143,7 @@ final readonly class ProxiedFetcher implements Fetcher
     }
 
     /**
-     * The Guzzle options of the request: its time cap, its size cap on the sink
-     * the body is written to, and its credential and form.
+     * The Guzzle options: time cap, size-capped sink, credential and form.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @param  \Psr\Http\Message\StreamInterface  $sink
@@ -185,8 +168,7 @@ final readonly class ProxiedFetcher implements Fetcher
     }
 
     /**
-     * The sink, refusing a write that would take the body past the cap, which
-     * stops the transfer.
+     * The sink, throwing on a write past the cap to stop the transfer.
      *
      * @param  \Psr\Http\Message\StreamInterface  $sink
      * @param  int  $cap
@@ -207,11 +189,8 @@ final readonly class ProxiedFetcher implements Fetcher
     }
 
     /**
-     * The headers and form of the request with its one credential where its
-     * kind says: a client id and secret in the `Authorization: Basic` header,
-     * each form-encoded first (RFC 6749 §2.3.1), or in the form; a client id
-     * and signed client assertion in the form (RFC 7523 §2.2); or an access
-     * token in the `Authorization: Bearer` header (RFC 6750 §2.1).
+     * The headers and form with the credential placed as its kind says; Basic
+     * credentials are form-encoded first (RFC 6749 section 2.3.1).
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return array{0: array<string, string>, 1: array<string, string>}
@@ -237,7 +216,7 @@ final readonly class ProxiedFetcher implements Fetcher
     }
 
     /**
-     * The response's headers, each by its name with its values joined.
+     * The response's headers, each with its values joined.
      *
      * @param  \Psr\Http\Message\ResponseInterface  $response
      * @return array<string, string>

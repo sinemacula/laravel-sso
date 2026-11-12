@@ -18,10 +18,7 @@ use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\SignIns;
 
 /**
- * The example application's sign-in route (SSO-9.2, SSO-9.9, SSO-12.5): it
- * redeems only `sign_in` codes, admits them inside its own transaction on the
- * package's storage connection, writes the session, active or pending, in that
- * transaction, and lets a credential leave only after it commits.
+ * The example application's sign-in route.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -87,8 +84,7 @@ final readonly class SsoSessionController
     }
 
     /**
-     * The refusal of a redemption that admitted no identity: a full limit, a
-     * refused code, or an unlinked handoff the application does not sign in.
+     * The refusal of a redemption that admitted no identity.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\RedemptionResult  $result
      * @return \Illuminate\Http\JsonResponse

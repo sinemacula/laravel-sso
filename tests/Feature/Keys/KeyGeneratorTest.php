@@ -15,15 +15,8 @@ use Symfony\Component\VarDumper\Dumper\CliDumper;
 use Tests\TestCase;
 
 /**
- * Feature tests for the generation of the service provider's own key pairs
- * (SSO-2.7): RSA 3072 by default and 4096 when configured, EC on P-256; a
- * self-signed certificate that verifies with its own key, names the common name
- * alone, is signed with SHA-256, carries a positive serial and is valid for the
- * configured days; and a private key held only in a secret, which no dump or
- * serialisation shows (SSO-2.5).
- *
- * RSA generation is slow, so the class generates one RSA 3072 key, one RSA 4096
- * key and EC keys otherwise.
+ * Feature tests for generating the service provider's own key pairs. RSA
+ * generation is slow, so the class makes one key per RSA size.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,8 +34,8 @@ final class KeyGeneratorTest extends TestCase
     private static ?GeneratedKey $rsa = null;
 
     /**
-     * An RSA key has a modulus of 3072 bits by default, and a certificate that
-     * verifies with its own key.
+     * An RSA key is 3072 bits by default, with a certificate that verifies with
+     * its own key.
      *
      * @return void
      */
@@ -74,8 +67,8 @@ final class KeyGeneratorTest extends TestCase
     }
 
     /**
-     * An elliptic curve key is on P-256, whatever the RSA modulus configured,
-     * with a certificate that verifies with its own key.
+     * An EC key is on P-256 whatever the RSA size, with a certificate that
+     * verifies with its own key.
      *
      * @return void
      */
@@ -95,8 +88,8 @@ final class KeyGeneratorTest extends TestCase
     }
 
     /**
-     * The certificate is self-signed for the common name alone, is not a
-     * certificate authority's, and carries a positive serial number of its own.
+     * The certificate is self-signed for the common name alone, not a CA's,
+     * with a positive serial.
      *
      * @return void
      */
@@ -114,8 +107,8 @@ final class KeyGeneratorTest extends TestCase
     }
 
     /**
-     * The certificate is valid from when it was signed for the configured days,
-     * and the key reports the same dates, in UTC.
+     * The certificate and key are valid from signing for the configured days,
+     * in UTC.
      *
      * @return void
      */
@@ -139,7 +132,7 @@ final class KeyGeneratorTest extends TestCase
 
     /**
      * The certificate and public key are canonical PEM, and the fingerprint is
-     * the SHA-256 of the certificate's DER, as a masked key reads it.
+     * the SHA-256 of the DER.
      *
      * @return void
      */
@@ -156,9 +149,8 @@ final class KeyGeneratorTest extends TestCase
     }
 
     /**
-     * The private key is held only in the secret: it is the public key's
-     * private half, unencrypted PKCS #8, and leaves the object through
-     * `reveal()` alone.
+     * The private key is unencrypted PKCS #8 for the public key and leaves the
+     * object only through `reveal()`.
      *
      * @return void
      */
@@ -252,10 +244,8 @@ final class KeyGeneratorTest extends TestCase
     }
 
     /**
-     * The OpenSSL configuration written for a generation is removed after it.
-     * Another process may be generating at the same time, so each configuration
-     * present just after is waited on for a moment: another process's goes, and
-     * only one that stays is counted as left.
+     * The OpenSSL configuration written for a generation is removed; others'
+     * files are waited on, as another process may be generating.
      *
      * @return void
      */
@@ -313,8 +303,8 @@ final class KeyGeneratorTest extends TestCase
     }
 
     /**
-     * A common name a certificate cannot hold is the caller's mistake, refused
-     * before any key is generated.
+     * A common name a certificate cannot hold is refused before any key is
+     * generated.
      *
      * @param  string  $commonName
      * @return void
@@ -411,9 +401,8 @@ final class KeyGeneratorTest extends TestCase
     }
 
     /**
-     * What the key looks like through each way PHP and Laravel's tooling show
-     * an object: Symfony's VarDumper (behind `dump()` and `dd()`), `print_r()`,
-     * `var_export()`, an array cast and JSON.
+     * The key as VarDumper, `print_r()`, `var_export()`, an array cast and JSON
+     * show it.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\GeneratedKey  $key
      * @return list<string>
@@ -430,8 +419,8 @@ final class KeyGeneratorTest extends TestCase
     }
 
     /**
-     * Empty OpenSSL's error queue, so what a test finds there afterwards is
-     * what the code under test left.
+     * Empty OpenSSL's error queue so a test sees only what the code under test
+     * left.
      *
      * @return void
      */

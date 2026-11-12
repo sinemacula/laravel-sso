@@ -8,25 +8,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 
 /**
- * Finds a tenant's enforcement, and the connections it names, always on the
- * write connection (SSO-4.6, SSO-11.3), so neither the answer of
- * `Contracts\Enforcement` nor a change is ever judged against a lagging replica
- * or a cache.
- *
- * A tenant's row is found by the hash of its id (`TenantHash`), and a row whose
- * recorded tenant id is not byte for byte the one given is treated as absent,
- * so `acme` and `Acme` never share a rule, whatever the column's collation. An
- * unconfigured row, one with no version (the guard `EnforcementLock` inserts
- * before a rule was ever stored), is the same as none to `find()`; only `row()`
- * answers it, for the lock. The connections are read in one statement by their
- * ids, in id order, and only those whose tenant and id are exactly the ones
- * given are kept. Locked, the rows stay locked until the transaction the caller
- * has open on the storage connection ends; under a lock every read that decides
- * a write is itself a locking read, since a plain one answers from the snapshot
- * of a transaction the caller opened (MySQL's `REPEATABLE READ`).
- *
- * The tenant id is the application's, so an empty or overlong one is an
- * `InvalidArgumentException`. A database error propagates (SSO-11.4).
+ * Reads a tenant's enforcement and its connections from the write connection,
+ * never a lagging replica; tenant and connection ids match byte for byte.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -39,8 +22,7 @@ final readonly class EnforcementFinder
     public const int MAX_TENANT_ID_LENGTH = 255;
 
     /**
-     * The tenant's enforcement, locked for update when asked, or `null` when it
-     * has none stored: no row, or only an unconfigured one.
+     * The tenant's enforcement, `null` for no row or an unconfigured one.
      *
      * @param  string  $tenantId
      * @param  bool  $lock
@@ -56,8 +38,7 @@ final readonly class EnforcementFinder
     }
 
     /**
-     * The tenant's row, configured or not, locked for update when asked, or
-     * `null` when it has none.
+     * The tenant's row, configured or not.
      *
      * @param  string  $tenantId
      * @param  bool  $lock
@@ -77,8 +58,7 @@ final readonly class EnforcementFinder
     }
 
     /**
-     * The connections with the ids given, whatever their tenant, locked for
-     * update in id order: one statement, none when no id is given.
+     * Lock the connections with the ids given, of any tenant, in id order.
      *
      * @param  list<string>  $ids
      * @return list<\SineMacula\Laravel\Sso\Models\Connection>
@@ -93,10 +73,8 @@ final readonly class EnforcementFinder
     }
 
     /**
-     * The policy the enforcing tenant's stored rule, or none, gives sessions
-     * active in the tenant: nothing required without a rule or with one that is
-     * off; otherwise required, satisfied by the connections given that the rule
-     * names, that belong to the enforcing tenant byte for byte and are enabled.
+     * The policy the rule gives, satisfied by the enforcing tenant's enabled
+     * connections among those given that the rule names.
      *
      * @param  string  $tenantId
      * @param  string  $enforcingTenantId
@@ -120,8 +98,7 @@ final readonly class EnforcementFinder
     }
 
     /**
-     * The tenant's connections among the ids given, in id order, locked for
-     * update when asked: one statement, none when no id is given.
+     * The tenant's connections among the ids given, in id order.
      *
      * @param  string  $tenantId
      * @param  list<string>  $ids
@@ -161,8 +138,7 @@ final readonly class EnforcementFinder
     }
 
     /**
-     * Refuse a tenant id the enforcement table cannot hold: the application's
-     * mistake.
+     * Refuse a tenant id the enforcement table cannot hold.
      *
      * @param  string  $tenantId
      * @return void

@@ -13,15 +13,9 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome;
 
 /**
- * The example application's own single-use store (SSO-11.5), giving every
- * guarantee the contract asks for: one table of the application's, on the
- * package's storage connection so a record made in one of the package's
- * transactions is undone with it, shared by every server, read and written on
- * the write connection. Its primary key on the namespace and the key's digest
- * answers, so of two concurrent records of one key exactly one goes in. It
- * keeps a key until its expiry, to the microsecond in UTC, and only the key's
- * SHA-256 digest, never the key; a malformed record is refused with a message
- * that never holds the key, and any database error is thrown, never answered.
+ * A single-use store on the package's storage connection, so a record rolls
+ * back with the package's transaction; the primary key decides concurrent
+ * records, and only the key's SHA-256 digest is kept.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -33,10 +27,10 @@ final readonly class ApplicationSingleUseStore implements SingleUseStore
     /** @var string The application's table the keys are held in. */
     public const string TABLE = 'single_use_keys';
 
-    /** @var string A namespace: 1 to 64 lower case letters, digits, `_`, `.`, `:` and `-`. */
+    /** @var string 1 to 64 lower-case letters, digits, `_`, `.`, `:` and `-`. */
     private const string NAMESPACE_PATTERN = '/^[a-z0-9_.:\-]{1,64}$/D';
 
-    /** @var string The form an expiry is kept in, which sorts as the instants do. */
+    /** @var string The expiry format, which sorts as the instants do. */
     private const string TIME_FORMAT = 'Y-m-d H:i:s.u';
 
     /**
@@ -46,14 +40,13 @@ final readonly class ApplicationSingleUseStore implements SingleUseStore
      */
     public function __construct(
 
-        /** The clock an expiry is judged against: the package's, so both agree on now. */
+        /** The package's clock, so both agree on now. */
         private Clock $clock,
     ) {}
 
     /**
-     * Record the key in the namespace until the expiry, unless it is held
-     * there: a row whose expiry has passed holds nothing and goes first, then
-     * one insert the primary key decides.
+     * Record the key until the expiry: an expired row is deleted first, then
+     * the primary key decides the insert.
      *
      * @param  string  $namespace
      * @param  string  $key
@@ -82,7 +75,7 @@ final readonly class ApplicationSingleUseStore implements SingleUseStore
     }
 
     /**
-     * The keys table, on the storage connection, read from its write side.
+     * The keys table, read from the storage connection's write side.
      *
      * @return \Illuminate\Database\Query\Builder
      */

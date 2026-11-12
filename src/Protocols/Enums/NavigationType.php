@@ -5,8 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Enums;
 
 /**
- * How the browser is sent to the identity provider (SSO-5.1): by a redirect to
- * a URL, or by a form posted to an action URL (an HTTP-POST `AuthnRequest`).
+ * How the browser is sent to the identity provider.
  *
  * @api
  *

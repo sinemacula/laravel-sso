@@ -41,19 +41,7 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * Feature tests for IdP-initiated re-initiation (SSO-5.8, SSO-6.11, SSO-2.8)
- * through the public completion helper, with the fake identity provider's
- * unsolicited responses: a connection that does not allow it refuses with
- * `unsolicited_not_allowed`; one that does sends the browser to its start URL
- * naming the connection, with and without a query of its own, records the
- * assertion once and refuses a second post as `replayed`; every rule of a
- * solicited response still holds; an `InResponseTo` anywhere is never
- * unsolicited, and one naming a stored request completes that request; the
- * `RelayState` is never the target; expired metadata refuses; and a connection
- * disabled, its IdP-initiated opt-in or start URL changed, its metadata lapsed,
- * or IdP-initiated sign-in turned off, after validation is refused under the
- * lock. No authorisation request is ever consumed or created and no code issued
- * by a re-initiation.
+ * Feature tests for IdP-initiated SAML re-initiation.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -106,11 +94,7 @@ final class SamlReinitiationTest extends TestCase
     private AuthorizationRequest $stored;
 
     /**
-     * Bind a fixed clock, the recording issuer and a request from an IP
-     * address, configure SAML, IdP-initiated sign-in, the endpoints and the
-     * application, and create the tables, a connection that allows
-     * IdP-initiated sign-in and trusts the identity provider, and a request in
-     * flight through it.
+     * Configure IdP-initiated SAML and a trusting connection with a request.
      *
      * @return void
      */
@@ -153,8 +137,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A connection that does not allow IdP-initiated sign-in rejects a valid
-     * unsolicited response with `unsolicited_not_allowed`, recording nothing.
+     * A connection that does not allow it is `unsolicited_not_allowed`.
      *
      * @return void
      */
@@ -166,8 +149,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Rows of `[start URL, expected]`: the start URL set, and the URL the
-     * browser is sent to, with `{id}` the connection's id.
+     * Rows of `[start URL, expected]`, `{id}` being the connection's id.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -178,10 +160,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A valid unsolicited response at a connection that allows it is
-     * re-initiated: the browser goes to exactly the start URL naming the
-     * connection; the assertion is recorded once until its last acceptance
-     * moment; no request is consumed or created and no code is issued.
+     * A valid unsolicited response is re-initiated to the start URL.
      *
      * @param  string  $startUrl
      * @param  string  $expected
@@ -203,8 +182,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A second post of the same unsolicited response is rejected with
-     * `replayed`, and the assertion is still recorded once.
+     * A second post of the same response is `replayed`.
      *
      * @return void
      */
@@ -222,8 +200,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Rows of `[change, reason]`: a valid unsolicited response changed so a
-     * rule of a solicited response breaks, and the reason it is refused for.
+     * Rows of `[change, reason]` breaking a rule of a solicited response.
      *
      * @return iterable<string, array{
      *     0: \Closure(\SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse): \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse,
@@ -269,8 +246,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Every rule of a solicited response still holds for an unsolicited one:
-     * each broken rule rejects it with its reason, recording nothing.
+     * Every rule of a solicited response still holds.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse): \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $change
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -283,10 +259,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * An `InResponseTo` anywhere is never unsolicited: on the bearer
-     * confirmation alone it names a request that is not stored, and inside the
-     * encrypted assertion alone the unsolicited profile finds it; each is
-     * rejected with `request_unknown`, recording nothing.
+     * An `InResponseTo` anywhere is never unsolicited.
      *
      * @return void
      */
@@ -299,9 +272,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * An `InResponseTo` naming a stored request is solicited, never
-     * unsolicited, even at a connection that allows IdP-initiated sign-in: the
-     * request is consumed and completed, and a code issued for it.
+     * An `InResponseTo` naming a stored request completes that request.
      *
      * @return void
      */
@@ -319,8 +290,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A `RelayState` naming a URL is never the target: the browser goes to the
-     * start URL alone.
+     * A `RelayState` URL is never the target.
      *
      * @return void
      */
@@ -332,8 +302,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A connection whose refreshed metadata has expired rejects the response
-     * with `metadata_expired`, recording nothing.
+     * Expired metadata rejects with `metadata_expired`.
      *
      * @return void
      */
@@ -346,9 +315,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A connection disabled once the response is validated, before the
-     * connection is locked, is refused under the lock with
-     * `connection_unavailable`, recording nothing.
+     * A connection disabled after validation is refused under the lock.
      *
      * @return void
      */
@@ -364,9 +331,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A connection whose trust version moves once the response is validated is
-     * refused under the lock with `connection_unavailable`, recording nothing,
-     * though it is still usable.
+     * A trust version moved after validation is refused under the lock.
      *
      * @return void
      */
@@ -382,8 +347,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A connection whose row goes once the response is validated is refused
-     * under the lock with `connection_unavailable`.
+     * A connection gone after validation is refused under the lock.
      *
      * @return void
      */
@@ -399,8 +363,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Rows of `[settings, reason]`: the connection's settings changed once the
-     * response is validated, and the reason it is refused for under the lock.
+     * Rows of `[settings, reason]` changed after validation.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -411,9 +374,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A connection whose IdP-initiated opt-in is turned off, or whose start URL
-     * changes, once the response is validated is refused under the lock with
-     * the reason, recording nothing, though its trust version never moved.
+     * Settings changed after validation are refused under the lock.
      *
      * @param  array<string, mixed>  $settings
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -435,9 +396,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds, reason]`: the seconds the clock moves on once the
-     * response is validated, with the connection's refreshed metadata valid for
-     * a minute, and the reason it is refused for under the lock, if any.
+     * Rows of `[seconds, reason]` for metadata valid a minute after validation.
      *
      * @return iterable<string, array{0: int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -449,9 +408,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Refreshed metadata that lapses once the response is validated refuses it
-     * under the lock with `metadata_expired`, recording nothing; a second
-     * before it lapses, the response is re-initiated.
+     * Metadata that lapses after validation is refused under the lock.
      *
      * @param  int  $seconds
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -481,10 +438,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * With IdP-initiated sign-in turned off for the application, a connection
-     * still holding it on is incomplete: its response is validated as the
-     * connection holds it, then refused under the lock with
-     * `connection_unavailable`, recording nothing.
+     * With the feature turned off, the connection is refused under the lock.
      *
      * @return void
      */
@@ -496,8 +450,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Assert the result is rejected with the reason and no target, nothing is
-     * recorded, and no request is touched.
+     * Assert a rejection with the reason, no target and nothing touched.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
@@ -511,8 +464,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Assert the request in flight was neither consumed, completed nor voided,
-     * no other request was created, and no code was issued.
+     * Assert no request was consumed, completed, voided or created.
      *
      * @return void
      */
@@ -526,8 +478,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Assert the one assertion recorded is the responses', scoped by the
-     * connection and the identity provider, until its last acceptance moment.
+     * Assert the response's assertion is recorded once, scoped and timed.
      *
      * @return void
      */
@@ -546,9 +497,8 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Run the change once, just before the next transaction on the storage
-     * connection starts: the re-initiation's, which it opens only once the
-     * response is validated. Answers what is still to run, empty once it ran.
+     * Run the change once before the re-initiation's transaction; answers what
+     * is still to run.
      *
      * @param  \Closure(): void  $change
      * @return \ArrayObject<int, \Closure(): void>
@@ -573,8 +523,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Complete at the connection's assertion consumer service with the
-     * response, posted with the `RelayState` given, if any.
+     * Complete at the assertion consumer service with the `RelayState`, if any.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
      * @param  ?string  $relayState
@@ -591,8 +540,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A valid unsolicited response from the trusted identity provider, made
-     * now, for the connection's service provider.
+     * A valid unsolicited response from the trusted identity provider.
      *
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
      */
@@ -604,8 +552,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * A bearer confirmation for the recipient, valid for five minutes from the
-     * tests' now and answering no request.
+     * A bearer confirmation valid for five minutes, answering no request.
      *
      * @param  string  $recipient
      * @return array{method: string, data: bool, recipient: string, not_before: null, not_on_or_after: \Carbon\CarbonImmutable, in_response_to: null}
@@ -623,8 +570,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * Have the connection follow its metadata URL, so that what was fetched
-     * holds a deadline.
+     * Have the connection follow its metadata URL, so its fetch has a deadline.
      *
      * @return void
      */
@@ -684,8 +630,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * An identity provider of the same entity id the connection never trusts,
-     * made once for the class.
+     * A provider of the same entity id the connection never trusts.
      *
      * @return \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider
      */
@@ -695,8 +640,7 @@ final class SamlReinitiationTest extends TestCase
     }
 
     /**
-     * The service provider's encryption key and certificate, made once for the
-     * class.
+     * The service provider's encryption key and certificate, made once.
      *
      * @return array{0: string, 1: string}
      */

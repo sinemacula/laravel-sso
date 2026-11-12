@@ -13,38 +13,8 @@ use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * Dispatches the package's events once the writes that caused them have
- * committed (SSO-10.5): at once when their connection has no open transaction,
- * on the commit of the innermost transaction open on it otherwise, and never
- * when that transaction, or a savepoint it sits in, is rolled back. A
- * transaction open on another connection neither delays nor cancels the event,
- * since the writes were not made in it.
- *
- * An event waits only for the transaction it was dispatched in. Laravel 12
- * leaves the records of an outermost transaction whose commit failed pending,
- * to run their callbacks on the next outermost commit on the connection,
- * perhaps in another request; so each callback holds its record and dispatches
- * nothing once `StrandedTransactions` has marked it. A record such a
- * transaction left is found only while the connection has a transaction open,
- * so an event dispatched outside one is dispatched at once. Laravel 13 drops
- * those records itself, and nothing changes there.
- *
- * The connection is the storage connection unless the caller names another,
- * since every package table lives there. No package event implements
- * `ShouldDispatchAfterCommit`, which would wait for the last transaction of any
- * connection instead.
- *
- * The events dispatcher, the transactions manager and the database manager are
- * resolved from the container on each call, never held: a dispatcher swapped in
- * later (an `Event::fake()` between the write and its commit) receives the
- * event, and the testing traits' manager, which ignores the transaction
- * wrapping each test, is the one consulted. Nothing of one request is kept for
- * the next (SSO-11.2).
- *
- * Events report only: nothing that must happen for security depends on a
- * listener, which is what the synchronous contracts are for. A listener's
- * exception propagates as it does from Laravel's dispatcher, from the dispatch
- * or from the commit that ran it.
+ * Dispatches the package's events once the innermost transaction open on their
+ * connection commits, and never when it rolls back.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,13 +30,13 @@ final readonly class AfterCommitDispatcher
      */
     public function __construct(
 
-        /** The container the dispatcher and the transactions manager are resolved from on each call. */
+        /** Resolved from on each call, so a dispatcher faked later still receives. */
         private Container $container,
     ) {}
 
     /**
-     * Dispatch the event once the writes made on the connection have committed:
-     * the storage connection when none is named.
+     * Dispatch the event once the connection's writes commit; the storage
+     * connection when none is named.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  ?string  $connection
@@ -99,12 +69,8 @@ final readonly class AfterCommitDispatcher
     }
 
     /**
-     * Dispatch the event at once, whatever transaction is open.
-     *
-     * This is for the unlinked-result event alone (SSO-8.6), which must reach
-     * its listeners synchronously, before any handoff is issued, so one can
-     * provision the identity inside the flow. Every other event goes through
-     * `dispatch()`.
+     * Dispatch the event at once; only for the unlinked-result event, whose
+     * listeners provision the identity before any handoff is issued.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @return void
@@ -115,10 +81,8 @@ final readonly class AfterCommitDispatcher
     }
 
     /**
-     * The innermost transaction open on the connection whose commit callbacks
-     * apply, or `null` when there is none or no transactions manager is bound.
-     * A record found while the connection has no transaction open was left by a
-     * failed commit, and is not one.
+     * The innermost transaction on the connection whose commit callbacks apply;
+     * a record found with no transaction open was left by a failed commit.
      *
      * @param  string  $connection
      * @return ?\Illuminate\Database\DatabaseTransactionRecord

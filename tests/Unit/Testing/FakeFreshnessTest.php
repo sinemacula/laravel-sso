@@ -15,10 +15,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 
 /**
- * Unit tests for the fake freshness contract: it answers `fresh` unless built
- * `stale` or told which operations alone are, records every question in order
- * with its maximum age, holds both per instance, and its assertions pass and
- * fail as they say.
+ * Unit tests for the fake freshness contract.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -39,9 +36,8 @@ final class FakeFreshnessTest extends TestCase
     }
 
     /**
-     * Built with no outcome, or with `fresh()`, it answers `fresh` for every
-     * operation; built with `stale()`, or the `stale` outcome, it answers
-     * `stale` for every one.
+     * Built `fresh` or with no outcome it answers `fresh` for every operation,
+     * and built `stale` it answers `stale`.
      *
      * @return void
      */
@@ -133,9 +129,8 @@ final class FakeFreshnessTest extends TestCase
     }
 
     /**
-     * Every question is recorded with its maximum age and its caller, as given
-     * or none, in order, a repeat and a refused one included, and nothing
-     * before the first.
+     * Every question is recorded in order with its maximum age and caller,
+     * repeats and refusals included.
      *
      * @return void
      */

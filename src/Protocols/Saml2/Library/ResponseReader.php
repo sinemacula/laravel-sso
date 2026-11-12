@@ -16,44 +16,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlStatus;
 
 /**
- * Reads one posted SAML `Response` in the fixed order of the agreed pipeline
- * (SSO-6.1 to SSO-6.3, SSO-6.7, SSO-6.8, SSO-6.11):
- *
- * 1. its parsed document must be a `samlp:Response` (the hardened parser has
- *    capped, parsed, schema-validated it and refused a repeated `ID`); every
- *    `ds:Signature` in it must be the response's own, as a child of the root,
- *    or its one assertion's own, as a child of
- *    `/samlp:Response/saml:Assertion`; and every `Assertion` or
- *    `EncryptedAssertion` anywhere in it must be a child of the root, at most
- *    one, so a wrapped, injected or second assertion is refused wherever it
- *    hides;
- * 2. the response's own signature, when present, is verified with a pinned
- *    verifier, and the response is read from the verified object from then on,
- *    with the element parsed from the bytes it digested kept for what the
- *    library does not model of an assertion it covers;
- * 3. its status decides the profile: an unsuccessful response reads no
- *    assertion, but a plain assertion's signature is still verified, since
- *    every signature present must verify;
- * 4. a successful response must carry exactly one assertion. A plain one that
- *    carries its own signature is copied into a document of its own (the
- *    re-rooting the v6 library needs, `docs/design/saml-library.md`) and
- *    verified; an encrypted one is decrypted (AES-CBC only after a verified
- *    response signature), and its plaintext parsed, schema-validated and held
- *    to the same structure and signature rules as a plain one;
- * 5. an assertion covered by no verified signature, its own or the response's,
- *    is refused; and one whose `ID` repeats the response's is refused. Every
- *    value of an assertion is read from what a verified signature covers: the
- *    library's verified object, and, for what it does not model, the element
- *    parsed from the bytes that signature digested (its own, or the verified
- *    response's child assertion), never the posted document; a decrypted
- *    assertion covered only by the response's signature is read from its
- *    plaintext, whose ciphertext that signature covers;
- * 6. a response with an `InResponseTo` anywhere, its decrypted assertion
- *    included, is `solicited`, and one with none `unsolicited`.
- *
- * Every refusal is a `ReadFailure` the adapter answers as a value. It holds the
- * parser, the verifier, the decryptor and the mapper, none of which keeps
- * anything between calls (SSO-11.2).
+ * Reads a parsed SAML `Response`: structure first, then signatures, then
+ * decryption. Every value comes from what a verified signature covers.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -74,7 +38,7 @@ final readonly class ResponseReader
     /** @var string Every signature in the document. */
     private const string SIGNATURES = '//ds:Signature';
 
-    /** @var string The signatures that may be in a response: its own and its one plain assertion's. */
+    /** @var string The response's own signature and its plain assertion's. */
     private const string ALLOWED_SIGNATURES = '/samlp:Response/ds:Signature | /samlp:Response/saml:Assertion/ds:Signature';
 
     /** @var string Every assertion, plain or encrypted, in the document. */
@@ -83,7 +47,7 @@ final readonly class ResponseReader
     /** @var string The assertions in their schema position, as children of the root. */
     private const string PLACED_ASSERTIONS = '/samlp:Response/saml:Assertion | /samlp:Response/saml:EncryptedAssertion';
 
-    /** @var string The signatures that may be in a decrypted assertion: its own. */
+    /** @var string The only signature a decrypted assertion may hold: its own. */
     private const string DECRYPTED_SIGNATURES = '/saml:Assertion/ds:Signature';
 
     /** @var string Every `InResponseTo` attribute in a document. */
@@ -113,7 +77,8 @@ final readonly class ResponseReader
     ) {}
 
     /**
-     * The response the parsed document holds, every signature in it verified.
+     * The response, every signature in it verified. An unsuccessful one reads
+     * no assertion but still verifies any signature present.
      *
      * @param  \DOMDocument  $document
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ResponsePolicy  $policy
@@ -178,8 +143,8 @@ final readonly class ResponseReader
     }
 
     /**
-     * Refuse a document that is not a response, or whose signatures or
-     * assertions are anywhere but their schema position.
+     * Refuse a non-response, or any signature or assertion outside its schema
+     * position, so a wrapped or injected one is refused wherever it hides.
      *
      * @param  \DOMDocument  $document
      * @return void
@@ -228,8 +193,7 @@ final readonly class ResponseReader
     }
 
     /**
-     * The assertion or encrypted assertion in its schema position, as the
-     * parsed document holds it, or `null` when there is none.
+     * The assertion or encrypted assertion in its schema position, if any.
      *
      * @param  \DOMDocument  $document
      * @return ?\DOMElement
@@ -242,8 +206,7 @@ final readonly class ResponseReader
     }
 
     /**
-     * Verify the signature of a plain assertion an unsuccessful response
-     * carries, which it never reads.
+     * Verify a plain assertion's signature in an unsuccessful response.
      *
      * @param  ?\DOMElement  $placed
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ResponsePolicy  $policy
@@ -267,8 +230,8 @@ final readonly class ResponseReader
     }
 
     /**
-     * The one assertion of a successful response, verified (and decrypted), and
-     * whether its decrypted form carries an `InResponseTo`.
+     * The one assertion, verified and decrypted, and whether its decrypted form
+     * carries an `InResponseTo`.
      *
      * @param  \SimpleSAML\SAML2\XML\samlp\Response  $response
      * @param  ?\DOMElement  $placed
@@ -299,9 +262,8 @@ final readonly class ResponseReader
     }
 
     /**
-     * The one assertion of the element parsed from the bytes the response's
-     * signature digested, or `null` when no verified signature covers the
-     * response.
+     * The assertion within the response's digested bytes, or `null` when the
+     * response is unsigned.
      *
      * @param  ?\DOMElement  $covered
      * @return ?\DOMElement
@@ -326,8 +288,7 @@ final readonly class ResponseReader
     }
 
     /**
-     * The decrypted assertion's document, parsed, schema-validated and held to
-     * the structure of a plain one.
+     * The decrypted assertion's document, held to a plain one's rules.
      *
      * @param  \SimpleSAML\SAML2\XML\saml\EncryptedAssertion  $encrypted
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ResponsePolicy  $policy
@@ -355,13 +316,9 @@ final readonly class ResponseReader
     }
 
     /**
-     * The assertion as the package's value, read from what a verified signature
-     * covers: its own signature verified after re-rooting, or the verified
-     * response's signature covering it, its decrypted form included; refused
-     * when neither covers it, or its `ID` repeats the response's. What the
-     * library does not model (other statements and conditions, `Advice`) is
-     * read from the element parsed from the bytes its own signature digested,
-     * or else from the element the response's signature covers.
+     * The assertion, read from what its own or the response's verified
+     * signature covers; refused when neither does or its `ID` repeats the
+     * response's.
      *
      * @param  \SimpleSAML\SAML2\XML\saml\Assertion  $assertion
      * @param  \DOMElement  $element
@@ -394,9 +351,8 @@ final readonly class ResponseReader
     }
 
     /**
-     * The assertion element copied into a document of its own, so the library
-     * digests the assertion rather than the response that held it (the v6
-     * defect upstream PR #424 fixes), as the library's assertion.
+     * The assertion copied into its own document, so saml2 v6 digests it rather
+     * than the enclosing response (fixed upstream in PR #424).
      *
      * @param  \DOMElement  $element
      * @return \SimpleSAML\SAML2\XML\saml\Assertion
@@ -474,8 +430,7 @@ final readonly class ResponseReader
     }
 
     /**
-     * The nodes the query finds, in document order; none for a query that
-     * fails.
+     * The nodes the query finds, in document order; none if it fails.
      *
      * @param  \DOMXPath  $xpath
      * @param  string  $query

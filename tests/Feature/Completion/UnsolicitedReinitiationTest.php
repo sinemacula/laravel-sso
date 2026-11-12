@@ -31,10 +31,7 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * Feature tests for the client an unsolicited SAML response is re-initiated
- * for: `UnsolicitedResponseReinitiated`, and the one `FlowFailed` of a
- * re-initiation refused under the lock, carry the IP address and user agent of
- * the client the completion was given, never those of the request being served.
+ * Feature tests for the client an unsolicited SAML response re-initiates for.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -59,11 +56,7 @@ final class UnsolicitedReinitiationTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, the recording issuer and a request the completion
-     * must never read, configure SAML, IdP-initiated sign-in, the endpoints and
-     * the application, create the tables and a connection that allows
-     * IdP-initiated sign-in and trusts the identity provider, and record
-     * events.
+     * Configure IdP-initiated SAML and a request never read; record events.
      *
      * @return void
      */
@@ -120,8 +113,7 @@ final class UnsolicitedReinitiationTest extends TestCase
     }
 
     /**
-     * A replay refused under the lock reports its one `FlowFailed` with the
-     * client of the replaying completion, never the first one's.
+     * A replay refused under the lock reports the replaying client.
      *
      * @return void
      */
@@ -143,8 +135,7 @@ final class UnsolicitedReinitiationTest extends TestCase
     }
 
     /**
-     * A re-initiation for no client reports neither an IP address nor a user
-     * agent.
+     * A re-initiation for no client reports no address or user agent.
      *
      * @return void
      */
@@ -158,9 +149,7 @@ final class UnsolicitedReinitiationTest extends TestCase
     }
 
     /**
-     * Complete at the connection's assertion consumer service with the
-     * response, posted with the identity provider's `RelayState`, for the
-     * client.
+     * Complete at the assertion consumer service for the client.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
@@ -174,8 +163,7 @@ final class UnsolicitedReinitiationTest extends TestCase
     }
 
     /**
-     * A valid unsolicited response from the trusted identity provider, made
-     * now.
+     * A valid unsolicited response from the trusted identity provider.
      *
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
      */

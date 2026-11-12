@@ -8,11 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 
 /**
- * The example application's service provider (SSO-2.5): it binds the
- * application's own secret encrypter, keeping the package's secrets under its
- * key management service, in place of the default under `APP_KEY`. It registers
- * after the package's provider, as an application's providers do, so its
- * binding replaces the default as any later binding does.
+ * Binds the KMS secret encrypter in place of the default under `APP_KEY`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

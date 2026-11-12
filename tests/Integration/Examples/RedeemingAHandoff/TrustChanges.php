@@ -19,16 +19,8 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Integration\Examples\Clients;
 
 /**
- * The changes an administrator, or the metadata refresh, makes to a SAML
- * connection's trust between a code's issuance and its redemption (SSO-2.13),
- * through the package's public API alone: the provider's certificates replaced
- * by a refresh of its metadata, one of two trusted certificates distrusted, a
- * metadata signing anchor trusted, and the connection disabled then enabled
- * again. Each raises the connection's trust version, and leaves it usable,
- * signed for by the provider each answers; adding a provider certificate alone
- * is additive, and raises nothing.
- *
- * It keeps nothing of one change for the next.
+ * Trust changes made to a SAML connection between a code's issuance and its
+ * redemption; each but `added` raises the connection's trust version.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,7 +29,7 @@ use Tests\Integration\Examples\Clients;
  */
 final readonly class TrustChanges
 {
-    /** @var string The metadata URL a connection whose certificates are replaced is made with. */
+    /** @var string The metadata URL the refreshed connection is made with. */
     public const string METADATA_URL = 'https://idp.example.com/saml/metadata.xml';
 
     /** @var string The provider's certificates replaced by a refresh of its metadata. */
@@ -56,7 +48,7 @@ final readonly class TrustChanges
     public const array ALL = [self::REPLACED, self::DISTRUSTED, self::ANCHORED, self::REENABLED];
 
     /**
-     * Constructor.
+     * Name the connection to change and the fetcher its refresh reads.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -75,8 +67,8 @@ final readonly class TrustChanges
     ) {}
 
     /**
-     * Make the change named to the connection that trusts the provider, and
-     * answer the provider the connection trusts afterwards.
+     * Make the named change and answer the provider the connection trusts
+     * afterwards.
      *
      * @param  string  $change
      * @param  \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider  $idp
@@ -96,8 +88,8 @@ final readonly class TrustChanges
     }
 
     /**
-     * Trust another provider certificate besides the provider's, which is
-     * additive, and answer the provider that signs with it.
+     * Trust another certificate besides the provider's, and answer the provider
+     * that signs with it.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider  $idp
      * @return \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider
@@ -112,8 +104,7 @@ final readonly class TrustChanges
     }
 
     /**
-     * Refresh the connection's metadata, which now names only a rotated
-     * certificate, so the provider's is replaced.
+     * Refresh metadata that names only a rotated certificate.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider  $idp
      * @return \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider
@@ -139,8 +130,7 @@ final readonly class TrustChanges
     }
 
     /**
-     * Trust another certificate, then distrust the provider's, so the
-     * connection stays usable through the other.
+     * Trust another certificate, then distrust the provider's.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider  $idp
      * @return \SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider

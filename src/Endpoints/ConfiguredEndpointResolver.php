@@ -10,17 +10,10 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Endpoints\Enums\Endpoint;
 
 /**
- * The default endpoint resolver (SSO-5.5): each of a connection's endpoints is
- * `sso.endpoints.base_url`, without a trailing `/`, followed by the endpoint's
- * path pattern with `{connection}` replaced by the connection's id,
- * percent-encoded; the entity id is the metadata URL.
+ * The default endpoint resolver: the base URL plus each path pattern, with the
+ * entity id as the metadata URL.
  *
- * With the defaults and a base URL of `https://api.example.com`, connection
- * `01k…` has its assertion consumer service at
- * `https://api.example.com/auth/sso/connections/01k…/assertions`. Nothing is
- * read from the request: the settings are read from the configuration on each
- * call (`EndpointSettings`), and a malformed one fails closed with an
- * `InvalidArgumentException`, which the boot check reports first.
+ * Nothing is read from the request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

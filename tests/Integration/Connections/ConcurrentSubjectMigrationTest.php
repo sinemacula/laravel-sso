@@ -30,26 +30,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races a subject migration against a link created through the same connection
- * after the migration's caller prepared its disposition, each in a process of
- * its own with its own database connection, on PostgreSQL and MySQL (SSO-2.13,
- * SSO-8.4).
- *
- * The creation goes first, forced with a signal file and the database's own
- * lock wait, never with timing: it holds the connection's lock until the
- * database shows the migration waiting on it, then commits. The migration runs
- * at the connection's default isolation and again under `REPEATABLE READ`, each
- * plainly and inside a transaction of its own that read the tables first, so a
- * migration that went on from a snapshot without the new link would fail it.
- *
- * The migration never commits with the new link unaccounted for: it is refused
- * with `links_unaccounted`, or, on PostgreSQL under `REPEATABLE READ`, fails to
- * serialise (SQLSTATE 40001) because the creation raised the connection's links
- * version, an accepted, safe outcome there only. Either way the connection and
- * its four links are left as they were.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Races a subject migration against a link created after its disposition was
+ * prepared, across processes. Skipped on SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -96,9 +78,8 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock, a
-     * fresh caller and a recording revocation; create the tables, an OIDC
-     * connection with three links, and the directory the processes use.
+     * Skip where processes cannot share the database, bind the collaborators,
+     * and seed an OIDC connection with three links.
      *
      * @return void
      *
@@ -155,9 +136,8 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * Rows of `[repeatableRead, readFirst]`: whether the migration runs under
-     * `REPEATABLE READ` or the connection's default isolation, and whether it
-     * runs inside a transaction of its own that read the tables first.
+     * Rows of `[repeatableRead, readFirst]`: the migration's isolation, and
+     * whether it reads the tables first in its own transaction.
      *
      * @return iterable<string, array{0: bool, 1: bool}>
      */
@@ -171,11 +151,8 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * A link created while the migration waits for the connection's lock, after
-     * its caller prepared the disposition, is never left behind by a migration
-     * that commits: the migration is refused with `links_unaccounted`, or fails
-     * to serialise on PostgreSQL under `REPEATABLE READ`, and the connection
-     * and its four links stay as they were.
+     * A link created mid-migration is never left behind: `links_unaccounted`,
+     * or a serialisation failure on PostgreSQL.
      *
      * @param  bool  $repeatableRead
      * @param  bool  $readFirst
@@ -209,10 +186,8 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * In a forked process: inside a transaction, create a link through the
-     * connection, which holds the connection's lock; signal, and hold the
-     * transaction until the database shows the migration waiting on the lock;
-     * commit, and report.
+     * In a child: create a link inside a transaction, holding the lock until
+     * the migration waits on it.
      *
      * @param  string  $signal
      * @return array<string, mixed>
@@ -240,10 +215,8 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * In a forked process: under the isolation asked for, inside a transaction
-     * of its own that read the tables first when asked, wait for the creator's
-     * signal and migrate with the disposition prepared before the race, which
-     * relinks the first link and removes the other two; report the outcome.
+     * In a child: wait for the creator, then migrate with the disposition
+     * prepared before the race.
      *
      * @param  string  $signal
      * @param  bool  $repeatableRead
@@ -285,8 +258,7 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * What a migration's result reports: its status, and the reason of a
-     * refusal.
+     * A migration result's status, and the reason of a refusal.
      *
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionResult  $result
      * @return string
@@ -330,9 +302,8 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * Signal the other process, then poll, on the connection that holds the
-     * lock, until another session waits on a lock it holds, or the deadline
-     * passes; answer whether one did.
+     * Signal, then poll until another session waits on a lock this one holds;
+     * answer whether one did.
      *
      * @param  \Illuminate\Database\Connection  $database
      * @param  string  $signal
@@ -380,8 +351,8 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * Fork a process per body, have each run its body on a connection of its
-     * own, and collect what each reported, in order.
+     * Fork a process per body, each on its own connection, and collect what
+     * each reported, in order.
      *
      * @param  list<\Closure(): array<string, mixed>>  $bodies
      * @return list<array<string, mixed>>
@@ -420,10 +391,8 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, run the body, report
-     * what it answered, a PostgreSQL serialisation failure, or the error it
-     * threw (a MySQL deadlock, also SQLSTATE 40001, among them), and end
-     * without running the parent's shutdown.
+     * In a child: open its own connection, run the body, report the outcome,
+     * and exit without the parent's shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): array<string, mixed>  $body
@@ -449,10 +418,8 @@ final class ConcurrentSubjectMigrationTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure: SQLSTATE 40001 on PostgreSQL, where a deadlock is
-     * 40P01 instead. Inside a caller's transaction, Laravel rethrows it as a
-     * `DeadlockException` whose previous error is the query's.
+     * SQLSTATE 40001 on PostgreSQL, where a deadlock is 40P01; inside a
+     * transaction Laravel wraps it in a `DeadlockException`.
      *
      * @param  \Throwable  $exception
      * @return bool

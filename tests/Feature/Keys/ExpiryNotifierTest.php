@@ -28,12 +28,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for sending one key's warning at least once (SSO-2.6,
- * SSO-11.12): the lock order, the marker recorded only after the dispatch, a
- * dispatch that throws recording nothing and being sent again, a dead
- * reporter's claim running out, a live one's being honoured, a duplicate
- * allowed where a loss is not, a key retired or removed along the way, and the
- * marker never going back.
+ * Feature tests for sending one key's expiry warning at least once.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +57,8 @@ final class ExpiryNotifierTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, create the tables and a connection, record events and
-     * capture logs.
+     * Bind a fixed clock, create the tables and a connection, and record events
+     * and logs.
      *
      * @return void
      */
@@ -85,9 +80,8 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * The claim locks the connection, then the key, in the one transaction, and
-     * the marker is written only after the dispatch, with the claim still held
-     * while it runs.
+     * The claim locks the connection then the key in one transaction, and the
+     * marker is written only after the dispatch.
      *
      * @return void
      */
@@ -162,8 +156,7 @@ final class ExpiryNotifierTest extends TestCase
 
     /**
      * A dispatch that throws records nothing and releases the claim, so a later
-     * run sends the warning again; the failure is logged by its class alone. A
-     * silent loss is what this prevents.
+     * run sends again; the failure is logged by class alone.
      *
      * @return void
      */
@@ -200,9 +193,8 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * A reporter that died after it claimed leaves the claim to run out: until
-     * then another run is `claimed` and sends nothing, and from the very second
-     * it ends another run sends the warning.
+     * A dead reporter's claim blocks other runs until it runs out, then the
+     * warning is sent.
      *
      * @return void
      */
@@ -225,9 +217,8 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * A failure recording the marker after the dispatch propagates, the warning
-     * has gone and the claim holds; once it runs out the warning is sent again:
-     * a duplicate is possible, and a loss is not.
+     * A failure recording the marker after the dispatch propagates, and the
+     * warning is sent again once the claim runs out.
      *
      * @return void
      */
@@ -289,8 +280,8 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * A failure taking the claim sends nothing and records nothing: it rolls
-     * back and propagates.
+     * A failure taking the claim rolls back, propagates, and sends and records
+     * nothing.
      *
      * @return void
      */
@@ -312,8 +303,8 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * A key removed, of a connection deleted, or retired past its overlap since
-     * it was read is no longer reportable: nothing is sent, claimed or written.
+     * A key removed, of a deleted connection, or retired past its overlap since
+     * it was read is left alone.
      *
      * @return void
      */
@@ -342,8 +333,8 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * A retiring key with its overlap still running, or none set, and a key of
-     * another state are reportable.
+     * A retiring key within its overlap, or with none set, and a key of another
+     * state are reportable.
      *
      * @return void
      */
@@ -359,8 +350,7 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * A key removed while the warning is dispatched writes no row and raises
-     * nothing: the warning has gone, and that is the worst of it.
+     * A key removed during the dispatch writes no row and raises nothing.
      *
      * @return void
      */
@@ -377,8 +367,8 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * What the locks found decides, not what was read before them: another
-     * reporter that has warned meanwhile is seen, and so is its claim.
+     * What the locks find decides, so another reporter's warning or claim is
+     * seen.
      *
      * @return void
      */
@@ -402,8 +392,8 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * The thresholds changing under the locks so that none is reached is
-     * `not_due`, with nothing sent.
+     * Thresholds changing under the locks so none is reached is `not_due` and
+     * sends nothing.
      *
      * @return void
      */
@@ -418,9 +408,8 @@ final class ExpiryNotifierTest extends TestCase
     }
 
     /**
-     * An old reporter finishing after another's more urgent warning never takes
-     * the marker back, and leaves the other's claim alone: the marker only ever
-     * becomes more urgent.
+     * An old reporter finishing late never makes the marker less urgent or
+     * touches another's claim.
      *
      * @return void
      */

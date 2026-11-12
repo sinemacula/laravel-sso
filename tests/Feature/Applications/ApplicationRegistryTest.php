@@ -9,8 +9,7 @@ use SineMacula\Laravel\Sso\Applications\ApplicationRegistry;
 use Tests\TestCase;
 
 /**
- * Feature tests for the registered applications: found only under exactly their
- * names, read on each call, and a malformed configuration failing closed.
+ * Feature tests for the application registry.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -89,8 +88,7 @@ final class ApplicationRegistryTest extends TestCase
     }
 
     /**
-     * A block that is not an array, or a malformed application asked for, fails
-     * closed; another malformed application is not read by a find.
+     * A malformed block or application fails closed only when it is read.
      *
      * @return void
      */

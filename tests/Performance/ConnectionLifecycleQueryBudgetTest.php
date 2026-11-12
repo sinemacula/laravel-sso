@@ -20,20 +20,7 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 
 /**
- * Deterministic query budgets of the connection lifecycle and the voiding a
- * trust change makes, however many rows each touches:
- *
- * - `disable()`: 2 reads (the connection, then again locked) and 4 writes (the
- *   connection, its unfinished requests, its unredeemed codes, its trust
- *   version); a disabled connection, the 2 reads alone;
- * - `delete()`: 3 reads (the connection, then again locked, then its domain
- *   claims locked) and 9 writes (the requests and codes voided and the trust
- *   version raised; the domains, requests, codes, links and keys deleted; then
- *   the connection);
- * - `update()` with a trust change: the locked read and 4 writes (the
- *   connection, its requests, its codes, its trust version); a change to a
- *   subject setting adds the locking read of its links, and refused for a link
- *   it writes nothing; a change that asks no trust is the read and one write.
+ * Query budgets for the connection lifecycle, however many rows each touches.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,8 +51,8 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     private Connection $connection;
 
     /**
-     * Turn OIDC on, bind a fresh freshness contract, and create an enabled
-     * connection with requests and codes in flight, outside any budget.
+     * Turn OIDC on, answer `fresh` to every freshness check, and make an
+     * enabled connection with requests and codes in flight.
      *
      * @return void
      *
@@ -91,8 +78,8 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
-     * Disabling is two reads and five writes, however much is in flight; a
-     * disabled connection is the two reads alone.
+     * The connection, again locked; then the connection, its requests, codes,
+     * trust version and reservations. Already disabled, the reads alone.
      *
      * @return void
      */
@@ -108,7 +95,8 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
-     * Deleting is three reads and ten writes, however many rows go.
+     * The connection, again locked, and its claims locked; the voiding's four
+     * writes, the owned rows' five deletes and the connection's.
      *
      * @return void
      */
@@ -124,7 +112,8 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
-     * A trust change that alters no subject is the locked read and five writes.
+     * The locked read; the connection, its requests, codes, trust version and
+     * reservations.
      *
      * @return void
      */
@@ -137,8 +126,8 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
-     * A change to a subject setting adds the locking read of the links; with a
-     * link, it is refused and writes nothing.
+     * A subject setting change adds the locking read of the links; with a link,
+     * it is refused and writes nothing.
      *
      * @return void
      */

@@ -5,16 +5,10 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Linking;
 
 /**
- * What the link email contract is asked to match (SSO-8.8): the connection's
- * tenant, the email exactly as the protocol asserted it, unchanged, and its
- * domain canonicalised as SSO-3.1 compares one
- * (`Domains\DomainName::normalize()`: lower case, IDNA to ASCII, no trailing
- * dot). Lower-casing alone would miss part of that rule, and nothing here
- * touches the local part.
+ * What the link email contract is asked to match: the email exactly as
+ * asserted, and its domain as `Domains\DomainName` normalises it.
  *
- * The email is held in a `\SensitiveParameterValue` behind `email()`: a dump
- * shows `[redacted]`, `json_encode()` writes `[redacted]`, and it refuses to be
- * serialised or unserialised.
+ * The email is held wrapped and never dumped, encoded or serialised.
  *
  * @api
  *

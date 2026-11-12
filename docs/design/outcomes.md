@@ -9,21 +9,21 @@ the convention is the shape.
 
 ## Invariants
 
-- **Expected refusals are values.** A refusal of untrusted input (a response, a callback, a code, a verifier) or of
+- Expected refusals are values. A refusal of untrusted input (a response, a callback, a code, a verifier) or of
   policy (a disabled connection, an application that does not allow external sign-in, throttling) is returned, never
   thrown. Exceptions mean a misconfiguration, an invalid argument from application code (`InvalidArgumentException`,
   `LogicException`) or a server error (a database error, a store that cannot answer), which propagates (SSO-11.4).
-- **A result object when success carries a payload or the operation can be throttled.** It is `final readonly`, built
-  only through named constructors (one per outcome), says which outcome it is through `is…()` predicates, carries its
-  payload in nullable public properties set only for the outcome that has it, names a refusal by `reason`
+- A result object answers when success carries a payload or the operation can be throttled. It is `final readonly`,
+  built only through named constructors (one per outcome), says which outcome it is through `is...()` predicates,
+  carries its payload in nullable public properties set only for the outcome that has it, names a refusal by `reason`
   (`Events\Enums\FailureReason`), and carries `retryAfter` when it can be throttled. A result with more than two
   outcomes exposes `status`, a string-backed enum naming every outcome, success included.
-- **An outcome enum when success carries nothing and nothing throttles.** It is string-backed and names its success
+- An outcome enum answers when success carries nothing and nothing throttles. It is string-backed and names its success
   case, so matching on the enum tells success from refusal.
-- **`null` only for "nothing to act on"**, never for success or refusal; `bool` and `int` only for what an idempotent
-  call changed. No union of a success type with a failure type.
-- **Throttling is an outcome**: `rate_limited`, with `retryAfter`.
-- **A value that carries a secret** (a credential, a token request's form, a response body) keeps it private, masks it
+- `null` means only "nothing to act on", never success or refusal; `bool` and `int` only for what an idempotent call
+  changed. No union of a success type with a failure type.
+- Throttling is an outcome: `rate_limited`, with `retryAfter`.
+- A value that carries a secret (a credential, a token request's form, a response body) keeps it private, masks it
   in a dump and refuses to be serialised or unserialised, so it cannot reach a log, an exception, a queue or an event.
 
 ## Success Path
@@ -46,9 +46,9 @@ the same way:
 
 - Every helper is scoped to a tenant: it takes the tenant's opaque id and the connection's id, and a connection of
   another tenant is answered exactly as an unknown one, `connection_not_found`.
-- A change answers a result object (`final readonly`, named constructors, `is…()` predicates) carrying, on success, the
-  summary of what it changed (a connection's summary, or a key's `Keys\KeySummary`), and on refusal a `reason` from the
-  administration group of `FailureReason`: `freshness_required` (the freshness contract answered `stale`),
+- A change answers a result object (`final readonly`, named constructors, `is...()` predicates) carrying, on success,
+  the summary of what it changed (a connection's summary, or a key's `Keys\KeySummary`), and on refusal a `reason` from
+  the administration group of `FailureReason`: `freshness_required` (the freshness contract answered `stale`),
   `connection_not_found`, `key_not_found`, `settings_invalid` (with `violations`, a list of
   `Connections\SettingViolation`, each naming a setting and a `Connections\Enums\ViolationCode`, never a value),
   `protocol_unavailable` and `key_state_conflict`.
@@ -80,7 +80,7 @@ more than two outcomes, a `reason` from `FailureReason` on every refusal, and `r
 wherever a limit can refuse. Each refusal of a start, a completion or a redemption reports exactly one `FlowFailed`
 with the flow and the same reason; a link helper's refusal reports nothing.
 
-- **Starting a flow.** `Flows\AuthorizationRequestService::start()` and `Discovery\DiscoveryService::start()` answer a
+- Starting a flow. `Flows\AuthorizationRequestService::start()` and `Discovery\DiscoveryService::start()` answer a
   `Flows\StartResult`, status `Flows\Enums\StartStatus`: `started` (the reference, the navigation, and the verifier
   the package generated, revealed once in `body()`), `refused` (`reason`) or `rate_limited` (`retryAfter`). Every
   answer's `headers()` carry `Cache-Control: no-store`, and a rate limited one `Retry-After`. The order is fixed:
@@ -91,11 +91,11 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   (`feature_disabled`) before the challenge, and answers a miss (`discovery_no_match`, reported) as `started`, in
   the same shape as a match. A start called inside a transaction open on the storage connection is a
   `LogicException`. See `authorization-requests.md`, `discovery.md` and `flows.md`.
-- **Consuming a request** (`Flows\RequestConsumption`, `@internal`, the completion's only way to consume one) answers a
+- Consuming a request (`Flows\RequestConsumption`, `@internal`, the completion's only way to consume one) answers a
   `Flows\ConsumptionResult`, status `Flows\Enums\ConsumptionStatus`: `consumed`, `refused` (`application_not_allowed`,
   `request_unknown`, `connection_unavailable`, `connection_mismatch` or `request_expired`), `unknown` or `replayed`
   (both `request_unknown`).
-- **Completing a flow.** `Completion\CompletionService` answers a `Completion\CompletionResult`, status
+- Completing a flow. `Completion\CompletionService` answers a `Completion\CompletionResult`, status
   `Completion\Enums\CompletionStatus`: `completed` (the redirect URI, the delivery, the reference and the issued
   handoff), `failed` (a refusal with a trusted redirect target: the reason, redirected to the application), `rejected`
   (a refusal with none: `request_unknown`, `connection_unavailable` or `application_not_allowed`, a 400), `rate_limited`
@@ -107,7 +107,7 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   consumed and unfinished. `Responses\CompletionResponses` turns it into the response value the application answers
   with. A completion called inside a transaction open on the storage connection is a `LogicException`. See
   `completion.md` and `completion-responses.md`.
-- **Redeeming a handoff.** `Handoffs\HandoffRedemption::admit()`, the session-admission path, which needs the caller's
+- Redeeming a handoff. `Handoffs\HandoffRedemption::admit()`, the session-admission path, which needs the caller's
   open transaction on the storage connection, and `redeem()`, standalone only for a `link`, answer a
   `Handoffs\RedemptionResult`, status `Handoffs\Enums\RedemptionStatus`: `redeemed` (the verified result and what the
   code was bound to), `refused` (`handoff_unknown`, `replayed`, `handoff_expired`, `purpose_mismatch`,
@@ -123,21 +123,22 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   `Handoffs\Redemption\Admission`: `isPassed()`, the outcome, the identity it established, the link it resolved
   through and any evidence accepted. `discardReservation()` and `acknowledgeSignIn()` answer nothing: each is a write
   inside the redeemer's transaction, and a call out of turn is a `LogicException`. See `handoffs.md` and `linking.md`.
-- **Links.** `Links\LinkService::list()` answers a list of `Links\LinkSummary`, possibly empty; `remove()` answers a
+- Links. `Links\LinkService::list()` answers a list of `Links\LinkSummary`, possibly empty; `remove()` answers a
   `Links\LinkResult`: `removed` (the summary) or `refused` (`link_not_found`, for another identity's link as for an
   unknown one, or `freshness_required`). `Links\LinkStore::create()` answers a `Links\LinkCreation`, status
   `Links\Enums\LinkCreationStatus`: `created` (the summary), `subject_already_linked` or `link_limit_reached`, each
   refusal naming that reason. `Contracts\Linker::resolve()` answers a `Links\LinkResolution`, status
-  `Links\Enums\LinkResolutionStatus`: `linked` (the identity and the link's id), `absent`, `reserved` or `suspended`
-  (the holder and the link's id). `null` is no answer here, since a suspension or a reservation must never read as
-  unlinked: only `absent` lets a result reserve, be provisioned or take an unlinked handoff. See `links.md` and
-  `linking.md`.
-- **Provisioning.** `Provisioning\ProvisioningHelper::link()`, called by a listener of `Events\ResultUnlinked` with the
+  `Links\Enums\LinkResolutionStatus`: `linked` (the identity and the link's id), `absent`, `reserved`, `suspended` or
+  `scope_unknown` (each of the last two with the holder and the link's id; `scope_unknown` when
+  `Contracts\PrincipalScope` answered `unknown`, refusing this attempt and suspending nothing). `null` is no answer
+  here, since a suspension or a reservation must never read as unlinked: only `absent` lets a result reserve, be
+  provisioned or take an unlinked handoff. See `links.md` and `linking.md`.
+- Provisioning. `Provisioning\ProvisioningHelper::link()`, called by a listener of `Events\ResultUnlinked` with the
   grant it was given, answers a `Provisioning\ProvisioningResult`, status `Provisioning\Enums\ProvisioningStatus`:
   `created` (the summary), `grant_invalid` and `grant_wrong_result` (`provisioning_grant_invalid`),
   `request_unavailable` (`connection_unavailable`), `expired` (`request_expired`), `subject_already_linked` or
   `link_limit_reached`, whose `reason()` names each refusal's reason. See `linking.md`.
-- **Issuing a handoff.** `Contracts\HandoffIssuer::issue()` answers a `Handoffs\IssuedHandoff`: the code, revealed
+- Issuing a handoff. `Contracts\HandoffIssuer::issue()` answers a `Handoffs\IssuedHandoff`: the code, revealed
   once, and its expiry. An issuer that cannot issue throws, and the completion propagates it.
 
 ## Failure / Edge Cases

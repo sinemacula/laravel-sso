@@ -26,12 +26,9 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporter of a link's lifecycle (SSO-8.2, SSO-8.8,
- * SSO-10.3, SSO-10.4): a link created, removed, activated from a reservation,
- * confirmed and suspended, each dispatched once with the connection, its tenant
- * and protocol, the identity, what flow made it where one did, and the IP
- * address and user agent of the client the change was made for, never those of
- * the request being served.
+ * Feature tests for the link lifecycle events.
+ *
+ * The client is the one the change was made for, never the request's.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -50,8 +47,7 @@ final class LinkEventsTest extends TestCase
     private const string USER_AGENT = 'Example/1.0';
 
     /**
-     * Bind a fixed clock and a request being served from another client, create
-     * the tables and record events.
+     * Bind a fixed clock and a request from another client, and record events.
      *
      * @return void
      */
@@ -68,9 +64,8 @@ final class LinkEventsTest extends TestCase
     }
 
     /**
-     * A link created by a flow is reported once with its origin, the flow's
-     * application, purpose and reference, the identity and the client; one an
-     * administrator made, with the acting identity.
+     * A created link is reported once with its origin, flow, identity and
+     * client.
      *
      * @return void
      *
@@ -105,8 +100,7 @@ final class LinkEventsTest extends TestCase
     }
 
     /**
-     * A link removed is reported once, with the identity, the acting identity
-     * and the client.
+     * A removed link is reported once with the identity, actor and client.
      *
      * @return void
      */
@@ -125,9 +119,7 @@ final class LinkEventsTest extends TestCase
     }
 
     /**
-     * A reservation activated is reported as a link created by a verified
-     * domain, then as the activation, both for the `sign_in` that redeemed it
-     * and the client.
+     * An activated reservation is reported as a domain link, then as activated.
      *
      * @return void
      *
@@ -159,8 +151,7 @@ final class LinkEventsTest extends TestCase
     }
 
     /**
-     * A link confirmed is reported once under the `link` purpose with the
-     * client; with no flow given, no application or reference.
+     * A confirmed link is reported once under the `link` purpose.
      *
      * @return void
      *
@@ -188,8 +179,7 @@ final class LinkEventsTest extends TestCase
     }
 
     /**
-     * A link suspended is reported once with the connection it names and the
-     * client; for no client, with no address or user agent.
+     * A suspended link is reported once, without client details when none.
      *
      * @return void
      */
@@ -223,8 +213,8 @@ final class LinkEventsTest extends TestCase
     }
 
     /**
-     * Assert the event's context carries the client given and names the
-     * connection and its tenant.
+     * Assert the context carries the client and names the connection and
+     * tenant.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  string  $connectionId

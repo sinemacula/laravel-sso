@@ -15,49 +15,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ClientKey;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 
 /**
- * Describes what an administrator registers at the OpenID provider for a
- * connection (SSO-5.9), as a JSON object shaped as RFC 7591 client metadata, in
- * this order:
- *
- * - `redirect_uris`: the callback `Contracts\EndpointResolver` builds
- *   (SSO-5.5), never one read from the request;
- * - `response_types` and `grant_types`: the authorisation code flow, the only
- *   one the package runs (SSO-5.4);
- * - `token_endpoint_auth_method`: the connection's client authentication;
- * - with `private_key_jwt` only, `token_endpoint_auth_signing_alg` (the pinned
- *   algorithm, or the default of the key that signs, the current one when there
- *   is one) and exactly one of:
- *   - `jwks_uri` (`describe()`, preferred): the public JWKS URL the resolver
- *     builds and the application serves, so a rotation needs no
- *     re-registration;
- *   - `jwks` (`describeWithInlineKeys()`): the public JWK of each published
- *     `client_assertion` key, for a provider that requires uploaded keys, which
- *     must be registered again whenever a next key is added or made current.
- *
- * `publicKeys()` is the body of that URL: `{"keys": [...]}`, the public JWK of
- * each published `client_assertion` key (`Keys\KeyRing::published()`), the
- * current one and then the next (SSO-2.7), each under the `kid` its private
- * half signs with (`Jose\ClientKey`) and the `alg` it signs under, as
- * `application/jwk-set+json`. The package adds no route for it: the application
- * serves the body it answers.
- *
- * Nothing here holds a client secret, a private member, the client id, or a key
- * id other than the thumbprint. Each body is the same for the same connection,
- * keys and endpoints.
- *
- * A connection is described whatever it holds, enabled or not, complete or not,
- * so an administrator can register it first, but what it does hold must be
- * valid: a client authentication the package does not support, a pinned
- * algorithm that is not one it signs with, or one a published key cannot sign
- * under, is `settings_invalid`, in every document. `private_key_jwt` with no
- * current or next key has nothing to register or serve, and is
- * `connection_unavailable`, as is the public JWKS of a client secret
- * connection. An endpoint configuration that cannot build the URLs, and a
- * published key the package would not sign with, fail closed with an
- * `InvalidArgumentException`.
- *
- * It changes nothing, reports no event, and holds nothing of one call for the
- * next (SSO-11.2).
+ * The RFC 7591 client metadata an administrator registers at the provider, and
+ * the public JWKS the application serves. Incomplete connections are described.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -88,8 +47,8 @@ final readonly class RelyingPartyDescription
     ) {}
 
     /**
-     * Describe the connection's relying party side, naming the public JWKS URL
-     * for `private_key_jwt`.
+     * Describe the relying party side, naming the public JWKS URL for
+     * `private_key_jwt` so a rotation needs no re-registration.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -104,8 +63,8 @@ final readonly class RelyingPartyDescription
     }
 
     /**
-     * Describe the connection's relying party side with the public keys in the
-     * document, for a provider that requires uploaded keys.
+     * Describe the relying party side with the public keys inline; these must
+     * be registered again whenever a key is added or made current.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -120,7 +79,7 @@ final readonly class RelyingPartyDescription
     }
 
     /**
-     * The body of the connection's public JWKS URL.
+     * The body of the public JWKS URL; the package adds no route for it.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -146,8 +105,8 @@ final readonly class RelyingPartyDescription
     }
 
     /**
-     * The client metadata, with what the closure gives for the published keys
-     * under `private_key_jwt`; or why the connection cannot be described.
+     * The client metadata, with the closure's key members under
+     * `private_key_jwt`, or why it cannot be described.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -176,8 +135,8 @@ final readonly class RelyingPartyDescription
     }
 
     /**
-     * The client metadata with the signing algorithm and what the closure gives
-     * for the published keys; or why they cannot be registered.
+     * The client metadata with the signing algorithm and key members, or why
+     * the keys cannot be registered.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -203,8 +162,8 @@ final readonly class RelyingPartyDescription
     }
 
     /**
-     * The connection's published client assertion keys, the current one and
-     * then the next, read together so they are of one state of the ring.
+     * The current then next client assertion keys, read together from one state
+     * of the ring.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return list<\SineMacula\Laravel\Sso\Keys\KeySummary>
@@ -217,9 +176,7 @@ final readonly class RelyingPartyDescription
     }
 
     /**
-     * Why the published keys cannot be registered or served, or `null`: a
-     * pinned algorithm the package does not sign with or one of them cannot
-     * sign under, or no key at all.
+     * Why the published keys cannot be registered or served, or `null`.
      *
      * @param  list<\SineMacula\Laravel\Sso\Keys\KeySummary>  $published
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -239,8 +196,7 @@ final readonly class RelyingPartyDescription
     }
 
     /**
-     * The public JWK of each published key, each under the algorithm it signs
-     * with.
+     * The public JWK of each published key, under the algorithm it signs with.
      *
      * @param  list<\SineMacula\Laravel\Sso\Keys\KeySummary>  $published
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -256,7 +212,7 @@ final readonly class RelyingPartyDescription
     }
 
     /**
-     * The JSON document of the media type.
+     * Encode the document as JSON of the media type.
      *
      * @param  string  $contentType
      * @param  array<string, mixed>  $document

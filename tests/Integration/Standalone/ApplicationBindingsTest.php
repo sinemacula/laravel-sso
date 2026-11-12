@@ -111,16 +111,10 @@ use Tests\Fixtures\Standalone\ApplicationSingleUseStore;
 use Tests\StandaloneTestCase;
 
 /**
- * Each seam an application may replace, replaced on its own, through the
- * package's real orchestration and real protocols (FEATURES "Sensible behaviour
- * alone"): that the package used it, that what the contract promises holds, and
- * that every other seam stayed on its default.
+ * Integration tests replacing each application seam on its own.
  *
- * "On its own" means what the seam's own flow lets it mean: a `link` cannot
- * start without a fresh caller, nor reach its eligibility over a linker that
- * cannot write it, so a test names each seam its flow needs beside the one it
- * proves. An OIDC completion reaches a provider, so its fake fetcher is one of
- * them. Everything else is asserted to be on its default.
+ * Each test also binds the seams its flow needs to reach the one it proves, and
+ * asserts every other is on its default.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -169,10 +163,8 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     private bool $singleUseCreated = false;
 
     /**
-     * Stop Laravel's clock, which the default clock follows, configure the
-     * protocols, the endpoints and an application allowing unlinked handoffs,
-     * and create the tables, the application's sessions, the routes an
-     * application adds and the recording of events. Nothing is bound.
+     * Stop Laravel's clock, which the default clock follows, and configure an
+     * application allowing unlinked handoffs. Nothing is bound.
      *
      * @return void
      */
@@ -222,8 +214,8 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A linker that wraps the store provides `LinkStorage`, so a `link` writes
-     * through it what it resolves, and a `sign_in` then resolves through it.
+     * A linker wrapping the store writes a `link` and resolves a later
+     * `sign_in`.
      *
      * @return void
      */
@@ -252,10 +244,8 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A linker that only resolves can answer a `sign_in`, with nothing stored,
-     * and nothing that writes a link will run over it: a `link` refuses at
-     * completion, and the settings refuse to turn linking on, each naming the
-     * problem and writing nothing.
+     * A resolve-only linker answers a `sign_in`, but a `link` and turning
+     * linking on are refused.
      *
      * @return void
      *
@@ -304,9 +294,8 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * An issuer wrapping the store is asked inside the completion's
-     * transaction, with the connection's trust version as its locked row holds
-     * it, and the code it writes redeems through the package's redemption.
+     * An issuer wrapping the store is asked in the completion's transaction
+     * with the trust version.
      *
      * @return void
      */
@@ -322,8 +311,6 @@ final class ApplicationBindingsTest extends StandaloneTestCase
         self::assertGreaterThan(0, $issuer->levels[0]);
         self::assertSame(hash('sha256', $code), HandoffCode::query()->sole()->code_digest);
 
-        // The grant carries the connection's trust version as its row was
-        // locked, and the store keeps it
         $trustVersion = Connection::query()->whereKey($connection->id)->sole()->trust_version;
 
         self::assertSame($trustVersion, $issuer->grants[0]->trustVersion);
@@ -333,10 +320,9 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * An issuer that fails once it has written its code rolls T3 back whole: no
-     * code, no raise of the flows version, no `completed_at`, no
-     * `HandoffIssued`. What T2 committed before it stays, the replay record
-     * among it.
+     * An issuer that fails after writing rolls the last transaction back.
+     *
+     * What the earlier transaction committed stays, the replay record among it.
      *
      * @return void
      *
@@ -374,9 +360,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * An issuer holding a reservation keeps its binding: the grant names it,
-     * its reference and stored expiry are written to the reservation, and
-     * redeeming the code activates that same row.
+     * An issuer holding a reservation binds it to the code, which activates it.
      *
      * @return void
      */
@@ -414,8 +398,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * An issuer that cannot hold a reservation fails closed: answering no
-     * reference rolls T2 back, with neither the reservation nor the code kept.
+     * An issuer that answers no reservation reference fails closed.
      *
      * @return void
      *
@@ -446,8 +429,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A revocation writing through the storage connection commits with the
-     * change whose transaction it runs in, for a disable as for enforcement.
+     * A revocation through the storage connection commits with its change.
      *
      * @return void
      */
@@ -480,9 +462,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A revocation that fails once it has written rolls back with the change,
-     * for a disable as for enforcement: neither its write nor the change
-     * stands, and nothing is reported.
+     * A revocation that fails after writing rolls back with its change.
      *
      * @return void
      *
@@ -523,9 +503,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A freshness contract is asked with the operation and the age configured
-     * for it: no caller is `stale`, a caller past the age by a second is
-     * `stale`, and one exactly at the age is `fresh`, which lets the change on.
+     * A freshness contract judges the configured age to the second.
      *
      * @return void
      */
@@ -560,11 +538,8 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A single-use store on another connection answers every flow, and the
-     * package's own table holds nothing; what the guide warns of follows: a
-     * record made inside a transaction that rolls back is kept, so the code the
-     * rollback left unconsumed is `replayed`. It fails closed, and is not
-     * undone.
+     * A single-use store on another connection answers every flow but survives
+     * rollbacks.
      *
      * @return void
      */
@@ -604,8 +579,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * An attempt limiter counts every start, completion and redemption, in the
-     * package's counters' place; full, each is refused with its wait.
+     * An attempt limiter counts every step and refuses with its wait when full.
      *
      * @return void
      */
@@ -653,8 +627,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A fetcher carries the token request, and what it answers decides: a
-     * request it fails is `fetch_failed`, with the request stayed consumed.
+     * A fetcher carries the token request; a failed request is `fetch_failed`.
      *
      * @return void
      */
@@ -678,9 +651,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A DNS resolver answers every recheck, by the name it is asked: a record
-     * still there confirms its domain, one gone suspends linking by it, and a
-     * lookup it fails is never read as a record gone, and fails the run.
+     * A DNS resolver answers every recheck; a failed lookup fails the run.
      *
      * @return void
      */
@@ -720,9 +691,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A clock bound in place of the default is the one every time is read from,
-     * whatever Laravel's says: a request expires by it, an event is stamped by
-     * it, and moving it alone moves what is judged.
+     * A bound clock is the one every time is read from.
      *
      * @return void
      */
@@ -756,8 +725,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * An evidence policy is asked once an identity is established, and what it
-     * accepts is what the redeemer is given; an unlinked handoff never asks it.
+     * An evidence policy decides what the redeemer is given.
      *
      * @return void
      */
@@ -791,9 +759,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * An eligibility is asked at completion and again at redemption, so an
-     * identity that may no longer link between them is refused, with the code
-     * spent and no link made.
+     * An eligibility is asked at completion and again at redemption.
      *
      * @return void
      */
@@ -823,9 +789,8 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A deadline contract decides whether the provider's session deadline
-     * limits the application's session: the default says it does, this one that
-     * it does not, and the handoff carries the answer.
+     * A deadline contract decides whether the provider's deadline limits the
+     * session.
      *
      * @return void
      */
@@ -851,7 +816,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * Assert the seams named are off their defaults, and every other is on its
+     * Assert the seams named are off their defaults and every other is on its
      * own.
      *
      * @param  class-string  ...$rebound
@@ -872,8 +837,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * Bind what a `link` needs beside the linker given, a fresh caller and an
-     * eligibility that lets everyone link, and that linker.
+     * Bind the linker with the fresh caller and eligibility a `link` needs.
      *
      * @template TLinker of \SineMacula\Laravel\Sso\Contracts\Linker
      *
@@ -904,7 +868,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * Bind the application's revocation, and the fresh caller a change needs.
+     * Bind the application's revocation and a fresh caller.
      *
      * @return \Tests\Fixtures\Standalone\ApplicationRevocation
      */
@@ -935,9 +899,9 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A usable OIDC connection at the host, its provider answering on the fake
-     * fetcher, which is bound first, since a driver keeps what it was built
-     * with.
+     * A usable OIDC connection on the fake fetcher.
+     *
+     * A driver keeps what it was built with, so the fetcher is bound first.
      *
      * @param  string  $host
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -950,11 +914,8 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * An OIDC connection that reserves a link for the person: linking by a
-     * verified domain on, its issuer classified and acknowledged, the verified
-     * claim of the email's domain last checked now, the store bound, and the
-     * application's answers that a sole match, within the tenant, accepted
-     * before the domain's verification.
+     * An OIDC connection set up to reserve a link for the person by a verified
+     * domain.
      *
      * @param  string  $host
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -1001,8 +962,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
 
     /**
      * Answer the flow through the completion service, so what it throws reaches
-     * the test: a SAML response at the assertion consumer service, or an OIDC
-     * grant at the callback.
+     * the test.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array{navigation: array{url: string}}  $start
@@ -1076,8 +1036,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A linker that resolves every result to the person through one link, and
-     * can write nothing.
+     * A linker that resolves every result through one link and writes nothing.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\Linker
      */
@@ -1117,8 +1076,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A policy that accepts what a result says of when the provider
-     * authenticated, and counts what it is asked.
+     * A policy that accepts the result's authentication time and counts calls.
      *
      * @return object{asked: int}
      */
@@ -1151,8 +1109,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * An eligibility that gives each answer in turn, and counts what it is
-     * asked.
+     * An eligibility that gives each answer in turn and counts calls.
      *
      * @param  \SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict  ...$verdicts
      * @return object{asked: int}
@@ -1192,8 +1149,7 @@ final class ApplicationBindingsTest extends StandaloneTestCase
     }
 
     /**
-     * A contract for an application that keeps its sessions apart from the
-     * provider's, counting what it is asked.
+     * A deadline contract that keeps the session apart from the provider's.
      *
      * @return object{asked: int}
      */

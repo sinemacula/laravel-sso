@@ -8,23 +8,8 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The caps and windows every SAML connection is held to (SSO-6.1, SSO-6.5),
- * read from `sso.saml2` on each call, so nothing is kept across requests
- * (SSO-11.2), each failing closed with an `InvalidArgumentException` naming its
- * key when it is malformed; `[saml2]` reports the same at boot.
- *
- * - `max_response_bytes`: the longest posted `SAMLResponse`, still base64
- *   encoded, 16 KiB to 1 MiB (default 256 KiB), checked before it is decoded.
- * - `max_xml_bytes`: the longest decoded response, 16 KiB to 1 MiB (default 192
- *   KiB), checked before it is parsed.
- * - `max_decrypted_bytes`: the longest assertion decrypted from an
- *   `EncryptedAssertion`, 4 KiB to 1 MiB (default 128 KiB), checked before it
- *   is parsed.
- * - `issue_instant_max_age_seconds`: how old a response's and an assertion's
- *   `IssueInstant` may be, 30 seconds to an hour (default 300), the clock skew
- *   allowed on top.
- *
- * The clock skew itself is `sso.clock.skew_seconds` (`Clock\ClockSkew`).
+ * The SAML size caps and `IssueInstant` window from `sso.saml2`, read on each
+ * call; a malformed value throws naming its key.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

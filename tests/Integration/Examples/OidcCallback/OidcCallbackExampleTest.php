@@ -22,16 +22,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/oidc-callback.md` (SSO-5.6, SSO-7.1, SSO-7.2,
- * SSO-12.5), on the shared example harness: the callback route and its
- * controller run over HTTP, and a connection changed to authenticate at the
- * token endpoint with `client_secret_post`. Each asserts its outcome and a
- * refusal: the callback answers the provider's response with a `302` carrying a
- * code that links the person, and a query that repeats a parameter with a `400`
- * and no redirect, consuming nothing; the changed connection completes a flow
- * through a token endpoint that accepts only `client_secret_post` with the new
- * secret, while the flow already in flight when the secret changed is refused
- * `connection_unavailable`.
+ * Integration tests for the examples of `docs/guides/oidc-callback.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +53,7 @@ final class OidcCallbackExampleTest extends ExampleTestCase
     private IdentityReference $person;
 
     /**
-     * Serve the callback route, and make the tenant's OIDC connection and the
-     * person.
+     * Serve the callback route, and make the OIDC connection and the person.
      *
      * @return void
      */
@@ -80,10 +70,7 @@ final class OidcCallbackExampleTest extends ExampleTestCase
     }
 
     /**
-     * The flow names the route's URL as its `redirect_uri`, and the provider's
-     * response delivered there is answered with a `302` to the application's
-     * redirect URI, carrying a code and the request's reference; the code links
-     * the person.
+     * The route's URL is the `redirect_uri`, and its response carries a code.
      *
      * @return void
      *
@@ -104,10 +91,7 @@ final class OidcCallbackExampleTest extends ExampleTestCase
     }
 
     /**
-     * A query that repeats `state`, even with the same value, is answered with
-     * a `400`, no `Location` and a body that says nothing of why, before any
-     * request is looked up; so the request is not consumed, and the provider's
-     * response delivered whole afterwards still completes it.
+     * A repeated `state` is a `400` that consumes nothing.
      *
      * @return void
      *
@@ -131,11 +115,7 @@ final class OidcCallbackExampleTest extends ExampleTestCase
     }
 
     /**
-     * Once the connection authenticates with `client_secret_post` and the new
-     * secret, a flow completes through a token endpoint that accepts nothing
-     * else, its one token request carrying that client id and secret in the
-     * form; the flow started before the change is refused
-     * `connection_unavailable`, since rotating the secret voided it.
+     * The connection authenticates with `client_secret_post`, voiding flows.
      *
      * @return void
      *
@@ -191,8 +171,7 @@ final class OidcCallbackExampleTest extends ExampleTestCase
     }
 
     /**
-     * Exactly one token request was made, and it authenticated with
-     * `client_secret_post`, the provider's client id and the new secret.
+     * Exactly one token request was made, posting the client id and secret.
      *
      * @return void
      */
@@ -211,8 +190,7 @@ final class OidcCallbackExampleTest extends ExampleTestCase
     }
 
     /**
-     * The redirect the callback answered with: a `302` whose `Location` is the
-     * application's redirect URI.
+     * The `302` to the application's redirect URI the callback answered.
      *
      * @param  \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>  $response
      * @return \SineMacula\Laravel\Sso\Testing\HandoffRedirect

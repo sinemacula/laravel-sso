@@ -14,8 +14,8 @@ apply and a locale without one falls back to English (SSO-12.6).
   `Localization\Enums\Message`. Everything else the package answers with (a failure reason, a validation code, a
   configuration problem, an exception) is a machine-readable code or an operator's message, never translated, and the
   application words the codes itself.
-- Every message is read through `Localization\Messages::get()`, never written inline: a later item that shows a message
-  adds a case and its English line, and reads it through `get()`.
+- Every message is read through `Localization\Messages::get()`, never written inline: a new message adds a case and its
+  English line.
 - The lines live in the package's `lang/{locale}/messages.php`, loaded by the provider under the `sso` namespace, so a
   message's full key is `sso::messages.{case value}` (`sso::messages.post_navigation.title`). The case's value is the
   key in the file, and is stable once released: an application's override names it.
@@ -25,8 +25,8 @@ apply and a locale without one falls back to English (SSO-12.6).
   application's fallback locale (`app.fallback_locale`) as it does for any line. When neither has a line, the message
   is read again in English (`en`), whatever the application's fallback locale is: English is the package's own
   fallback, since English is the one locale it ships.
-- A message with no English line either is a bug in the package, not an answer: `get()` throws a `LogicException`
-  naming the key, rather than showing the key to a person.
+- A message with no English line either is a package bug, not an answer: `get()` throws a `LogicException` naming the
+  key, rather than showing the key to a person.
 - Replacements are Laravel's `:placeholder` replacements (with its `:Placeholder` and `:PLACEHOLDER` forms), passed to
   the translator unchanged.
 - The answer is plain text. The English lines hold no markup, and nothing marks a line as safe: whoever renders a

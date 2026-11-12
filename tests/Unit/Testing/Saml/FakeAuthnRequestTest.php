@@ -16,11 +16,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeAuthnRequest;
 use SineMacula\Laravel\Sso\Testing\Saml\XmlDocument;
 
 /**
- * Unit tests for the `AuthnRequest` the fake identity provider receives: read
- * from an HTTP-Redirect URL, deflated, or an HTTP-POST form, not, each with its
- * `RelayState`; from a start's result, its navigation, or its JSON body;
- * whether it forces authentication; and every message it cannot read refused
- * with a `LogicException` saying why.
+ * Unit tests for the `AuthnRequest` the fake identity provider receives.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

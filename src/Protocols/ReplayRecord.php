@@ -7,23 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols;
 use Carbon\CarbonImmutable;
 
 /**
- * What a protocol driver asks the completion to record once, against replay,
- * after it validated a response (SSO-6.6, SSO-11.5): a key in a namespace of
- * the single-use store, until the latest moment any acceptance rule would still
- * accept the response.
- *
- * A SAML assertion's key is its id, scoped by the connection and the issuer so
- * one tenant's identity provider cannot poison another's: a versioned,
- * length-prefixed encoding of the three, so no choice of values makes two
- * different tuples share a key. Its expiry is the actual last acceptance
- * moment: the earliest of each `NotOnOrAfter` and the `IssueInstant` maximum
- * age, each with the clock skew.
- *
- * The completion records it in its locked transaction, after the driver's
- * validation and before any downstream effect, so an invalid response records
- * nothing; a key already held refuses the completion with `replayed`. The key
- * holds what the response carried, so a dump shows only its namespace and
- * expiry, and it refuses to be serialised.
+ * A single-use key the completion records against replay, held until the last
+ * moment the response could still be accepted.
  *
  * @api
  *
@@ -53,7 +38,7 @@ final readonly class ReplayRecord
         /** The single-use namespace the key is recorded in. */
         public string $namespace,
 
-        // The key; held wrapped
+        // Held wrapped, so not promoted
         #[\SensitiveParameter]
         string $key,
 
@@ -64,7 +49,7 @@ final readonly class ReplayRecord
     }
 
     /**
-     * What a dump shows: the namespace and the expiry, never the key.
+     * Show the namespace and expiry, never the key.
      *
      * @return array<string, string>
      */
@@ -104,8 +89,8 @@ final readonly class ReplayRecord
     }
 
     /**
-     * A SAML assertion's id, scoped by the connection and the issuer, until the
-     * moment given.
+     * A SAML assertion id, scoped by connection and issuer so one tenant's
+     * identity provider cannot poison another's.
      *
      * @param  string  $connectionId
      * @param  string  $issuer
@@ -136,8 +121,7 @@ final readonly class ReplayRecord
     }
 
     /**
-     * The versioned, length-prefixed encoding of the parts: the version, then
-     * each part as its length in bytes, a colon and the part itself.
+     * Versioned, length-prefixed encoding, so no two tuples share a key.
      *
      * @param  list<string>  $parts
      * @return string

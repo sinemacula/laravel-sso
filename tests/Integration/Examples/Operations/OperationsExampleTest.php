@@ -24,16 +24,7 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/operations.md` (SSO-2.6, SSO-11.11, SSO-11.12,
- * SSO-12.5), on the shared example harness: once Artisan starts, the schedule
- * its `bootstrap/app.php` wires holds the four operations on their cadences,
- * none with a cache mutex unless the application opts in, none whose cadence is
- * left to the application, and none while no protocol is on; and the listener
- * on `KeyNearingExpiry` tells the security team of a certificate nearing its
- * end, with the connection, the fingerprint, the end of validity and the
- * threshold reached, once for each more urgent threshold, while a certificate
- * not yet within the largest threshold is not warned of. A dispatch that throws
- * fails the run and leaves the warning to the next.
+ * Examples of `docs/guides/operations.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,8 +38,8 @@ use Tests\Integration\Examples\ExampleTestCase;
 final class OperationsExampleTest extends ExampleTestCase
 {
     /**
-     * Once Artisan starts, the schedule the guide wires holds each operation
-     * once, on its default cadence, and none takes a cache mutex.
+     * The guide's schedule holds each operation once, on its default cadence,
+     * with no cache mutex.
      *
      * @return void
      */
@@ -63,8 +54,8 @@ final class OperationsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A cadence set is the one scheduled, and a task whose cadence is `null` or
-     * empty is left to the application's own schedule.
+     * A configured cadence is scheduled, and a `null` or empty one is left to
+     * the application.
      *
      * @return void
      */
@@ -81,8 +72,8 @@ final class OperationsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Opting in to the cache mutexes runs each operation on one server and
-     * without overlapping, its mutex expiring after the minutes set.
+     * Opting in to cache mutexes runs each operation on one server without
+     * overlapping.
      *
      * @return void
      */
@@ -100,8 +91,8 @@ final class OperationsExampleTest extends ExampleTestCase
     }
 
     /**
-     * While no protocol is on, the schedule holds none of the operations, since
-     * the tables they read may not exist yet.
+     * Nothing is scheduled while no protocol is on, since the tables may not
+     * exist yet.
      *
      * @return void
      */
@@ -114,11 +105,7 @@ final class OperationsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Six days before the provider's certificate ends, the report tells the
-     * security team once, for the 7-day threshold, with the connection, the
-     * fingerprint and the end of validity; a second run sends nothing more;
-     * once the validity has ended, the 0-day warning follows. Thirty-one days
-     * before, nothing is listed or sent.
+     * The security team is told once for each more urgent threshold.
      *
      * @return void
      */
@@ -162,9 +149,8 @@ final class OperationsExampleTest extends ExampleTestCase
     }
 
     /**
-     * When telling the team throws, as a mailer that cannot send does, the key
-     * ends `failed` and the run exits `1`; the warning is not recorded as sent,
-     * so the next run sends it.
+     * A warning that could not be sent fails the run and is sent by the next
+     * one.
      *
      * @return void
      */
@@ -197,8 +183,7 @@ final class OperationsExampleTest extends ExampleTestCase
     }
 
     /**
-     * What the security team was told, in order: the address, the connection,
-     * the fingerprint, the end of validity and the threshold of each.
+     * What the security team was told, in order.
      *
      * @return list<array{0: mixed, 1: ?string, 2: string, 3: string, 4: int}>
      */
@@ -231,7 +216,7 @@ final class OperationsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The certificate the connection trusts, as the key service lists it.
+     * The certificate the connection trusts.
      *
      * @param  string  $connectionId
      * @return \SineMacula\Laravel\Sso\Keys\KeySummary
@@ -249,11 +234,9 @@ final class OperationsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Configure the application under test with the guide's
-     * `bootstrap/app.php`, start Artisan as `php artisan` does, and answer each
-     * operation the schedule then holds, in order, as its command, its cadence,
-     * whether it runs on one server, and the minutes its mutex expires after,
-     * or `null` when it may overlap.
+     * Start Artisan under the guide's `bootstrap/app.php` and answer each
+     * scheduled operation's command, cadence, one-server flag and mutex
+     * minutes.
      *
      * @return list<array{0: string, 1: string, 2: bool, 3: ?int}>
      */

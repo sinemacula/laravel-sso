@@ -14,8 +14,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Unit tests for the default linker, which links nothing: every result, for any
- * client, resolves to `absent`.
+ * Unit tests for the default linker, which resolves everything to `absent`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

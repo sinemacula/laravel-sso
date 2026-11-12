@@ -5,9 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\IntegratingWithLaravelIam;
 
 /**
- * A stand-in for `laravel-authentication`'s sign-in result (its PR #127), which
- * this package does not install: a session established, or the reason
- * authentication refused one.
+ * A stand-in for `laravel-authentication`'s sign-in result.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

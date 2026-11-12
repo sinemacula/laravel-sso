@@ -26,15 +26,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the bearer confirmation a SAML assertion is accepted by
- * (SSO-6.4 to SSO-6.6): the response's own `InResponseTo` bound to the consumed
- * request, or absent for the unsolicited profile; one bearer confirmation
- * satisfying every rule on its own (its data and `Recipient`, its
- * `NotOnOrAfter` with the skew at, under and over its bound, no `NotBefore`,
- * its `InResponseTo`), never several combined; no bearer confirmation naming
- * another request; other methods ignored; the latest-expiring of the satisfying
- * ones chosen, compared to the microsecond, the first on a tie; and the reason
- * of the candidate that got furthest otherwise.
+ * Feature tests for the bearer confirmation a SAML assertion is accepted by.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -138,9 +130,7 @@ final class BearerConfirmationsTest extends TestCase
     }
 
     /**
-     * A bearer confirmation must carry data with the assertion consumer service
-     * as its `Recipient`, a `NotOnOrAfter` not passed with the skew, no
-     * `NotBefore`, and the consumed request's id as its `InResponseTo`.
+     * One bearer confirmation must satisfy every rule on its own.
      *
      * @param  array<string, mixed>  $changes
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -167,9 +157,8 @@ final class BearerConfirmationsTest extends TestCase
     }
 
     /**
-     * No subject, no confirmation and confirmations of other methods only are
-     * each `recipient_mismatch`; a confirmation of another method that would
-     * satisfy every rule is never chosen.
+     * Only bearer confirmations count, and anything else is
+     * `recipient_mismatch`.
      *
      * @return void
      */
@@ -186,10 +175,8 @@ final class BearerConfirmationsTest extends TestCase
     }
 
     /**
-     * A bearer confirmation naming another request, compared exactly, refuses
-     * the assertion with `request_mismatch` even beside one that satisfies
-     * every rule, wherever it stands; one naming no request, or a confirmation
-     * of another method naming another request, refuses nothing.
+     * A bearer confirmation naming another request is `request_mismatch` even
+     * beside one that satisfies every rule.
      *
      * @return void
      */
@@ -210,9 +197,7 @@ final class BearerConfirmationsTest extends TestCase
     }
 
     /**
-     * Two confirmations that each satisfy only some rules are never combined:
-     * one with the recipient but no `NotOnOrAfter`, one with a `NotOnOrAfter`
-     * but another recipient.
+     * Two confirmations that each satisfy only some rules are never combined.
      *
      * @return void
      */
@@ -285,9 +270,8 @@ final class BearerConfirmationsTest extends TestCase
     }
 
     /**
-     * Two confirmations ending within one second are told apart to the
-     * microsecond: the later, half a second or a single microsecond on, is
-     * chosen wherever it stands, and only an exact tie goes to the first.
+     * Confirmation expiries are compared to the microsecond, and only an exact
+     * tie goes to the first.
      *
      * @return void
      */

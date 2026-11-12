@@ -45,14 +45,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * The events a completion reports (SSO-10.1, SSO-10.2, SSO-10.4, SSO-9.8):
- * `ResultVerified` then `HandoffIssued` for a completion; `ResultVerified` then
- * exactly one `FlowFailed` for a refusal once the response was verified;
- * exactly one `FlowFailed` for any earlier refusal, a full limit included; each
- * with the flow, the reason and as much context as the completion had
- * established, the identity being the linked one for a `sign_in` and the one
- * the request was started for otherwise; and never a subject, an attribute, the
- * protocol state, a verifier, a challenge or a code.
+ * Feature tests for the events a completion reports and their context.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -99,9 +92,7 @@ final class CompletionEventSequenceTest extends TestCase
     private ?IdentityReference $linked = null;
 
     /**
-     * Bind a fixed clock, the recording issuer, a linker and a request from an
-     * IP address and a user agent, register the application and the driver,
-     * create the tables and a usable connection, and record events.
+     * Bind a fixed clock, the issuer, a linker and a request; record events.
      *
      * @return void
      */
@@ -140,9 +131,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A completed `sign_in` reports `ResultVerified` then `HandoffIssued`, each
-     * with the connection, its tenant and protocol, the application, the
-     * purpose, the reference and the linked identity, and no failure.
+     * A completed `sign_in` reports `ResultVerified` then `HandoffIssued`.
      *
      * @return void
      */
@@ -161,9 +150,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A refusal once the response was verified reports `ResultVerified`, then
-     * exactly one `FlowFailed` with the reason: an unlinked `sign_in` names no
-     * identity.
+     * A refusal after verification reports `ResultVerified`, then one failure.
      *
      * @return void
      */
@@ -184,8 +171,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A refusal by enforcement, after the link resolved, names the linked
-     * identity.
+     * An enforcement refusal names the linked identity.
      *
      * @return void
      */
@@ -219,8 +205,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A connection disabled while the response was validated reports
-     * `ResultVerified`, then exactly one `FlowFailed`.
+     * A connection disabled during validation reports one failure after it.
      *
      * @return void
      */
@@ -241,8 +226,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A response the driver refuses reports exactly one `FlowFailed`, with the
-     * connection and the request, and no verified result.
+     * A response the driver refuses reports one failure with the request.
      *
      * @return void
      */
@@ -261,8 +245,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A refused consumption reports exactly one `FlowFailed`, with the
-     * connection and the request.
+     * A refused consumption reports one failure with the request.
      *
      * @return void
      */
@@ -279,8 +262,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A response no request matches reports exactly one `FlowFailed`, with the
-     * connection alone.
+     * A response no request matches reports one failure with the connection.
      *
      * @return void
      */
@@ -295,8 +277,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A method the endpoint does not take and an unknown connection each report
-     * exactly one `FlowFailed`, with nothing established.
+     * A refusal before the connection is read reports nothing established.
      *
      * @return void
      */
@@ -317,8 +298,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A connection whose protocol completes at the other endpoint reports one
-     * `FlowFailed` for the assertion flow, with the connection.
+     * A protocol of the other endpoint reports one assertion-flow failure.
      *
      * @return void
      */
@@ -342,8 +322,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A full limit reports exactly one `FlowFailed(rate_limited)`, with nothing
-     * established.
+     * A full limit reports exactly one `FlowFailed(rate_limited)`.
      *
      * @return void
      */
@@ -363,8 +342,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A completion at the assertion consumer service reports the assertion
-     * flow.
+     * A completion at the assertion consumer service reports that flow.
      *
      * @return void
      */
@@ -387,8 +365,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A `link` reports the identity it was started for, whatever the link
-     * resolved to.
+     * A `link` reports the identity it was started for.
      *
      * @return void
      */
@@ -408,8 +385,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` reports the identity and the session it was started
-     * for.
+     * A `reauthenticate` reports the identity and session it was started for.
      *
      * @return void
      */
@@ -432,8 +408,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * No event carries the subject, an attribute, the protocol state or its
-     * digest, the challenge, the PKCE verifier or the code.
+     * No event carries a secret, the subject or an attribute.
      *
      * @return void
      */
@@ -467,8 +442,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * The fields of a completion that consumed its request: the connection, the
-     * application, the purpose and the reference.
+     * The fields of a completion that consumed its request.
      *
      * @return array<string, ?string>
      */
@@ -498,8 +472,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * The whole context an event carries: the time and the client, the fields
-     * given, and `null` for every other.
+     * The whole context an event carries, `null` for every field not given.
      *
      * @param  array<string, ?string>  $fields
      * @return array<string, ?string>
@@ -560,9 +533,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * Store a `sign_in` request for `web` through the connection, started with
-     * the state, the reference, the challenge and the PKCE verifier, unless the
-     * attributes say otherwise.
+     * Store a `sign_in` request for `web` unless the attributes say otherwise.
      *
      * @param  array<string, mixed>  $attributes
      * @return \SineMacula\Laravel\Sso\Models\AuthorizationRequest
@@ -615,8 +586,7 @@ final class CompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * The client every action of the test is taken for: the browser's IP
-     * address and user agent, which its events carry.
+     * The client the test acts for, which its events carry.
      *
      * @return \SineMacula\Laravel\Sso\Http\ClientContext
      */

@@ -115,11 +115,15 @@ package registers its settings and its check without editing another's (SSO-12.2
 - `src/Protocols/Saml2/Library/ElementRegistries.php`: the directory the XML library loads its registries from.
 - `src/Config/Checks/FeaturesCheck.php`, `ExtensionsCheck.php`, `StorageCheck.php`, `EndpointsCheck.php`,
   `ApplicationsCheck.php`.
-- The checks of later parts, each beside the settings it reads: `src/Freshness/FreshnessCheck.php` (`[freshness]`),
-  `src/Keys/KeysCheck.php` (`[keys]`), `src/Pruning/PruningCheck.php` (`[pruning]`),
-  `src/Operations/OperationsCheck.php` (`[operations]`), `src/Connections/MappingCheck.php` (`[mapping]`),
-  `src/Domains/DomainsCheck.php` (`[domains]`), `src/Flows/FlowsCheck.php` (`[flows]`),
-  `src/Linking/LinkingCheck.php` (`[linking]`).
+- The other checks, each beside the settings it reads: `src/Clock/ClockCheck.php` (`[clock]`),
+  `src/Secrets/SecretsCheck.php` (`[secrets]`), `src/Fetching/FetcherCheck.php` (`[fetcher]`),
+  `src/Logging/LoggingCheck.php` (`[logging]`), `src/RateLimiting/RateLimitsCheck.php` (`[rate_limits]`),
+  `src/Freshness/FreshnessCheck.php` (`[freshness]`), `src/Keys/KeysCheck.php` (`[keys]`),
+  `src/Connections/MappingCheck.php` (`[mapping]`), `src/Domains/DomainsCheck.php` (`[domains]`),
+  `src/Flows/FlowsCheck.php` (`[flows]`), `src/Linking/LinkingCheck.php` (`[linking]`),
+  `src/Protocols/Saml2/Saml2Check.php` (`[saml2]`), `src/Protocols/Oidc/OidcCheck.php` (`[oidc]`),
+  `src/Metadata/MetadataCheck.php` (`[metadata]`), `src/Pruning/PruningCheck.php` (`[pruning]`),
+  `src/Operations/OperationsCheck.php` (`[operations]`).
 - `src/Console/CheckConfigurationCommand.php`; `src/SsoServiceProvider.php`: `CONFIGURATION_CHECKS`,
   `WORKER_COMMANDS`, `checkConfiguration()`, `checkConfigurationBeforeWork()`; `config/sso.php`.
 

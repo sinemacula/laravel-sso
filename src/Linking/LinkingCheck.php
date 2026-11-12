@@ -12,7 +12,7 @@ use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 
 /**
- * Checks `sso.linking` at boot, while the package is in use (SSO-12.3).
+ * Checks `sso.linking` at boot, while the package is in use.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,9 +48,7 @@ final readonly class LinkingCheck implements ConfigurationCheck
     }
 
     /**
-     * The verified response's validity, the evidence's maximum age, the shared
-     * issuers, and, while the `domain_linking` feature is on, that the bound
-     * linker is backed by link storage.
+     * Read each linking setting, and check the linker's storage.
      *
      * @return list<\Closure(): mixed>
      */

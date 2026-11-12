@@ -7,20 +7,8 @@ namespace SineMacula\Laravel\Sso\Results;
 use Carbon\CarbonImmutable;
 
 /**
- * The identity provider's authentication context, as its validated assertion
- * stated it (SSO-6.10, SSO-8.1, SSO-8.7): when the person authenticated
- * (`AuthnInstant`, `auth_time`), how (`amr`), at what class (`acr`, or the SAML
- * `AuthnContextClassRef`), the provider session's id (`SessionIndex`, the ID
- * token's `sid`) and the provider session's deadline (`SessionNotOnOrAfter`).
- *
- * Every part is carried as asserted, and never treated as satisfying the
- * application's further factor: the evidence contract decides that. Each string
- * is 1 to 1024 bytes, each method 1 to 255, and at most 32 methods are kept; a
- * part the assertion did not state is `null` (or no methods).
- *
- * `toArray()` is the stored form, holding every value. `json_encode()`, and a
- * logger's normaliser that falls back to it, write only which parts were stated
- * and how many methods, never a value the provider asserted.
+ * The identity provider's authentication context as asserted; the evidence
+ * contract, not this, decides whether it satisfies a further factor.
  *
  * @api
  *
@@ -57,7 +45,7 @@ final readonly class AuthenticationContext implements \JsonSerializable
         /** The authentication methods asserted (`amr`), in order. */
         public array $methods = [],
 
-        /** The authentication context class asserted (`acr`, `AuthnContextClassRef`). */
+        /** The context class (`acr`, `AuthnContextClassRef`). */
         public ?string $contextClass = null,
 
         /** The provider session's id (`SessionIndex`, `sid`). */
@@ -72,7 +60,7 @@ final readonly class AuthenticationContext implements \JsonSerializable
     }
 
     /**
-     * The context as stored, with snake_case keys.
+     * The stored form, holding every value.
      *
      * @return array{authenticated_at: ?string, methods: list<string>, context_class: ?string, provider_session_id: ?string, provider_session_deadline: ?string}
      */
@@ -88,8 +76,7 @@ final readonly class AuthenticationContext implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: each part as `[redacted]` when stated and
-     * `null` when not, and the number of methods, never a value.
+     * Which parts were stated and how many methods, never a value.
      *
      * @return array{authenticated_at: ?string, methods: int, context_class: ?string, provider_session_id: ?string, provider_session_deadline: ?string}
      */
@@ -106,8 +93,7 @@ final readonly class AuthenticationContext implements \JsonSerializable
     }
 
     /**
-     * The context `toArray()` stored, read back from the package's own
-     * storage; never from client input.
+     * Restore `toArray()` output from package storage, never client input.
      *
      * @param  array<array-key, mixed>  $stored
      * @return self
@@ -130,8 +116,7 @@ final readonly class AuthenticationContext implements \JsonSerializable
     }
 
     /**
-     * Refuse more methods than are kept, or a method that is not 1 to 255
-     * bytes.
+     * Refuse too many methods, or one of the wrong length.
      *
      * @param  array<array-key, mixed>  $methods
      * @return void

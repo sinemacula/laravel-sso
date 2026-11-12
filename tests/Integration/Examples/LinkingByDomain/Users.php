@@ -9,11 +9,8 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * The example application's users, as its linking contracts and its principal
- * mutation read them (SSO-8.8): each user is named to the package by the
- * application's morph class and key, and their row in the application's own
- * `users` table is the guard every writer of their principals, and every writer
- * that revokes one of their memberships, takes, after the package's locks.
+ * The example application's users, whose row lock is the guard every writer of
+ * their principals takes after the package's locks.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,8 +34,7 @@ final class Users
     private function __construct() {}
 
     /**
-     * Take the user's guard, a locking read of their row on the package's
-     * storage connection, held until the transaction ends; answer whether the
+     * Lock the user's row until the transaction ends, answering whether the
      * identity is one of the application's users.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity

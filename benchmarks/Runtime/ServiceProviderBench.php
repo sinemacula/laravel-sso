@@ -12,9 +12,8 @@ use PhpBench\Attributes\Warmup;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
 
 /**
- * PHPBench suite for registering and booting the package's service provider,
- * which an application pays on every request it does not serve from a
- * long-running worker.
+ * Registering and booting the service provider, paid on every non-worker
+ * request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

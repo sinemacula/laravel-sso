@@ -7,10 +7,8 @@ namespace SineMacula\Laravel\Sso\RateLimiting;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * Whether an attempt at a limited flow may go ahead (SSO-11.8): allowed, and
- * counted; or rate limited, with the seconds until it may be tried again and
- * nothing counted. Throttling is an outcome, never an exception; the flow
- * reports it with `reason` and answers with `retryAfter`.
+ * Whether an attempt at a limited flow may go ahead; a refused attempt is not
+ * counted.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,7 +26,7 @@ final readonly class AttemptResult
         /** `rate_limited` for a refused attempt, `null` for an allowed one. */
         public ?FailureReason $reason = null,
 
-        /** Seconds, at least 1, until the attempt may be tried again, for a refused attempt only. */
+        /** Seconds until a refused attempt may be retried, at least 1. */
         public ?int $retryAfter = null,
     ) {}
 

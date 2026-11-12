@@ -22,13 +22,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the authentication a verified SAML assertion states
- * (SSO-6.10, SSO-5.10): exactly one `AuthnStatement`; its instant not in the
- * future beyond the skew; the maximum authentication age, set and not; a
- * `reauthenticate` request's start; the required context classes; the session
- * deadline never extended by the skew; the stored lengths of the session index
- * and class; each at, one under and one over its bound; the context mapped
- * exactly; and the order the rules answer in.
+ * Feature tests for the authentication a verified SAML assertion states.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -133,9 +127,8 @@ final class AuthenticationRulesTest extends TestCase
     }
 
     /**
-     * Rows of `[instant, maxAge, reason]`: the `AuthnInstant` in seconds from
-     * now, the maximum authentication age, and the refusal; the skew is 60
-     * seconds.
+     * Rows of `[instant, maxAge, reason]`, the instant in seconds from now,
+     * with a 60-second skew.
      *
      * @return iterable<string, array{0: int, 1: ?int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -171,9 +164,8 @@ final class AuthenticationRulesTest extends TestCase
     }
 
     /**
-     * Rows of `[purpose, instant, reason]`: the request's purpose, the
-     * `AuthnInstant` in seconds from the request's start (ten minutes ago), and
-     * the refusal.
+     * Rows of `[purpose, instant, reason]`, the instant in seconds from a start
+     * ten minutes ago.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -279,9 +271,8 @@ final class AuthenticationRulesTest extends TestCase
     }
 
     /**
-     * The rules answer in their order: what the context cannot hold, the future
-     * instant, the maximum age, the reauthentication, the class, then the
-     * session.
+     * The rules answer in order: context, future instant, maximum age,
+     * reauthentication, class, session.
      *
      * @return void
      */

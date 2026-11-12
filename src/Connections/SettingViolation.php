@@ -7,13 +7,9 @@ namespace SineMacula\Laravel\Sso\Connections;
 use SineMacula\Laravel\Sso\Connections\Enums\ViolationCode;
 
 /**
- * One setting a management helper refused, and why (SSO-2.11): the setting's
- * name, as a dotted path from the top of what was given (`sso_url`, `scopes.2`,
- * `attribute_mapping.email`, `extra_parameters.prompt`), and its
- * machine-readable code.
+ * One setting a management helper refused, by dotted path and code.
  *
- * It names the setting and never echoes its value, so a refusal can be shown,
- * logged or returned whatever was given, a secret included.
+ * Never carries the value, so it is safe to show or log even for a secret.
  *
  * @api
  *
@@ -35,7 +31,7 @@ final readonly class SettingViolation implements \JsonSerializable
      */
     public function __construct(
 
-        /** The dotted path of the setting refused. */
+        /** The dotted path, such as `scopes.2` or `attribute_mapping.email`. */
         public string $setting,
 
         /** Why it was refused. */

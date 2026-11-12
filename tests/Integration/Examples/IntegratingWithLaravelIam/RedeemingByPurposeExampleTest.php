@@ -25,21 +25,8 @@ use Tests\Integration\Examples\ExampleTestCase;
 use Tests\Integration\Examples\IntegratingWithLaravelIam\Contracts\ExternalIdentityLinks;
 
 /**
- * The redemption examples of `docs/guides/integrating-with-laravel-iam.md`
- * (SSO-9.2, SSO-9.9, SSO-12.5), on the shared example harness: an adapter's
- * `sign_in` endpoint admitting the code and calling authentication's external
- * sign-in in one transaction, and a `link` redeemed standalone with the caller.
- *
- * `laravel-authentication` is not installed here, so its `Auth` facade and its
- * external sign-in are stand-ins (`Auth`, whose `sessions()` the default guard,
- * `ExternalGuard`, answers with `ExternalSessions`) that ask the adapter's link
- * contract and establish a session or refuse, as its PR #127 does. Each example
- * asserts its outcome and its refusals: a session established keeps the
- * captured provenance as its provider context, which projects through JSON as
- * it went in; the package's refusal commits and spends the code, while a
- * refusal by authentication and an unlinked result roll back and leave the code
- * unspent; a `link` redeemed by another caller than the one that started it
- * creates nothing.
+ * The redemption examples of `docs/guides/integrating-with-laravel-iam.md`.
+ * `laravel-authentication` is not installed, so its API runs against stand-ins.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,16 +49,14 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
     /** @var \SineMacula\Laravel\Sso\Identities\IdentityReference The person the application knows. */
     private IdentityReference $person;
 
-    /** @var \Tests\Integration\Examples\IntegratingWithLaravelIam\ExternalSessions The stand-in for authentication's external sign-in. */
+    /** @var \Tests\Integration\Examples\IntegratingWithLaravelIam\ExternalSessions Authentication's stand-in. */
     private ExternalSessions $authentication;
 
-    /** @var \ArrayObject<int, \SineMacula\Laravel\Sso\Events\FlowFailed|\SineMacula\Laravel\Sso\Events\HandoffRedeemed> What the package reported of each redemption. */
+    /** @var \ArrayObject<int, \SineMacula\Laravel\Sso\Events\FlowFailed|\SineMacula\Laravel\Sso\Events\HandoffRedeemed> Each redemption's event. */
     private \ArrayObject $reported;
 
     /**
-     * Make the provider, its connection and the person; bind the adapter's
-     * link contract and the stand-in for authentication behind the default
-     * guard; and listen for what each redemption reports.
+     * Bind the adapter's link contract and authentication's stand-in.
      *
      * @return void
      */
@@ -104,11 +89,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
     }
 
     /**
-     * The code is admitted, then authentication signs the person in through the
-     * exact link the redemption resolved, with the result built from the
-     * redemption alone, its provider context the captured provenance's stored
-     * form, which projects the same after JSON; one `HandoffRedeemed` follows
-     * the commit.
+     * A sign-in is admitted, then established by authentication.
      *
      * @return void
      *
@@ -151,9 +132,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
     }
 
     /**
-     * A refusal by the package commits: the code is spent, so the right
-     * verifier afterwards is `replayed`, each refusal reports one `FlowFailed`,
-     * and authentication is never asked.
+     * A refusal by the package commits and spends the code.
      *
      * @return void
      *
@@ -179,9 +158,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
     }
 
     /**
-     * A refusal by authentication is thrown out of the transaction, which rolls
-     * the consumption back: nothing is reported, and once authentication
-     * accepts, the same code and verifier sign the person in.
+     * A refusal by authentication rolls back and leaves the code unspent.
      *
      * @return void
      *
@@ -212,10 +189,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
     }
 
     /**
-     * An admitted sign-in with no linked identity, which an application that
-     * allows unlinked handoffs is issued a code for, is refused by the adapter
-     * and rolled back: authentication is never asked, nothing is reported, and
-     * the code stays unspent, so presenting it again is refused the same way.
+     * An admitted sign-in with no linked identity is rolled back.
      *
      * @return void
      *
@@ -237,9 +211,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `link` code redeemed standalone, as the person who started the flow,
-     * creates the link and commits before it answers: it is redeemed, not
-     * admitted, and establishes no session.
+     * A `link` code redeemed standalone by its caller creates the link.
      *
      * @return void
      *
@@ -271,8 +243,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `link` code redeemed by another caller than the person who started the
-     * flow is refused as `identity_mismatch`, and links nobody.
+     * A `link` code redeemed by another caller is refused.
      *
      * @return void
      *
@@ -301,8 +272,7 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run the adapter's `sign_in` redemption, as its endpoint does, and answer
-     * what it answers.
+     * Run the adapter's `sign_in` redemption.
      *
      * @param  string  $application
      * @param  string  $connectionId

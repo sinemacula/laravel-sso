@@ -24,11 +24,9 @@ enum ExpiryNotice: string
     // It is within the window listed, but has reached no threshold
     case NOT_DUE = 'not_due';
 
-    // Another reporter holds it and is sending the warning; if that reporter
-    // dies, a later run sends it when the claim runs out
+    // Another reporter holds it; a later run sends it if the claim runs out
     case CLAIMED = 'claimed';
 
-    // The dispatch threw, so nothing was recorded and a later run sends it
-    // again
+    // The dispatch threw; nothing was recorded and a later run sends it again
     case FAILED = 'failed';
 }

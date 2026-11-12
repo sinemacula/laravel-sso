@@ -3,7 +3,7 @@
 These notes document the package's security and lifecycle contracts that are easy to miss if you only read the
 quick-start material or skim the test suite.
 
-Each note is intentionally short and follows the same structure:
+Each note follows the same structure:
 
 - `Purpose`
 - `Invariants`
@@ -17,7 +17,7 @@ A note that records a choice of library (`saml-library.md`, `jose-library.md`) f
 `Results`, `Findings`, `Decision`, `Implementation Anchors` and `Change Triggers` instead, since it describes a
 decision and its evidence rather than a contract.
 
-The current note set is:
+The notes are:
 
 - `connections.md`: what a connection holds, the protocol driver contract and its registry, what makes a connection
   usable, and presets.
@@ -90,8 +90,9 @@ The current note set is:
   authorisation code request; the callback and the token request; the ID token's validation; UserInfo, provider tokens
   and the email; and what an administrator registers at the provider, each on the driver `oidc-driver.md` and the
   adapter `jose-adapter.md` lay down.
-- `operations.md`: the operations schedule and its opt-in cache mutexes, pruning and its retention, batches, work cap and
-  partial progress, the expiry warnings and their at-least-once delivery, and who cleans up an application's own store.
+- `operations.md`: the operations schedule and its opt-in cache mutexes, pruning and its retention, batches, work cap
+  and partial progress, the expiry warnings and their at-least-once delivery, and who cleans up an application's own
+  store.
 - `long-running-processes.md`: what the package promises of the processes it runs in and how the suite proves it: no
   session, nothing kept between requests or jobs, the write connection, database errors as server errors, and a cache
   it never needs.
@@ -103,9 +104,10 @@ The current note set is:
 - `standalone-acceptance.md`: how the package is shown to stand alone: what each seam's default does with no sibling
   installed, what an application must supply to go further, and how default and adapter acceptance are kept apart.
 - `requirements.md`: the requirement closure matrix: every clause of the requirements, split into obligations that can
-  each be proven on their own, with the code, the test and assertion, and the documentation behind each, its status,
-  and the recorded decision behind each reconciled row. It follows its own structure (`Purpose`, `Summary`, `Reading
-  the Matrix`, the twelve sections and the context, `Change Triggers`) rather than the one above.
+  each be proven on their own, with the code, the test and assertion, and the documentation behind each, its status, and
+  the recorded decision behind each reconciled row. It follows its own structure (`Purpose`, `Summary`,
+  `Reading the Matrix`, the twelve sections, the context, `Recorded Decisions` and `Change Triggers`) rather than the
+  one above.
 
 These documents are secondary to the code and tests, not a replacement for them. If a note and a cited test disagree,
 the test should be treated as authoritative until the mismatch is resolved.

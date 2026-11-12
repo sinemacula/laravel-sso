@@ -15,24 +15,8 @@ use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 
 /**
- * The `domain_reservation` step (SSO-8.8): an unlinked `sign_in` result that
- * `Linking\DomainLinkEligibility` finds exactly one eligible identity for
- * reserves a link for it, atomically under the link store's uniqueness and
- * limit, bound to the request, the identity matched and the linking email, and
- * to the handoff the `handoff_issuance` step issues in this same transaction.
- * The candidate goes on with the state, apart from the resolved identity, and
- * such a result is never provisioned. A result it does not reserve for goes on
- * unlinked, but for two things that plain reads before the locks (the state's
- * `linkingDiscovery`) did not see, each of which refuses, with nothing written:
- *
- * - a subject found held that is absent under the lock is `link_changed`: the
- *   claim was not locked for it, and a result is never unlinked by accident;
- * - an eligible identity whose guard was not taken is `reservation_invalid`:
- *   the candidates changed, and a reservation is only ever made under its
- *   identity's guard (`Linking\IdentityLock`).
- *
- * It holds the eligibility and the storage binding, neither of which keeps
- * anything of one completion for the next (SSO-11.2).
+ * The `domain_reservation` step: reserves a link for an unlinked `sign_in` with
+ * exactly one eligible identity, under that identity's guard.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -59,7 +43,8 @@ final readonly class DomainReservation implements CompletionStage
     ) {}
 
     /**
-     * Reserve a link for an eligible result, and go on either way.
+     * Reserve a link for an eligible result, refusing what the plain reads
+     * before the locks did not see.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return \SineMacula\Laravel\Sso\Completion\StageOutcome

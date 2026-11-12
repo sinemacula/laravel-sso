@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 
 /**
- * Unit tests for the flows a failure event reports: one for each operation
- * SSO-10.2 names, with stable snake_case values.
+ * Unit tests for the flows a failure event reports.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -21,8 +20,7 @@ use SineMacula\Laravel\Sso\Events\Enums\Flow;
 final class FlowTest extends TestCase
 {
     /**
-     * The flows are these, in this order: a value is never renamed or reused,
-     * so a change here is a deliberate one.
+     * The flows are fixed: a value is never renamed or reused.
      *
      * @return void
      */
@@ -37,8 +35,7 @@ final class FlowTest extends TestCase
     }
 
     /**
-     * Each value reads back as its case, and a value spelt the British way
-     * reads back as none: values are American, like every name in code.
+     * Values are American spellings; the British spelling reads as none.
      *
      * @return void
      */

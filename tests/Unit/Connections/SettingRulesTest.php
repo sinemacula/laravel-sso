@@ -12,9 +12,7 @@ use SineMacula\Laravel\Sso\Connections\SettingRules;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 
 /**
- * Unit tests for how a stored value is compared with the one given: a map
- * whatever its key order, nested maps included, and a list in order, with types
- * compared strictly.
+ * Unit tests for comparing stored setting values.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,8 +42,7 @@ final class SettingRulesTest extends TestCase
     }
 
     /**
-     * Maps are compared whatever their key order, lists in order, and every
-     * value strictly.
+     * Maps compare regardless of key order, lists in order, values strictly.
      *
      * @param  mixed  $one
      * @param  mixed  $other
@@ -71,8 +68,7 @@ final class SettingRulesTest extends TestCase
     }
 
     /**
-     * A path names the key under its parent up to the longest setting a
-     * violation holds; an empty, unprintable or longer one names the parent.
+     * A path names the key under its parent, or the parent if the key is unfit.
      *
      * @return void
      */

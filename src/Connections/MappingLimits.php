@@ -8,34 +8,18 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * What an attribute mapping may carry (SSO-2.10), read from `sso.mapping` on
- * each call (SSO-11.2), each failing closed with an `InvalidArgumentException`
- * naming its key when it is malformed; `[mapping]` reports the same at boot.
- *
- * - `max_value_length`: the longest mapped value kept, 64 to 65535 characters
- *   (default 1024).
- * - `max_values`: the most values one mapped attribute keeps (a list of groups,
- *   say), 1 to 10000 (default 100).
- * - `custom_attributes`: the custom keys the application declares, which a
- *   connection's mapping may name beside the standard ones: a list of at most
- *   `MAX_CUSTOM_ATTRIBUTES` distinct keys, each of a custom target's form and
- *   none a standard or reserved target (default none, so a mapping names the
- *   standard targets alone). The application declares them, never a tenant
- *   administrator, so a key the application's code does not read is never
- *   mapped.
- *
- * Mapped values are profile data: a value past a cap is refused when a mapping
- * is saved and cut when a result is built, never used to select an identity.
+ * What an attribute mapping may carry, read from `sso.mapping` on each call and
+ * failing closed when malformed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class MappingLimits
 {
-    /** @var int The longest mapped value kept when none is configured, in characters. */
+    /** @var int Default longest mapped value kept, in characters. */
     public const int DEFAULT_MAX_VALUE_LENGTH = 1024;
 
-    /** @var int The most values of one attribute kept when none is configured. */
+    /** @var int Default most values of one attribute kept. */
     public const int DEFAULT_MAX_VALUES = 100;
 
     /** @var int The most custom keys the application may declare. */
@@ -80,7 +64,8 @@ final readonly class MappingLimits
     }
 
     /**
-     * The custom keys the application declares, in the order given.
+     * The custom keys the application declares, which a mapping may name beside
+     * the standard ones.
      *
      * @return list<string>
      *

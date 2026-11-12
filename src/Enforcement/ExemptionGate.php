@@ -12,26 +12,8 @@ use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * What an adapter calls when a session active in an enforcing tenant would
- * otherwise be refused, because it was not established through a connection
- * that satisfies the tenant's enforcement (SSO-4.4, SSO-9.3): it asks the
- * exemption contract whether the identity is exempt, and reports each exemption
- * it grants.
- *
- * A policy that requires nothing needs no exemption: the answer is
- * `not_exempt`, with nothing asked or reported, since there is nothing to be
- * exempt from. Otherwise `Contracts\EnforcementExemption`, resolved from the
- * container on each call, is asked; an `exempt` answer is reported once as
- * `Events\ExemptionUsed` (through `Administration\EnforcementEvents`, after the
- * transaction open on the storage connection commits, at once when none is) and
- * returned. An exception from the contract propagates: the gate never answers
- * `exempt` when it cannot tell.
- *
- * It takes the client the session is admitted for as an `Http\ClientContext`,
- * whose IP address and user agent `Events\ExemptionUsed` carries, and reads no
- * request. It holds the container and the reporter, neither of which keeps
- * anything of one call for the next (SSO-11.2). Resolve it from the container
- * per request.
+ * Asks the exemption contract about a session that does not satisfy its
+ * tenant's enforcement, and reports each exemption granted.
  *
  * @api
  *
@@ -56,9 +38,7 @@ final readonly class ExemptionGate
     ) {}
 
     /**
-     * Whether the identity may have a session in the policy's tenant, on the
-     * application, without a satisfying connection; `exempt` is reported, with
-     * the client and the session's id when the caller has one.
+     * Whether the identity may have a session without a satisfying connection.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @param  string  $application

@@ -59,14 +59,10 @@ use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
 
 /**
- * The defaults behind the package's seams and the package's own scoped state,
- * listed once for the provider that binds them and for `RequestState`, which
- * forgets the scoped ones.
+ * The defaults behind the package's seams, and its own scoped state.
  *
- * Each default is bound under its private key (`key()`), and the contract
- * forwards to that key, so a binding an application makes over the contract is
- * wholly its own. A default that holds nothing between calls is a singleton;
- * one that reads configuration or a connection is scoped (SSO-11.2).
+ * Each default is bound under a private key the contract forwards to, so an
+ * application's binding over the contract is wholly its own.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,7 +71,7 @@ use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
  */
 final class PackageDefaults
 {
-    /** @var array<class-string, class-string> The singleton defaults, by contract. */
+    /** @var array<class-string, class-string> The stateless defaults, by contract. */
     public const array SINGLETONS = [
         Clock::class                    => SystemClock::class,
         HostResolver::class             => SystemHostResolver::class,
@@ -97,7 +93,7 @@ final class PackageDefaults
         ProviderSessionDeadline::class  => ProviderDeadlineLimitsSession::class,
     ];
 
-    /** @var array<class-string, class-string> The scoped defaults, by contract. */
+    /** @var array<class-string, class-string> The defaults that read configuration or a connection, by contract. */
     public const array SCOPED = [
         SingleUseStore::class   => DatabaseSingleUseStore::class,
         SecretEncrypter::class  => LaravelSecretEncrypter::class,
@@ -129,8 +125,7 @@ final class PackageDefaults
     }
 
     /**
-     * Return every abstract the package binds as scoped: each scoped default's
-     * private key, then its own scoped classes.
+     * Return every abstract the package binds as scoped.
      *
      * @return list<string>
      */

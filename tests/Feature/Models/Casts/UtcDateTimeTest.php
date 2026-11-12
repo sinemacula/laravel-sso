@@ -13,10 +13,7 @@ use Tests\Concerns\RunsInTimezone;
 use Tests\TestCase;
 
 /**
- * Feature tests for the UTC time cast the package's models use: an instant or a
- * Unix time is written as UTC wall-clock seconds, and a stored value read back
- * as that instant, whatever the application timezone, so the hour a
- * daylight-saving fall-back repeats names each instant once.
+ * Feature tests for the UTC time cast.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,8 +26,7 @@ final class UtcDateTimeTest extends TestCase
     use RunsInTimezone;
 
     /**
-     * An instant in any timezone, and a Unix time, are formatted in UTC to the
-     * whole second, whatever the application timezone.
+     * An instant or a Unix time is formatted in UTC to the whole second.
      *
      * @return void
      */
@@ -46,8 +42,8 @@ final class UtcDateTimeTest extends TestCase
     }
 
     /**
-     * A stored value is read as the instant it names in UTC, in a timezone
-     * whose wall clock repeats that hour; `null` stays `null`.
+     * A stored value reads as the UTC instant it names, even in a repeated
+     * hour.
      *
      * @return void
      */
@@ -65,8 +61,8 @@ final class UtcDateTimeTest extends TestCase
     }
 
     /**
-     * An instant or a Unix time is stored as UTC seconds, `null` as `null`, and
-     * anything else is refused.
+     * An instant or a Unix time is stored as UTC seconds; anything else is
+     * refused.
      *
      * @return void
      */
@@ -99,9 +95,7 @@ final class UtcDateTimeTest extends TestCase
     }
 
     /**
-     * An instant set on a model reads back as the `CarbonImmutable` in UTC that
-     * the stored value names, whatever kind of instant or zone it was set with,
-     * never as the object it was given.
+     * An instant set on a model reads back as a UTC `CarbonImmutable`.
      *
      * @return void
      */

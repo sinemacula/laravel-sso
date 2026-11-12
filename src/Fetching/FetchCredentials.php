@@ -7,27 +7,15 @@ namespace SineMacula\Laravel\Sso\Fetching;
 use SineMacula\Laravel\Sso\Fetching\Enums\CredentialKind;
 
 /**
- * The one credential an outbound request carries (SSO-2.9): a client
- * authentication for a token request, or an access token for UserInfo. The
- * fetcher puts it where its kind says (see `CredentialKind`); nothing else
- * reads it.
- *
- * The secret (a client secret, a signed client assertion or an access token) is
- * held in a `\SensitiveParameterValue` and never leaves the object but through
- * `secret()`, for the fetcher: no dump (PHP's own, or the one behind Laravel's
- * `dump()`, which also lists private properties), export or array cast shows
- * it, and the object refuses to be serialised, so it cannot reach a log, an
- * exception, a queue or an event (SSO-2.5, SSO-7.6).
- *
- * An access token must be an RFC 6750 b64token, so it can never put a control
- * character into the `Authorization` header it is sent in.
+ * The credential an outbound request carries. Its secret is hidden from dumps,
+ * exports and array casts, and the object cannot be serialised.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class FetchCredentials
 {
-    /** @var string An RFC 6750 §2.1 b64token: what an access token sent as a bearer token may hold. */
+    /** @var string An RFC 6750 b64token, so no control character reaches the header. */
     private const string B64TOKEN = '#^[A-Za-z0-9\-._~+/]+=*$#D';
 
     /** @var \SensitiveParameterValue The client secret, signed client assertion or access token. */
@@ -45,7 +33,7 @@ final readonly class FetchCredentials
         /** Where the credential goes. */
         public CredentialKind $kind,
 
-        /** The connection's client id at the identity provider, for a client authentication. */
+        /** The client id, for a client authentication. */
         public ?string $clientId,
 
         // Not promoted: held wrapped, so no dump, export or array cast shows it
@@ -56,7 +44,7 @@ final readonly class FetchCredentials
     }
 
     /**
-     * What a dump shows: the kind and the client id, never the secret.
+     * Show the kind and client id, never the secret.
      *
      * @return array<string, ?string>
      */
@@ -70,8 +58,7 @@ final readonly class FetchCredentials
     }
 
     /**
-     * Refuse to be serialised: a credential lives only for the request that
-     * sends it.
+     * Refuse to be serialised; a credential lives only for its request.
      *
      * @return array<string, mixed>
      *
@@ -129,8 +116,7 @@ final readonly class FetchCredentials
     }
 
     /**
-     * The client id and a client assertion the connection's key signed, in the
-     * form body.
+     * The client id and a signed client assertion, in the form body.
      *
      * @param  string  $clientId
      * @param  string  $assertion
@@ -144,8 +130,7 @@ final readonly class FetchCredentials
     }
 
     /**
-     * The access token of a UserInfo request, refused unless it is an RFC 6750
-     * b64token. The message never names the token.
+     * A UserInfo access token, refused unless it is an RFC 6750 b64token.
      *
      * @param  string  $accessToken
      * @return self
@@ -162,8 +147,7 @@ final readonly class FetchCredentials
     }
 
     /**
-     * The client secret, signed client assertion or access token, for the
-     * fetcher to send and for nothing else.
+     * The secret, for the fetcher to send and nothing else.
      *
      * @return string
      */

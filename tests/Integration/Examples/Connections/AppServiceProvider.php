@@ -9,11 +9,7 @@ use SineMacula\Laravel\Sso\Protocols\Preset;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 
 /**
- * The example application's service provider (SSO-2.2): once the protocol
- * registry resolves, it registers the application's own `cas` driver and its
- * own `acme` preset for OIDC. It registers after the package's provider, as an
- * application's providers do; whether the registry has resolved by then or
- * resolves later, each registration runs once.
+ * Registers the application's `cas` driver and `acme` OIDC preset.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

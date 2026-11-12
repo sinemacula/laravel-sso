@@ -24,11 +24,8 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Tests that an administrator's statement about one issuer never stands for
- * another (SSO-8.8, SSO-2.13): a change of the setting naming the issuer, by an
- * update, an import or a migration, turns linking off and clears the
- * classification, the organisation and the acknowledgement, raising
- * `linking_version`, so nothing reserves until the new issuer is classified.
+ * Tests that changing a connection's issuer resets its linking policy and
+ * raises `linking_version`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -103,9 +100,8 @@ final class IssuerChangeTest extends LinkingTestCase
     }
 
     /**
-     * An update of the issuer resets exactly the policy, reports each name, and
-     * leaves the next flow unlinked; the stale statements can never be turned
-     * back on by `enabled` alone.
+     * An issuer update resets exactly the policy, and `enabled` alone cannot
+     * turn it back on.
      *
      * @param  array<string, mixed>  $policy
      * @param  list<string>  $names
@@ -219,9 +215,8 @@ final class IssuerChangeTest extends LinkingTestCase
     }
 
     /**
-     * On SAML the entity id is the setting: the acknowledgement that the
-     * provider decides who holds each address goes with it, and the attribute's
-     * name stays for the administrator to acknowledge again.
+     * On SAML the entity id is the issuer setting: changing it clears the
+     * acknowledgement and keeps the attribute name.
      *
      * @return void
      */

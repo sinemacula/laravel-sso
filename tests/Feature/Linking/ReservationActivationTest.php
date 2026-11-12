@@ -18,10 +18,8 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Models\Link;
 
 /**
- * Feature tests for the client a reservation is activated for: the link it
- * creates and its activation are reported with the IP address and user agent of
- * the client the redemption was given, never those of the client the flow was
- * started and completed for, nor those of the request being served.
+ * Feature tests that an activation reports the redeeming client, not the
+ * completing one.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -32,9 +30,8 @@ use SineMacula\Laravel\Sso\Models\Link;
 final class ReservationActivationTest extends LinkingTestCase
 {
     /**
-     * A reserved sign-in redeemed for another client than the one it was
-     * completed for activates its reservation, and `LinkCreated` and
-     * `LinkActivated` carry the redeeming client.
+     * An activation reports the client the redemption was given in
+     * `LinkCreated` and `LinkActivated`.
      *
      * @return void
      */

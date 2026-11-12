@@ -7,24 +7,15 @@ namespace SineMacula\Laravel\Sso\Fetching;
 use SineMacula\Laravel\Sso\Contracts\HostResolver;
 
 /**
- * The default host resolver: the system resolver, through `dns_get_record()`
- * for the name's A and AAAA records.
- *
- * It has no timeout of its own, and PHP cannot interrupt `dns_get_record()`, so
- * a slow resolver holds the request or worker for as long as the system allows.
- * The fetcher counts the lookup against its deadline and checks it straight
- * after, so a lookup that ran past it fails the fetch as a timeout rather than
- * send, but it cannot cut the lookup short: bind your own `HostResolver` for a
- * bounded lookup, DNSSEC or DNS over HTTPS. A lookup that fails, or answers
- * with a warning, is no address, never an exception: the fetcher reports it as
- * a failed fetch.
+ * The default host resolver, through `dns_get_record()`. It has no timeout and
+ * PHP cannot interrupt it; bind your own `HostResolver` for a bounded lookup.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 final readonly class SystemHostResolver implements HostResolver
 {
-    /** @var \Closure(string, int): mixed The DNS lookup, `dns_get_record()` unless a test gave its own. */
+    /** @var \Closure(string, int): mixed The DNS lookup, replaceable by tests. */
     private \Closure $lookup;
 
     /**
@@ -34,16 +25,15 @@ final readonly class SystemHostResolver implements HostResolver
      */
     public function __construct(
 
-        // Not promoted: `dns_get_record()` stands in when none is given; a test
-        // gives its own, so no name is resolved over the network
+        // Not promoted: defaults to `dns_get_record()` when none is given
         ?\Closure $lookup = null,
     ) {
         $this->lookup = $lookup ?? dns_get_record(...);
     }
 
     /**
-     * Every A and AAAA address of the host name, `[]` when there is none or the
-     * lookup failed.
+     * Every A and AAAA address of the host, or `[]` when the lookup fails or
+     * warns.
      *
      * @param  string  $asciiHost
      * @return list<string>
@@ -70,7 +60,7 @@ final readonly class SystemHostResolver implements HostResolver
     }
 
     /**
-     * The `ip` of each A record and the `ipv6` of each AAAA record, once each.
+     * The distinct `ip` and `ipv6` values of the records.
      *
      * @param  array<array-key, mixed>  $records
      * @return list<string>

@@ -15,10 +15,7 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for admitting an identity provider's public key (SSO-7.3): public
- * RSA keys of at least 2048 bits and elliptic curve keys on the three curves,
- * `use` `sig`, `key_ops` with `verify` and an allowed `alg` that fits; and the
- * check at use, the stored form and the RFC 7638 thumbprint.
+ * Unit tests for admitting an identity provider's public key.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -227,7 +224,7 @@ final class ProviderKeyTest extends TestCase
      */
     public function testTheThumbprintIsRfc7638s(): void
     {
-        // RFC 7638 §3.1's example key and thumbprint
+        // RFC 7638 section 3.1's example key and thumbprint
         $jwk = [
             'kty' => 'RSA',
             'n'   => implode('', [
@@ -330,9 +327,8 @@ final class ProviderKeyTest extends TestCase
     }
 
     /**
-     * Rows of `[modulus, exponent, bits, what the DER holds]`: an integer gets
-     * a leading zero only when its top bit is set, and a length of 128 bytes or
-     * more is written in the long form.
+     * Rows of `[modulus, bits, DER prefix]`: a leading zero only when the top
+     * bit is set, and long-form lengths from 128 bytes.
      *
      * @return iterable<string, array{0: string, 1: int, 2: string}>
      */

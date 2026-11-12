@@ -12,9 +12,7 @@ use Tests\Fixtures\Models\UntabledModel;
 use Tests\TestCase;
 
 /**
- * Feature tests for the base of every package model: it takes its configured
- * table and the connection that table lives on when it is built, and fails
- * closed on a malformed setting or a model that names no table.
+ * Feature tests for the base package model.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,8 +23,8 @@ use Tests\TestCase;
 final class SsoModelTest extends TestCase
 {
     /**
-     * A model takes its table's default name and the default connection until
-     * the settings name others, read each time a model is built.
+     * A model reads its table and connection from the settings each time it is
+     * built.
      *
      * @return void
      */
@@ -49,8 +47,7 @@ final class SsoModelTest extends TestCase
     }
 
     /**
-     * The rate limits table's model lives on the counters' connection, and on
-     * the storage connection when that names none.
+     * The counters model uses the counters connection, falling back to storage.
      *
      * @return void
      */
@@ -68,8 +65,7 @@ final class SsoModelTest extends TestCase
     }
 
     /**
-     * A malformed table name or connection fails when the model is built, never
-     * reading or writing another table or connection than the one meant.
+     * A malformed table or connection setting fails when the model is built.
      *
      * @return void
      */

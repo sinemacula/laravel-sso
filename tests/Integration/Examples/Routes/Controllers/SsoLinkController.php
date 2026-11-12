@@ -16,10 +16,7 @@ use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\Caller;
 
 /**
- * The example application's link routes (SSO-5.11, SSO-8.3, SSO-12.5): the
- * authenticated caller redeems a `link` code for themselves, lists their links
- * and removes one of their own. The caller is always the authentication's,
- * never the body's.
+ * The example application's routes for the caller's own links.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

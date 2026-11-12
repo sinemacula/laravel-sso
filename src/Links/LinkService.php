@@ -19,49 +19,8 @@ use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * The helper that lists an identity's links and removes one (SSO-8.4, SSO-4.5,
- * SSO-1.5), for the application's account and administration screens; who may
- * call it for which identity is the application's authorisation, never the
- * package's.
- *
- * The identity is a reference, or the string `me` for the identity of the
- * caller the application passes (`Identities\Caller`); `me` without a caller,
- * or any other string, is an `InvalidArgumentException`. A removal's caller is
- * also the one freshness judges and the one `LinkRemoved` names as acting,
- * whether it removes its own link or another identity's.
- *
- * `list()` answers the identity's links in every connection, of every tenant,
- * oldest first (by creation time, then id), read on the write connection
- * (SSO-11.3) and matched to the identity byte for byte; a summary never holds
- * the subject.
- *
- * `remove()` goes in one order, and a refusal deletes, revokes and reports
- * nothing:
- *
- * 1. The link is found by its id and the identity, by a plain read on the write
- *    connection. A link that does not exist and another identity's are both
- *    `link_not_found`, so nothing is revealed of links that are not the
- *    identity's.
- * 2. The freshness contract is asked with `sso.link.remove`, its maximum age
- *    and the caller: `stale` is `freshness_required`.
- * 3. In one transaction on the storage connection (a savepoint inside the
- *    caller's): the link's connection is locked, then the link is read again
- *    locked, and is `link_not_found` when it has gone or now names another
- *    identity; it is deleted through the model; `Contracts\SessionRevocation`,
- *    resolved from the container at that moment, is called with the identity's
- *    sessions through the removed link, naming its connection and its id
- *    (`RevocationScope::identityInConnection`); and `LinkRemoved` is reported
- *    after commit.
- *
- * The revocation runs inside the transaction, so an adapter that writes through
- * the same Laravel connection commits or rolls back with the removal (decision
- * D5); an exception it throws rolls the removal back, with nothing reported,
- * and propagates. Removing an identity's last link is allowed: the application
- * decides whether the identity can still sign in.
- *
- * A database error propagates (SSO-11.4). It holds the freshness gate, the
- * reporter and the container, none of which keeps anything of one request for
- * the next (SSO-11.2). Resolve it from the container per request.
+ * Lists an identity's links and removes one; who may call it for whom is the
+ * application's authorisation.
  *
  * @api
  *
@@ -93,7 +52,8 @@ final readonly class LinkService
     ) {}
 
     /**
-     * The identity's links, oldest first.
+     * The identity's links in every connection, oldest first; `me` names the
+     * caller.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference|string  $identity
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -118,8 +78,8 @@ final readonly class LinkService
     }
 
     /**
-     * Remove the identity's link with the id, and revoke the identity's
-     * sessions established through its connection, for the caller.
+     * Remove the identity's link and revoke its sessions through the
+     * connection, in one transaction.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference|string  $identity
      * @param  string  $linkId
@@ -147,9 +107,8 @@ final readonly class LinkService
     }
 
     /**
-     * Delete the link under its connection's lock, once read again locked and
-     * still the identity's; revoke the identity's sessions through the
-     * connection; and report the removal.
+     * Under the connection's lock, delete the link if still the identity's,
+     * revoke the sessions, and report it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $found
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -186,9 +145,7 @@ final readonly class LinkService
     }
 
     /**
-     * The identity's link with the id, read on the write connection, locked for
-     * update when asked, or `null` when there is none or it is another
-     * identity's.
+     * The identity's link with the id, locked when asked, or `null`.
      *
      * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -209,8 +166,7 @@ final readonly class LinkService
     }
 
     /**
-     * The summary of each link, with its connection's tenant and protocol, in
-     * the order given; a link whose connection no longer exists is left out.
+     * Each link's summary in order, leaving out links whose connection is gone.
      *
      * @param  array<int, \SineMacula\Laravel\Sso\Models\Link>  $links
      * @return list<\SineMacula\Laravel\Sso\Links\LinkSummary>

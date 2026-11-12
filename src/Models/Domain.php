@@ -8,28 +8,10 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 
 /**
- * One connection's claim of an email domain (SSO-3.1 to SSO-3.3): the domain,
- * normalised (lower-case ASCII, no trailing dot); the connection that claimed
- * it; its state; the TXT record name under the domain and the random token the
- * record must carry; when it was claimed and when the claim expires while it is
- * pending; when it became verified, kept until it lapses and set anew when it
- * is verified again; when it last passed a check; when linking by it was
- * suspended and when it lapses, once a recheck found its record gone; when it
- * lapsed; how many times it has become verified, which a link reservation binds
- * (SSO-8.8); and the lease that keeps two servers from rechecking it at once.
+ * A connection's claim of an email domain.
  *
- * `verified_domain` holds the domain while it is verified and `null` otherwise,
- * under a unique index, so a domain is verified for at most one connection at a
- * time across every tenant, however two verifications race.
- *
- * The token is published in DNS and so not a secret, but it is hidden from
- * serialisation, never put in an event (SSO-10.4), and read only through
- * `Domains\DomainSummary::verificationToken()`.
- *
- * Its key is a lower-case ULID and its timestamps come from the package's clock
- * (see `SsoModel`); its connection and domain are fixed once it exists. The
- * table comes from `sso.domains.table`, the connection from the storage
- * connection.
+ * `verified_domain` is unique and set only while verified, so a domain is
+ * verified for at most one connection across every tenant.
  *
  * @api
  *
@@ -57,7 +39,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  */
 final class Domain extends SsoModel
 {
-    /** @var string The key, under `sso.`, of the setting that names the model's table. */
+    /** @var string The `sso.` setting that names the table. */
     protected const string TABLE = 'domains.table';
 
     /** @var list<string> The columns fixed when the claim is made. */
@@ -66,7 +48,7 @@ final class Domain extends SsoModel
     /** @var bool Indicates if the IDs are auto-incrementing. */
     public $incrementing = false;
 
-    /** @var bool Indicates if the model should be timestamped: the package stamps it from its clock instead. */
+    /** @var bool Stamped from the package's clock instead. */
     public $timestamps = false;
 
     /** @var string The "type" of the primary key ID. */
@@ -75,12 +57,11 @@ final class Domain extends SsoModel
     /** @var array<string> The attributes that aren't mass assignable. */
     protected $guarded = ['*'];
 
-    /** @var list<string> The attributes hidden from serialisation: the verification token. */
+    /** @var list<string> Published in DNS, but kept out of serialisation. */
     protected $hidden = ['verification_token'];
 
     /**
-     * Key and stamp each new claim, and refuse a change to its connection or
-     * domain once it exists.
+     * Key and stamp each new claim, and fix its connection and domain.
      *
      * @return void
      */

@@ -7,19 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * Who an ID token is for (SSO-7.4, OpenID Connect Core §3.1.3.7), of claims
- * `ClaimTypes` has typed, each comparison exact: no case folding, no trimming.
- *
- * - `aud` holds the connection's client id;
- * - every other audience is on the connection's trusted audiences;
- * - with more than one audience, `azp` is required;
- * - `azp`, when present, is the client id.
- *
- * Any failure is `audience_mismatch`. A trusted audience alone never admits a
- * token, whatever else it names, and neither does one whose `azp` names another
- * client.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The ID token `aud` and `azp` checks (OpenID Connect Core 3.1.3.7), compared
+ * exactly; extra audiences must be trusted and never admit a token alone.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

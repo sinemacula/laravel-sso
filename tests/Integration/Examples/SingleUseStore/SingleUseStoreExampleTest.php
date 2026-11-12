@@ -27,15 +27,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/single-use-store.md` (SSO-11.5, SSO-12.5), on
- * the shared example harness: the application records an invitation's token in
- * a namespace of its own in the package's store, so an open invitation is
- * accepted once and refused as used ever after, from any request; the store
- * releases a key once its expiry has passed, and refuses a malformed record
- * with a message that never holds the key. The application's own store, bound
- * scoped by its service provider, then records every key the package's flows
- * record, as digests in its own table, and its `seen` refuses a replayed SAML
- * assertion.
+ * The examples of `docs/guides/single-use-store.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,8 +44,7 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
     private Invitations $invitations;
 
     /**
-     * Make the application's invitations, two open for a week and one closed,
-     * and create the application's own keys table.
+     * Make two open invitations and one closed, and create the keys table.
      *
      * @return void
      */
@@ -90,9 +81,7 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
     }
 
     /**
-     * An open invitation is accepted once; presented again it is refused as
-     * used, from a later request too, since the store is shared; another
-     * invitation is accepted on its own.
+     * An open invitation is accepted once, across requests.
      *
      * @return void
      */
@@ -115,8 +104,7 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
     }
 
     /**
-     * An invitation closed or unknown is not found, and is never handed to the
-     * store, which would refuse an expiry already past.
+     * A closed or unknown invitation is not found, and never reaches the store.
      *
      * @return void
      */
@@ -132,8 +120,7 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
     }
 
     /**
-     * A key is held until its expiry, and released by the next record of it
-     * once the expiry has passed.
+     * A key is held until its expiry, then released by its next record.
      *
      * @return void
      */
@@ -153,9 +140,7 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
     }
 
     /**
-     * A malformed namespace, an empty key or an expiry not after now is an
-     * `InvalidArgumentException` whose message never holds the key, from the
-     * package's store and from the application's own.
+     * Both stores refuse a malformed record without revealing the key.
      *
      * @return void
      */
@@ -178,9 +163,7 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's service provider binds its own store in place of the
-     * package's, scoped: one store for a request or job, and a new one for the
-     * next.
+     * The application's store is bound once per request or job.
      *
      * @return void
      */
@@ -200,8 +183,7 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
     }
 
     /**
-     * A whole `link` flow records its authorisation request and its handoff
-     * code in the application's store, each as a SHA-256 digest.
+     * A `link` flow records its request and handoff code as SHA-256 digests.
      *
      * @return void
      *
@@ -225,9 +207,7 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
     }
 
     /**
-     * An unsolicited SAML response is recorded in the application's store when
-     * it is re-initiated, and the same response posted again is refused as
-     * `replayed` on the store's `seen`.
+     * The application's store refuses a replayed SAML response as `replayed`.
      *
      * @return void
      */
@@ -257,8 +237,7 @@ final class SingleUseStoreExampleTest extends ExampleTestCase
     }
 
     /**
-     * Present the token to the guide's invitation acceptance, and read its
-     * answer.
+     * Present the token to the guide's invitation acceptance.
      *
      * @param  string  $token
      * @return \Illuminate\Http\JsonResponse

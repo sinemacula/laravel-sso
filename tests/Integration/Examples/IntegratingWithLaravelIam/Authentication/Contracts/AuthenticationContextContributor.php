@@ -7,11 +7,8 @@ namespace SineMacula\Laravel\Authentication\Contracts;
 use SineMacula\Laravel\Authentication\Context\ContributionSubject;
 
 /**
- * A stand-in for `laravel-authentication`'s real
- * `Contracts\AuthenticationContextContributor`, which this package does not
- * install, with its exact signature: what adds keys of its own to the
- * authentication context, under the namespace it is registered with
- * (`docs/guides/integrating-with-laravel-iam.md`).
+ * A stand-in for `laravel-authentication`'s
+ * `Contracts\AuthenticationContextContributor`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

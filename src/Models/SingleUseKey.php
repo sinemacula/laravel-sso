@@ -11,16 +11,9 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 
 /**
- * One key held by the default single-use store (SSO-11.5): the digest of a key
- * recorded in its namespace, held until `expires_at`.
+ * A key held by the default single-use store, modelled only for `model:prune`.
  *
- * The table comes from `sso.single_use.table`, the connection from the storage
- * connection (see `Models\SsoModel`). The store writes the keys with statements
- * of its own; the model exists so `model:prune` can delete keys whose expiry
- * has passed, which the store would release and record again anyway.
- *
- * Only the class name is public, for applications to schedule that pruning
- * with; its columns and behaviour belong to the single-use store.
+ * Only the class name is public API; the columns belong to the store.
  *
  * @api
  *
@@ -36,7 +29,7 @@ final class SingleUseKey extends SsoModel
 {
     use MassPrunable;
 
-    /** @var string The key, under `sso.`, of the setting that names the model's table. */
+    /** @var string The `sso.` setting that names the table. */
     protected const string TABLE = 'single_use.table';
 
     /** @var bool Indicates if the model should be timestamped. */
@@ -46,9 +39,7 @@ final class SingleUseKey extends SsoModel
     protected $guarded = ['*'];
 
     /**
-     * Keys whose expiry has passed by the package's clock, from the second it
-     * names: the store would release them and record them again anyway, so they
-     * are safe to delete.
+     * Keys expired by the package's clock, which the store would reuse anyway.
      *
      * @return \Illuminate\Database\Eloquent\Builder<self>
      */

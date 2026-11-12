@@ -5,10 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Linking\Enums;
 
 /**
- * Where an identity's complete set of principals stands against a tenant
- * (SSO-8.8). Only `within_tenant` allows anything; the other two refuse.
- *
- * Backed, and stable once released: a value is never renamed or reused.
+ * Where an identity's complete set of principals stands against a tenant; only
+ * `within_tenant` allows anything.
  *
  * @api
  *

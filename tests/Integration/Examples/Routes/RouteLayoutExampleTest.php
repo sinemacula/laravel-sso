@@ -30,13 +30,7 @@ use Tests\Integration\Examples\Routes\Application\SignIns;
 use Tests\Integration\Examples\Routes\Application\User;
 
 /**
- * The example route layout of `docs/guides/example-application.md` (SSO-12.5),
- * run over HTTP on the shared example harness: the API prefix the base URL
- * carries, the public start, completion, metadata and sign-in routes, the
- * caller's own link and re-authentication routes, and the management routes
- * behind authorisation and the caller's tenant. Each route asserts its outcome
- * and a refusal; the CSRF exemption is held to the assertion consumer service
- * alone.
+ * The route layout of `docs/guides/example-application.md`, run over HTTP.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,9 +60,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     private User $person;
 
     /**
-     * Configure the base URL with the API prefix, keep the application's record
-     * of each connection's tenant, authorise management, register the routes,
-     * and make the tenant's SAML connection.
+     * Register the routes under the API prefix and make the SAML connection.
      *
      * @return void
      */
@@ -117,11 +109,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * The person links their identity provider, signs in through it to a
-     * pending session whose credential leaves after the commit, and an hour on
-     * re-authenticates that session, renewed once to the provider's time; the
-     * same sign-in code again is a replay, and a re-authentication of a session
-     * the person is not on never starts.
+     * A person links, signs in and re-authenticates through the routes.
      *
      * @return void
      */
@@ -176,11 +164,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * Each endpoint fixes its purpose: a `purpose` in a start's body is never
-     * read, so a sign-in start that names `link` still signs the person in and
-     * is refused at the link endpoint, a link start that names `sign_in` is
-     * refused at the sign-in endpoint, and an email starts discovery, which
-     * this application does not offer.
+     * Each endpoint fixes its purpose and ignores a `purpose` in the body.
      *
      * @return void
      */
@@ -213,9 +197,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * The OIDC callback route completes a `link` and redirects with the code;
-     * the same authorisation response again names a request already consumed,
-     * and is rejected with no redirect.
+     * The OIDC callback route completes a flow once and rejects a replay.
      *
      * @return void
      *
@@ -238,10 +220,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * The metadata route serves the connection's metadata, whose assertion
-     * consumer service carries the API prefix, to an identity provider that
-     * names no tenant; a connection the application has no record of is a
-     * `404`.
+     * The metadata route serves a known connection's metadata and 404s others.
      *
      * @return void
      */
@@ -255,8 +234,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * The caller lists their links and removes their own; a link they do not
-     * hold answers as unknown, and nobody unauthenticated reaches the routes.
+     * The caller lists and removes only their own links.
      *
      * @return void
      */
@@ -273,10 +251,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * Managing connections needs authentication and the `manage-sso`
-     * authorisation, creates the connection in the caller's active tenant
-     * without returning its secret, and answers another tenant's connection as
-     * unknown.
+     * Connection management is authorised and scoped to the caller's tenant.
      *
      * @return void
      */
@@ -307,9 +282,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * An administrator claims a domain for the connection, is shown the record
-     * to publish, and verifies it once it is published; a domain the connection
-     * never claimed is a `404`.
+     * An administrator claims a domain and verifies it once it is published.
      *
      * @return void
      */
@@ -327,9 +300,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * Only the assertion consumer service, a cross-site POST from the identity
-     * provider, is exempt from CSRF verification: never a route a cookie could
-     * authenticate.
+     * Only the assertion consumer service is exempt from CSRF verification.
      *
      * @return void
      */
@@ -361,8 +332,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
             ) {}
 
             /**
-             * Whether the request is exempt, as Laravel's CSRF middleware
-             * decides it.
+             * Whether Laravel's CSRF middleware would exempt the request.
              *
              * @param  \Illuminate\Http\Request  $request
              * @return bool
@@ -384,9 +354,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * The paths the CSRF middleware of the configured `web` group exempts, as
-     * the framework resolves it: the one middleware of the group that reads an
-     * except list.
+     * The paths the `web` group's CSRF middleware exempts.
      *
      * @param  \Illuminate\Foundation\Configuration\Middleware  $middleware
      * @return list<string>
@@ -409,8 +377,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * Link the person's subject through the link routes, and answer the link's
-     * id.
+     * Link the person through the link routes and answer the link's id.
      *
      * @return string
      */
@@ -425,8 +392,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a flow at the route given, through the SAML connection unless the
-     * body names another, and answer the started body.
+     * Start a flow at the route, through the SAML connection by default.
      *
      * @param  string  $uri
      * @param  array<string, string>  $body
@@ -443,9 +409,8 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * Have the SAML identity provider answer the started flow, post its
-     * response to the assertion consumer service route, and read the redirect,
-     * whose reference must be the start's.
+     * Post the identity provider's response to the ACS route and read the
+     * redirect.
      *
      * @param  array{reference: string, navigation: array<string, mixed>, verifier: string}  $start
      * @return \SineMacula\Laravel\Sso\Testing\HandoffRedirect
@@ -476,8 +441,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
     }
 
     /**
-     * What the client posts to redeem the redirect's code: the application, the
-     * SAML connection, the code and the verifier it kept.
+     * The body the client posts to redeem the redirect's code.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\HandoffRedirect  $redirect
      * @param  array{reference: string, navigation: array<string, mixed>, verifier: string}  $start

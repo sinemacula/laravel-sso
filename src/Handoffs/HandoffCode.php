@@ -7,20 +7,8 @@ namespace SineMacula\Laravel\Sso\Handoffs;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * A handoff code (SSO-9.2): the single-use, short-lived code a completion puts
- * on the application's redirect URI, which carries a verified result from the
- * API to the client that started the flow, bound to its verifier.
- *
- * A code the package issues is 43 base64url characters from 32 random bytes;
- * its store keeps only its SHA-256 digest (`digest()`), and a presented code is
- * matched against a digest in constant time (SSO-11.9).
- *
- * The value is held in a `\SensitiveParameterValue` and leaves the object only
- * through `reveal()`: a dump or `json_encode()` shows `[redacted]`, it has no
- * `__toString()`, and it refuses to be serialised or unserialised, so it never
- * reaches a log, an exception, a queue or an event (SSO-9.8). It is a type of
- * its own, never accepted as a verifier or a request reference, nor as a token
- * (SSO-9.2).
+ * A single-use handoff code carrying a verified result to the client that
+ * started the flow; stores keep only its digest.
  *
  * @api
  *
@@ -52,7 +40,7 @@ final readonly class HandoffCode implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: never the code.
+     * Dump without the code.
      *
      * @return array<string, string>
      */
@@ -62,8 +50,7 @@ final readonly class HandoffCode implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: a code lives only for the response that carries
-     * it and the request that redeems it.
+     * Refuse to be serialised.
      *
      * @return array<string, mixed>
      *
@@ -133,8 +120,7 @@ final readonly class HandoffCode implements \JsonSerializable
     }
 
     /**
-     * The lower-case hex SHA-256 digest of the code, the only form a store
-     * keeps.
+     * The hex SHA-256 of the code, the only form a store keeps.
      *
      * @return string
      */
@@ -155,8 +141,7 @@ final readonly class HandoffCode implements \JsonSerializable
     }
 
     /**
-     * The code, for the completion's redirect and the store's digest, and for
-     * nothing else.
+     * The code, for the completion's redirect and the store's digest only.
      *
      * @return string
      */
@@ -167,7 +152,7 @@ final readonly class HandoffCode implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: never the code.
+     * Encode without the code.
      *
      * @return string
      */

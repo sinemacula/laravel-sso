@@ -12,13 +12,7 @@ use Tests\Concerns\DumpsValues;
 use Tests\TestCase;
 
 /**
- * Feature tests for how a discovery document is read (SSO-2.8, OpenID Connect
- * Discovery §3 and §4.3): the typed values of a document every rule accepts, in
- * the order the connection's settings name them; every rule's refusal, at each
- * boundary, with its reason; the size cap at, under and over it; duplicate
- * members refused, escaped and nested ones too; a member it does not name
- * ignored; and nothing of a document shown by a dump, `json_encode()` or
- * serialisation.
+ * Feature tests for reading an OpenID Connect discovery document.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,10 +37,8 @@ final class DiscoveryDocumentTest extends TestCase
     private const string LARGE = '123456789012345678901234567890';
 
     /**
-     * A document every rule accepts is read into typed values, the settings in
-     * the order `OidcSetting` names them, the algorithms the package's own, in
-     * its order, whatever order the document gives them, and the client
-     * authentication methods as the document lists them.
+     * A document every rule accepts is read into typed values, the algorithms
+     * in the package's own order.
      *
      * @return void
      */
@@ -71,9 +63,7 @@ final class DiscoveryDocumentTest extends TestCase
     }
 
     /**
-     * Rows of `[changes, setting, value]`: what a document may leave out or say
-     * otherwise, and the setting it then gives. A setting that is `ABSENT` is
-     * left out.
+     * Rows of `[changes, setting, value]`; a setting of `ABSENT` is left out.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: string, 2: mixed}>
      */

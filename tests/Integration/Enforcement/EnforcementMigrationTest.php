@@ -13,13 +13,9 @@ use SineMacula\Laravel\Sso\Database\TableAlreadyExistsException;
 use Tests\TestCase;
 
 /**
- * Integration tests for the shipped enforcement migration, on whichever engine
- * the suite runs against: the table's shape, one row per tenant by the hash of
- * its id, so tenants whose ids a collation counts as equal keep rows of their
- * own, the guard against an existing table and the rollback.
+ * Integration tests for the shipped enforcement migration.
  *
- * Marked `#[CoversNothing]` because a migration is an anonymous class PHPUnit
- * cannot attribute coverage to.
+ * Covers nothing: PHPUnit cannot attribute coverage to an anonymous class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,9 +60,7 @@ final class EnforcementMigrationTest extends TestCase
     }
 
     /**
-     * The table has exactly these columns, only the version and the time of the
-     * last change nullable (both null on an unconfigured row), the id its
-     * primary key, and one unique index, on the tenant's hash.
+     * The table has these columns and a unique index on the tenant's hash.
      *
      * @return void
      */
@@ -103,8 +97,7 @@ final class EnforcementMigrationTest extends TestCase
     }
 
     /**
-     * Tenants whose ids differ only in case have rows of their own; a second
-     * row for a tenant is refused.
+     * Tenants whose ids differ only in case get rows of their own.
      *
      * @return void
      */
@@ -119,8 +112,7 @@ final class EnforcementMigrationTest extends TestCase
     }
 
     /**
-     * Running the migration over an existing table is refused before any
-     * change, naming the setting that renames the table; the rollback drops it.
+     * The migration refuses an existing table and the rollback drops it.
      *
      * @return void
      */
@@ -139,7 +131,7 @@ final class EnforcementMigrationTest extends TestCase
     }
 
     /**
-     * A row for the tenant, off.
+     * A disabled row for the tenant.
      *
      * @param  string  $id
      * @param  string  $tenantId

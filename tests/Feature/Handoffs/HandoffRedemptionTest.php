@@ -65,26 +65,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for redeeming a handoff code the package's own store issued
- * (SSO-9.2, SSO-9.9, SSO-4.3, SSO-4.6, SSO-8.5, SSO-5.2, SSO-11.3, SSO-11.5,
- * SSO-11.8, SSO-11.9): each step's reason in its order, a code failing several
- * checks reporting the first; a wrong purpose, application, connection or
- * verifier consuming the code, so a correct redemption after it is a replay;
- * the expiry at its second and either side; a voided code; a code the
- * single-use store has seen; a link removed, reassigned or added since
- * completion; enforcement turned on and a connection disabled since; the
- * completed-sign-in flag set by a linked `sign_in` alone; verifiers of 43 and
- * 128 characters and either side; codes, references and verifiers never
- * accepted as one another; a full limit; a corrupt stored result and a database
- * error that propagate; the locks taken in the package's order (the tenant's
- * enforcement row, then the connections in ascending id order, then the code)
- * with the feature on, the connection and the code alone with it off, with no
- * enforcement statement and no inheritance asked; a code that no longer names
- * the connection or application its locks were taken for; a connection gone
- * before its lock; an enforcing tenant that moved since the lock; and a
- * standalone `link` tried again after a deadlock or a serialisation failure in
- * a savepoint, at most three times, where a caller's transaction is never
- * retried in part.
+ * Feature tests for redeeming a handoff code from the package's own store.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -128,9 +109,7 @@ final class HandoffRedemptionTest extends TestCase
     private ClientContext $client;
 
     /**
-     * Bind a fixed clock and a linker answering the linked identity, take the
-     * client every redemption is made for, register the driver, and create the
-     * tables and two usable connections.
+     * Bind a fixed clock, a linker and the client, and create two connections.
      *
      * @return void
      */
@@ -163,12 +142,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A `sign_in` code redeemed with its purpose, application, connection and
-     * verifier answers the result and everything it was bound to, with the
-     * enforcement version read under the redemption's locks (none, with no rule
-     * stored); it is consumed now, recorded in the single-use store by its
-     * digest until its expiry, its connection's completed sign-in is
-     * acknowledged, and the linker was asked once, with the result restored.
+     * A `sign_in` code is redeemed, consumed, recorded and acknowledged.
      *
      * @return void
      *
@@ -199,9 +173,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A `link` code answers the identity the flow was started for, and a
-     * `reauthenticate` code that identity and its session; neither acknowledges
-     * a completed sign-in.
+     * A `link` or `reauthenticate` code answers its identity and session.
      *
      * @return void
      *
@@ -230,10 +202,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A code failing several checks is refused for the first of them, in the
-     * order the redemption makes them: the connection's row, a voided code, a
-     * replay, the expiry, the purpose, the application, the connection, the
-     * verifier, then the recheck.
+     * A code failing several checks is refused for the first in order.
      *
      * @return void
      *
@@ -288,9 +257,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A wrong purpose, application, connection or verifier consumes the code:
-     * it is refused for that, and a correct redemption after it is a replay.
-     * Each is compared exactly.
+     * A wrong purpose, application, connection or verifier consumes the code.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -338,9 +305,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A code is redeemed until a second before its expiry; at its expiry and
-     * after it is `handoff_expired`, and consumed. The single-use store keeps
-     * it until its expiry, and at least a second from now.
+     * A code redeems until a second before its expiry and expires at it.
      *
      * @param  int  $elapsed
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -364,8 +329,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A code a change to its connection voided is `handoff_unknown`, and is
-     * neither consumed nor recorded.
+     * A voided code is `handoff_unknown`, neither consumed nor recorded.
      *
      * @return void
      *
@@ -407,8 +371,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A code the single-use store has already seen is `replayed`, and is not
-     * consumed.
+     * A code the single-use store has seen is `replayed` and not consumed.
      *
      * @return void
      *
@@ -442,9 +405,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A link removed, reassigned to another identity (by id or by type), or
-     * added where there was none since completion is `link_changed`, and the
-     * code stays consumed.
+     * A link changed since completion is `link_changed` and stays consumed.
      *
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $atCompletion
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $now
@@ -471,8 +432,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * An unlinked handoff whose result is still linked to nothing is redeemed,
-     * with no linked identity, and acknowledges no sign-in.
+     * An unlinked handoff redeems without acknowledging a sign-in.
      *
      * @return void
      *
@@ -492,10 +452,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Enforcement turned on since completion, by connections this one is not
-     * among, is `enforcement_unsatisfied`; turned on including it, the code is
-     * redeemed, answering the version of the rule read under the redemption's
-     * locks.
+     * Enforcement turned on since completion is judged under the locks.
      *
      * @return void
      *
@@ -524,10 +481,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * The redemption never asks the exemption contract: an identity it would
-     * exempt is still refused `enforcement_unsatisfied` through a connection
-     * the rule does not list, and the contract is never asked. Only the
-     * adapter's gate asks it.
+     * The redemption never asks the exemption contract.
      *
      * @return void
      *
@@ -550,10 +504,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * With the feature on, the redemption locks the tenant's enforcement row
-     * (an upsert, then a locking read), then the code's connection and the
-     * rule's connections in one statement in ascending id order, and only then
-     * the code; nothing is locked out of that order.
+     * The redemption locks enforcement, then connections by id, then the code.
      *
      * @return void
      *
@@ -578,8 +529,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A tenant with no rule stored is locked through an unconfigured row, and
-     * the code is redeemed with nothing required.
+     * A tenant with no rule is locked through an unconfigured row.
      *
      * @return void
      *
@@ -599,9 +549,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * With the feature off, the redemption locks the connection and then the
-     * code: no statement names the enforcement table, no row is inserted, and
-     * the inheritance contract is never asked.
+     * With the feature off, only the connection and the code are locked.
      *
      * @return void
      *
@@ -634,10 +582,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A code that, once locked, no longer names the connection or the
-     * application its plain read did, and its locks were taken for, is
-     * `handoff_unknown`, and stays unconsumed: no other tenant's rule is locked
-     * out of order.
+     * A code no longer naming what its locks cover is `handoff_unknown`.
      *
      * @param  string  $column
      * @return void
@@ -660,8 +605,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A connection deleted between the plain read of its tenant and its lock is
-     * `connection_unavailable`, and the code stays unconsumed.
+     * A connection deleted before its lock is `connection_unavailable`.
      *
      * @return void
      *
@@ -680,9 +624,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * An inheritance contract that names another enforcing tenant by the
-     * recheck than when the locks were taken is `connection_unavailable`, with
-     * the code consumed and nothing acknowledged.
+     * An enforcing tenant that moved since the lock is unavailable.
      *
      * @return void
      *
@@ -705,8 +647,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A connection disabled, left incomplete or deleted since completion is
-     * `connection_unavailable`; a disabled or incomplete one consumes the code.
+     * A connection unusable since completion is `connection_unavailable`.
      *
      * @return void
      *
@@ -737,8 +678,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Each code, whether it is linked and redeemed, and whether a completed
-     * sign-in is acknowledged.
+     * Each code, whether it is linked and redeemed, and if it acknowledges.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: bool, 2: bool, 3: bool}>
      */
@@ -753,9 +693,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Only a linked `sign_in` redeemed acknowledges a completed sign-in: a
-     * `link`, a `reauthenticate`, an unlinked `sign_in` and a code issued but
-     * never redeemed leave the connection's flag unset.
+     * Only a linked `sign_in` redeemed acknowledges a completed sign-in.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  bool  $linked
@@ -787,8 +725,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A connection that has completed a sign-in keeps its flag, and is written
-     * nothing more by another.
+     * A connection already acknowledged is not written again.
      *
      * @return void
      *
@@ -808,8 +745,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * The verifier a code's challenge was made from, the one presented, and the
-     * reason.
+     * The verifier the challenge was made from, the one presented, the reason.
      *
      * @return iterable<string, array{0: string, 1: string, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -827,9 +763,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Verifiers of 43 and 128 unreserved characters redeem the code their
-     * challenge was made from; one of 42 or 129, or with a reserved character,
-     * is `verifier_mismatch`.
+     * Verifiers of 43 to 128 unreserved characters redeem; others do not.
      *
      * @param  string  $verifier
      * @param  string  $presented
@@ -847,8 +781,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A reference, a challenge, a verifier or a digest is never accepted as a
-     * code, and a code or a challenge never as a verifier.
+     * Codes, references, verifiers and digests are never interchangeable.
      *
      * @return void
      *
@@ -883,8 +816,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A value that is not 43 base64url characters, and a code never issued, are
-     * `handoff_unknown`, and record nothing.
+     * A malformed or never-issued code is `handoff_unknown`.
      *
      * @param  string  $value
      * @return void
@@ -904,9 +836,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A full limit on the IP address is `rate_limited` with the wait to the end
-     * of the window, before the code is read; every attempt counts, an unknown
-     * code included.
+     * A full limit is `rate_limited` before the code is read.
      *
      * @return void
      *
@@ -935,9 +865,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Rows of `[code, limited, verifier, reason]`: each way a redemption
-     * reports, `issued` naming the code issued and `null` reason for a code
-     * redeemed.
+     * Rows of `[code, limited, verifier, reason]`; `null` reason redeems.
      *
      * @return iterable<string, array{0: string, 1: bool, 2: string, 3: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -950,10 +878,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * What a redemption reports carries the IP address and user agent of the
-     * client it was given, never the request's being served: `HandoffRedeemed`
-     * for a code redeemed, and exactly one `FlowFailed` for a refusal, before a
-     * code is found or after.
+     * What a redemption reports carries the client it was given.
      *
      * @param  string  $code
      * @param  bool  $limited
@@ -989,8 +914,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A redemption for a client with no IP address, as a console caller makes
-     * it, counts against no address: no per-address limit refuses it.
+     * A redemption for a client with no IP address counts against no address.
      *
      * @return void
      *
@@ -1019,8 +943,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A stored result the package did not write is an
-     * `UnexpectedValueException`, and the code stays unconsumed.
+     * A corrupt stored result propagates and leaves the code unconsumed.
      *
      * @param  string  $variant
      * @return void
@@ -1078,8 +1001,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A stored result no key decrypts propagates, and the code stays
-     * unconsumed.
+     * A stored result no key decrypts propagates; the code stays unconsumed.
      *
      * @return void
      *
@@ -1105,8 +1027,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A database error propagates as a server error, never as a refusal, and
-     * leaves the code unconsumed.
+     * A database error propagates and leaves the code unconsumed.
      *
      * @return void
      *
@@ -1140,9 +1061,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A `sign_in` code, linked or unlinked, is never redeemed standalone: it is
-     * a `LogicException`, the code is left unconsumed, and the same code
-     * redeems inside a transaction.
+     * A standalone `sign_in` is a `LogicException`; the code stays unconsumed.
      *
      * @param  bool  $linked
      * @return void
@@ -1163,7 +1082,7 @@ final class HandoffRedemptionTest extends TestCase
             app(HandoffRedemption::class)->redeem(Purpose::SIGN_IN, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser());
             self::fail('A sign-in was redeemed with no transaction open.');
         } catch (\LogicException $exception) {
-            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).', $exception->getMessage());
+            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction.', $exception->getMessage());
         }
 
         self::assertNull($this->stored($code)->redeemed_at);
@@ -1184,10 +1103,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A single-use store that is not transactional, such as a shared cache,
-     * keeps whatever it records when the redemption rolls back; the standalone
-     * path refuses a `sign_in` or a `reauthenticate` code before it records
-     * anything there, so the same code still redeems through `admit()`.
+     * The standalone refusal records nothing in a non-transactional store.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @return void
@@ -1243,7 +1159,7 @@ final class HandoffRedemptionTest extends TestCase
             app(HandoffRedemption::class)->redeem($purpose, 'web', $this->connection->id, $code, self::VERIFIER, Clients::browser());
             self::fail('A session purpose was redeemed with no transaction open.');
         } catch (\LogicException $exception) {
-            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction (decision D5).', $exception->getMessage());
+            self::assertSame('A [sign_in] or [reauthenticate] code is redeemed through admit(), in the caller\'s transaction.', $exception->getMessage());
         }
 
         self::assertSame([], $store->keys());
@@ -1258,8 +1174,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Rows of `[the code's purpose, whether it resolved to an identity]`: each
-     * code a standalone `link` endpoint may be handed that is not a link.
+     * Rows of `[the code's purpose, whether it resolved to an identity]`.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: bool}>
      */
@@ -1271,10 +1186,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A `sign_in` or `reauthenticate` code presented to the standalone path
-     * asked for a `link` is the client's error, never a `LogicException`: it is
-     * consumed and refused as `purpose_mismatch`, committed, and redeeming it
-     * afterwards for its own purpose is a replay.
+     * A non-`link` code redeemed standalone as a `link` is `purpose_mismatch`.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  bool  $linked
@@ -1314,8 +1226,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Rows of `[how many attempts deadlock]`: each that leaves an attempt to go
-     * through.
+     * Rows of `[how many attempts deadlock]`, each leaving one to succeed.
      *
      * @return iterable<string, array{0: int}>
      */
@@ -1326,9 +1237,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A standalone `link` whose transaction the database rolls back as a
-     * deadlock is tried again from its start and redeems: counted against the
-     * limit once, recorded and consumed once, and reported once.
+     * A standalone `link` is retried after a deadlock and redeems once.
      *
      * @param  int  $deadlocks
      * @return void
@@ -1363,10 +1272,8 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A standalone `link` whose single-use record, in a savepoint of its
-     * transaction, PostgreSQL cannot serialise is tried again from its start
-     * and redeems: Laravel throws that failure from the savepoint in a form it
-     * would not retry, so it is retried only because it is unwrapped.
+     * A standalone `link` is retried after a serialisation failure in a
+     * savepoint, which Laravel throws in a form it would not retry.
      *
      * @return void
      *
@@ -1392,9 +1299,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * A standalone `link` whose transaction deadlocks on each of its three
-     * attempts propagates the last, with the code unconsumed and unrecorded,
-     * and nothing reported; the code then redeems.
+     * A standalone `link` gives up after three deadlocks, unconsumed.
      *
      * @return void
      *
@@ -1430,9 +1335,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Inside the caller's transaction a deadlock propagates from the first
-     * attempt, never retried in part, and the caller's transaction is left to
-     * roll back whole; retried whole, the code redeems.
+     * Inside the caller's transaction a deadlock propagates without retry.
      *
      * @return void
      *
@@ -1470,9 +1373,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Issue a code through the package's store for the purpose, linked to the
-     * identity the test holds, with the challenge of the verifier, expiring a
-     * minute from now unless given.
+     * Issue a code for the purpose, expiring in a minute by default.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\Carbon\CarbonImmutable  $expiresAt
@@ -1502,8 +1403,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Redeem the code with what is presented: by default, a `sign_in` for `web`
-     * through the connection with the client's verifier.
+     * Redeem the code, by default as a `sign_in` for `web`.
      *
      * @param  string  $code
      * @param  string  $verifier
@@ -1536,8 +1436,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Redeem the `link` code as the identity it was started for, with the
-     * client's verifier, in whatever transaction is open.
+     * Redeem the `link` code as its flow's identity in the open transaction.
      *
      * @param  string  $code
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
@@ -1558,8 +1457,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * The verified result a code carries: through the connection, of
-     * `tenant-1`, for `web`, with the reference, unless given otherwise.
+     * The verified result a code carries, for `tenant-1` and `web` by default.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $application
@@ -1592,9 +1490,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Run the change once, straight after the redemption's plain read of its
-     * connection's tenant and before any lock, as a change committed between
-     * the two would.
+     * Run the change once, between the plain read of the tenant and the lock.
      *
      * @param  \Closure(): void  $change
      * @return void
@@ -1701,9 +1597,7 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * Bind what a `link` or a `reauthenticate` code needs to be redeemed by the
-     * identity it was started for: the subject linked to that identity, a fresh
-     * caller, an eligible identity and a session bound to its link.
+     * Bind what a `link` or `reauthenticate` code needs to redeem.
      *
      * @return void
      */

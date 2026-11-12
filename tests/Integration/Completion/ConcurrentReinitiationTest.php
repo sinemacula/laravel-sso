@@ -39,33 +39,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Races IdP-initiated re-initiation (SSO-5.8, SSO-6.6, SSO-2.13): the
- * completion of an unsolicited response is held once its response is validated,
- * outside any transaction, just before it opens the transaction that locks the
- * connection.
- *
- * - Two posts of one unsolicited response, each in a process of its own, both
- *   validated before either locks: exactly one is re-initiated and the other
- *   refused with `replayed`, and the assertion is recorded once. A completion
- *   runs outside any transaction on the storage connection, so each poster runs
- *   plainly.
- * - Distrusting the certificate that signed the response, or changing the
- *   metadata signing anchors, raises the connection's trust version: the
- *   re-initiation, taking the lock, is refused with `connection_unavailable`
- *   and records nothing.
- * - Trusting an additional certificate is additive and leaves the trust version
- *   alone, so the re-initiation goes on.
- * - Turning the connection's IdP-initiated sign-in off leaves the trust version
- *   alone too, yet the re-initiation, taking the lock, finds it off and is
- *   refused with `unsolicited_not_allowed`, recording nothing.
- *
- * In this process the change runs at the hold, so the order is exact on every
- * database. Across processes, on PostgreSQL and MySQL, a change in a process of
- * its own waits for the re-initiation to signal that it validated, and the
- * re-initiation waits for the change to signal it is made; the change runs
- * plainly, and inside a transaction of its own that read first. On PostgreSQL
- * alone a racer may instead fail to serialise (SQLSTATE `40001`), which records
- * nothing. The cross-process races are skipped on SQLite and without `pcntl`.
+ * Integration tests racing IdP-initiated re-initiation against replays and
+ * trust changes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -104,13 +79,8 @@ final class ConcurrentReinitiationTest extends TestCase
     private string $outcomes;
 
     /**
-     * Bind a fixed clock, fresh authentication, a limiter that allows every
-     * attempt and the recording issuer, configure SAML, IdP-initiated sign-in
-     * and the endpoints, create the tables, a connection that allows
-     * IdP-initiated sign-in, its settings stored as the connection service
-     * stores them, and trusts the identity provider and another certificate,
-     * and its unsolicited response, and make the directory the processes report
-     * in.
+     * Configure IdP-initiated SAML and create a connection that allows it, with
+     * its unsolicited response.
      *
      * @return void
      *
@@ -187,10 +157,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Two posts of one unsolicited response, each validated before either locks
-     * the connection: exactly one is re-initiated and the other refused with
-     * `replayed` (or, on PostgreSQL only, fails to serialise), and the
-     * assertion is recorded once.
+     * Of two posts of one unsolicited response, exactly one is re-initiated.
      *
      * @return void
      */
@@ -221,9 +188,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Distrusting the certificate that signed the response once it is validated
-     * raises the trust version: the re-initiation is refused under the lock
-     * with `connection_unavailable` and records nothing.
+     * A distrust of the signing certificate after validation refuses the
+     * re-initiation.
      *
      * @return void
      */
@@ -233,9 +199,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Trusting a metadata signing anchor once the response is validated is a
-     * trust change that raises the trust version: the re-initiation is refused
-     * under the lock with `connection_unavailable` and records nothing.
+     * A metadata anchor change after validation refuses the re-initiation.
      *
      * @return void
      */
@@ -245,9 +209,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Trusting an additional identity provider certificate once the response is
-     * validated leaves the trust version alone: the re-initiation goes on and
-     * records the assertion.
+     * Trusting an additional certificate after validation leaves the
+     * re-initiation to go on.
      *
      * @return void
      */
@@ -264,10 +227,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Turning the connection's IdP-initiated sign-in off once the response is
-     * validated leaves the trust version alone, yet the re-initiation is
-     * refused under the lock with `unsolicited_not_allowed` and records
-     * nothing.
+     * IdP-initiated sign-in turned off after validation refuses the
+     * re-initiation.
      *
      * @return void
      */
@@ -284,8 +245,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Across processes, a distrust committed by another process while the
-     * re-initiation is held refuses it under the lock.
+     * A distrust in another process while the re-initiation is held refuses it.
      *
      * @return void
      */
@@ -295,8 +255,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * The same race, the distrust inside a transaction of its own that read the
-     * connection before the race began.
+     * The same race, the distrust inside a transaction that read the connection
+     * first.
      *
      * @return void
      */
@@ -306,9 +266,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Across processes, IdP-initiated sign-in turned off by another process
-     * while the re-initiation is held refuses it under the lock with
-     * `unsolicited_not_allowed`.
+     * IdP-initiated sign-in turned off in another process refuses the held
+     * re-initiation.
      *
      * @return void
      */
@@ -318,8 +277,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * The same race, IdP-initiated sign-in turned off inside a transaction of
-     * its own that read the connection before the race began.
+     * The same race, the change inside a transaction that read the connection
+     * first.
      *
      * @return void
      */
@@ -329,9 +288,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Run the change once the response is validated, and assert the
-     * re-initiation was refused with `connection_unavailable`, recorded
-     * nothing, and the trust version was raised once.
+     * Run the change after validation and assert the re-initiation was refused.
      *
      * @param  \Closure(): bool  $change
      * @return void
@@ -349,10 +306,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Race the re-initiation against the change in another process, plain or in
-     * its own transaction, and assert the re-initiation was refused under the
-     * lock as the outcome given, or, on PostgreSQL only, that one of them
-     * failed to serialise and the other's outcome stands.
+     * Race the re-initiation against the change and assert the outcome given.
      *
      * @param  \Closure(): bool  $change
      * @param  string  $refused
@@ -400,9 +354,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Run the change once, just before the next transaction on the storage
-     * connection starts: the re-initiation's, which it opens only once the
-     * response is validated. Answers what is still to run, empty once it ran.
+     * Run the change just before the re-initiation opens its transaction.
      *
      * @param  \Closure(): mixed  $change
      * @return \ArrayObject<int, \Closure(): mixed>
@@ -443,8 +395,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Stop trusting the certificate that signs the response; whether the key
-     * service removed it.
+     * Stop trusting the response's signing certificate; whether it was removed.
      *
      * @return bool
      */
@@ -454,8 +405,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Turn the connection's IdP-initiated sign-in off through the connection
-     * service; whether it updated the connection.
+     * Turn the connection's IdP-initiated sign-in off; whether it was updated.
      *
      * @return bool
      */
@@ -518,8 +468,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * What the browser posts: a valid unsolicited response from the identity
-     * provider.
+     * A valid unsolicited response from the identity provider.
      *
      * @return \SineMacula\Laravel\Sso\Protocols\CompletionRequest
      */
@@ -533,9 +482,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Fork a process for each racer, have each start its work at the same
-     * moment on a connection of its own, plain or inside a transaction of its
-     * own, and collect what each reported, in the racers' order.
+     * Fork a process per racer, start them together and collect their reports
+     * in order.
      *
      * @param  list<array{0: \Closure(): string, 1: bool}>  $racers
      * @return list<string>
@@ -572,10 +520,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, wait for its start, do
-     * its work, report the outcome, and end without running the parent's
-     * shutdown. Racing inside a transaction, the process opens one and reads
-     * the connection before the start, and commits after its work.
+     * Run the racer's work on its own connection and exit without the parent's
+     * shutdown.
      *
      * @param  int  $process
      * @param  float  $start
@@ -620,9 +566,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error, so a race whose
-     * racers ran one after the other never passes as one that overlapped.
+     * Wait up to `SIGNAL_SECONDS` for the signal file, and fail when it never
+     * appears.
      *
      * @param  string  $signal
      * @return void
@@ -637,8 +582,7 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`; whether it
-     * appeared.
+     * Wait up to `SIGNAL_SECONDS` for the signal file; whether it appeared.
      *
      * @param  string  $signal
      * @return bool
@@ -661,8 +605,8 @@ final class ConcurrentReinitiationTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure (SQLSTATE 40001), accepted only there.
+     * Whether the error, or its cause, is a PostgreSQL serialisation failure
+     * (SQLSTATE 40001).
      *
      * @param  \Throwable  $exception
      * @return bool

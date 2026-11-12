@@ -10,23 +10,8 @@ use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 
 /**
- * The fake OpenID provider's token endpoint (SSO-12.4, SSO-7.2), answering the
- * package's token requests on the fake fetcher as a strict provider would:
- *
- * - the client must authenticate by exactly the method it was registered with:
- *   `client_secret_basic` or `client_secret_post` with its secret, or
- *   `private_key_jwt` with a client assertion (RFC 7523) that verifies with its
- *   registered public key, under `typ` `JWT` and a `kid`, whose `iss` and `sub`
- *   are the client id, whose `aud` is this endpoint exactly, whose `jti`
- *   is new, and that has not expired and lives no longer than five minutes;
- *   otherwise `401` `invalid_client`;
- * - the form must be `grant_type=authorization_code` with a code this provider
- *   issued and nobody has used, the exact `redirect_uri` the authorisation
- *   request named, and the `code_verifier` whose S256 is its challenge;
- *   otherwise `400` `invalid_grant` (a used code stays used, as RFC 6749
- *   §4.1.2 asks);
- * - it answers `200` with the code's ID token, its access token, a refresh
- *   token the package must never keep, `token_type` `Bearer` and the scope.
+ * The fake OpenID provider's token endpoint, as strict as a real one; it also
+ * returns a refresh token the package must never keep.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,7 +45,7 @@ final class FakeTokenEndpoint
         /** The provider's clock. */
         private readonly \Closure $now,
 
-        // The client registered until a test registers its own
+        // Not promoted: the default client until a test registers its own
         string $clientId,
     ) {
         $this->client = ['client_id' => $clientId, 'method' => 'client_secret_basic', 'secret' => 'fake-secret', 'public_key' => null];
@@ -97,8 +82,7 @@ final class FakeTokenEndpoint
     }
 
     /**
-     * Register the client the endpoint authenticates: its id, its method and
-     * its secret or PEM public key.
+     * Register the client, with its secret or PEM public key.
      *
      * @param  string  $clientId
      * @param  string  $method
@@ -152,8 +136,7 @@ final class FakeTokenEndpoint
     }
 
     /**
-     * Whether the request is a token request authenticated by exactly the
-     * registered client's method.
+     * Whether the request authenticates by exactly the registered method.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return bool
@@ -173,9 +156,8 @@ final class FakeTokenEndpoint
     }
 
     /**
-     * Whether the client assertion verifies with the registered key and carries
-     * the claims RFC 7523 §3 asks for, with a `jti` never seen, which it then
-     * records.
+     * Whether the RFC 7523 client assertion verifies and is valid, recording
+     * its `jti`.
      *
      * @param  string  $assertion
      * @return bool
@@ -199,9 +181,8 @@ final class FakeTokenEndpoint
     }
 
     /**
-     * Whether a client assertion's claims name this client and this endpoint,
-     * carry a new `jti`, and have not expired nor live longer than five
-     * minutes.
+     * Whether the assertion names this client and endpoint, has a new `jti`,
+     * and is unexpired with a lifetime of at most five minutes.
      *
      * @param  array<array-key, mixed>  $claims
      * @return bool
@@ -222,9 +203,8 @@ final class FakeTokenEndpoint
     }
 
     /**
-     * The authorisation the form exchanges a code of, when the grant is
-     * `authorization_code` for an unused code with its exact `redirect_uri` and
-     * the verifier of its challenge.
+     * The authorisation the form validly redeems; a code is spent even by a
+     * failed attempt (RFC 6749 section 4.1.2).
      *
      * @param  array<string, string>  $form
      * @return ?\SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization
@@ -245,8 +225,8 @@ final class FakeTokenEndpoint
     }
 
     /**
-     * Whether the form is an `authorization_code` grant of the authorisation's
-     * code with its exact `redirect_uri` and the verifier of its challenge.
+     * Whether the form has the right grant type, exact `redirect_uri` and PKCE
+     * verifier.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization  $authorization
      * @param  array<string, string>  $form

@@ -12,11 +12,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\MembershipStanding;
 
 /**
- * The example application's tenant membership (SSO-8.8): under the user's
- * guard, which a writer revoking a membership takes, the user's current
- * principal of the tenant and the time the person accepted it. A principal an
- * administrator granted that the person has not accepted, or one revoked, is no
- * membership for linking.
+ * The example application's tenant membership: a current principal of the
+ * tenant the person has accepted, read under the user's guard.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

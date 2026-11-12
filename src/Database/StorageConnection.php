@@ -9,39 +9,11 @@ use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Where the package's tables live, and what they are called: the connection the
- * shipped models read and write and the published migrations create the tables
- * on, so the models and the migrations use the same connection and table names,
- * and each table's configured name (SSO-11.10).
+ * The connection and configured names of the package's tables, shared by the
+ * models and migrations.
  *
- * Every package table lives on `sso.storage.connection` (`null` or empty for
- * the default connection). They are kept together because a completion, a
- * redemption, a connection's lifecycle change and a link's activation each
- * write several of them in one transaction, which two connections cannot commit
- * as one. An adapter that must commit with the package (a revocation, a handoff
- * consumed by the application's sign-in, a link activated with a session)
- * writes through this same Laravel connection, inside the transaction the
- * package opens: reaching the same database through another connection is not
- * atomic. The attempt counters live on `sso.rate_limits.connection` when it
- * names one, so they can stay out of a transaction a refused flow rolls back,
- * and on the storage connection otherwise.
- *
- * A start that calls a protocol driver and a completion run outside any
- * transaction open on the storage connection (`assertNoTransaction()`): a
- * caller's rollback would otherwise undo a request's consumption, and its
- * transaction would keep the connection's lock across a call to the identity
- * provider.
- *
- * Every table is named by a setting under `sso.`, listed with its default in
- * `TABLES`; a table added to the package is added there, and the models (see
- * `Models\SsoModel`) and migrations read it through `table()` and
- * `connectionFor()`.
- *
- * A model takes its connection and table when it is built, so the settings must
- * stay the same for the life of a process: moving or renaming the tables is a
- * deploy, with a worker restart and a migration the application performs, not a
- * runtime switch. Connections are compared by name, a model's own or the
- * default one, so no connection is opened.
+ * Adapters that must commit with the package write through this connection;
+ * the settings are fixed for a process's life.
  *
  * @api
  *
@@ -50,7 +22,7 @@ use Illuminate\Support\Facades\DB;
  */
 final class StorageConnection
 {
-    /** @var array<string, string> Every package table: the key, under `sso.`, of the setting that names it, and its default name. */
+    /** @var array<string, string> Every package table's setting key under `sso.`, with its default name. */
     public const array TABLES = [
         'single_use.table'             => 'sso_single_use_keys',
         'rate_limits.table'            => 'sso_rate_limits',
@@ -67,7 +39,7 @@ final class StorageConnection
     /** @var string The key, under `sso.`, of the table that lives on the counters' connection. */
     private const string RATE_LIMITS_TABLE = 'rate_limits.table';
 
-    /** @var string A table name: letters, digits and underscores, not starting with a digit, optionally after a schema named the same way. */
+    /** @var string A plain table name, optionally schema-qualified. */
     private const string TABLE_NAME = '/^(?:[A-Za-z_][A-Za-z0-9_]{0,62}\.)?[A-Za-z_][A-Za-z0-9_]{0,62}$/';
 
     /**
@@ -76,8 +48,7 @@ final class StorageConnection
     private function __construct() {}
 
     /**
-     * The connection the package's tables live on, or `null` for the default
-     * connection.
+     * The storage connection, or `null` for the default connection.
      *
      * @return ?string
      *
@@ -89,8 +60,7 @@ final class StorageConnection
     }
 
     /**
-     * The connection the attempt counters live on: the one
-     * `sso.rate_limits.connection` names, or the storage connection.
+     * The attempt counters' connection, or the storage connection when unset.
      *
      * @return ?string
      *
@@ -102,8 +72,7 @@ final class StorageConnection
     }
 
     /**
-     * The connection the table the key names lives on: the counters' for the
-     * rate limits table, and the storage connection for every other.
+     * The connection the keyed table lives on.
      *
      * @param  string  $key
      * @return ?string
@@ -119,9 +88,7 @@ final class StorageConnection
     }
 
     /**
-     * The configured name of the table the key names (one of `TABLES`), or its
-     * default when the setting is not set. A name that is not a plain table
-     * name, optionally schema-qualified, fails closed, naming the key.
+     * The configured name of the keyed table, or its default.
      *
      * @param  string  $key
      * @return string
@@ -137,7 +104,7 @@ final class StorageConnection
     }
 
     /**
-     * Whether the model lives on the storage connection.
+     * Whether the model lives on the storage connection, compared by name.
      *
      * @param  \Illuminate\Database\Eloquent\Model  $model
      * @return bool
@@ -163,8 +130,7 @@ final class StorageConnection
     }
 
     /**
-     * The name of the storage connection: the configured one, or the default
-     * one.
+     * The name of the storage connection, resolving the default.
      *
      * @return string
      *
@@ -176,8 +142,7 @@ final class StorageConnection
     }
 
     /**
-     * Refuse, with the message, an operation called while a transaction is open
-     * on the storage connection.
+     * Throw if a transaction is open on the storage connection.
      *
      * @param  string  $message
      * @return void
@@ -192,9 +157,7 @@ final class StorageConnection
     }
 
     /**
-     * Refuse, with the message, an operation called while a transaction is open
-     * on the storage connection or the counters' connection: one that uses both
-     * and promises its statements commit by themselves.
+     * Throw if a transaction is open on the storage or counters' connection.
      *
      * @param  string  $message
      * @return void
@@ -211,8 +174,7 @@ final class StorageConnection
     }
 
     /**
-     * The table name configured under the key, once it is a plain table name,
-     * optionally schema-qualified.
+     * The configured table name, once validated.
      *
      * @param  string  $key
      * @param  mixed  $table
@@ -232,8 +194,7 @@ final class StorageConnection
     }
 
     /**
-     * Refuse a key that names no package table: a caller's mistake, not a
-     * configuration problem.
+     * Refuse a key that names no package table, a programming error.
      *
      * @param  string  $key
      * @return void
@@ -252,9 +213,8 @@ final class StorageConnection
     }
 
     /**
-     * Read a connection setting under `sso`: a name, or `null` for what an
-     * empty one means. Anything else fails closed rather than falling back to
-     * another connection.
+     * Read a connection name under `sso`; empty means `null`, and anything else
+     * fails closed.
      *
      * @param  string  $key
      * @param  string  $fallback

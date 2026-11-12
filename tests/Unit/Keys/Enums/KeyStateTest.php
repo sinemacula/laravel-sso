@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 
 /**
- * Unit tests for where a key of the service provider's own is in its rotation:
- * stable values.
+ * Unit tests for the key rotation states.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -11,9 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[logging]`: checked while the package is in use, the
- * shipped defaults passing, and each malformed setting, and an unknown channel,
- * reported with the message the logger would fail closed with, all in one run.
+ * Feature tests for the `[logging]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,8 +36,7 @@ final class LoggingCheckTest extends TestCase
     private const string KEYS = '`sso.logging.redacted_keys` must be a list of key names, each holding a letter or a digit.';
 
     /**
-     * Not checked while the package is not in use, however malformed; the
-     * shipped defaults pass once it is.
+     * The settings are checked only while the package is in use.
      *
      * @return void
      */
@@ -58,8 +55,8 @@ final class LoggingCheckTest extends TestCase
     }
 
     /**
-     * A malformed protocol switch counts as the package in use, so the logging
-     * settings are checked rather than skipped.
+     * A malformed protocol switch counts as in use, so the settings are
+     * checked.
      *
      * @return void
      */

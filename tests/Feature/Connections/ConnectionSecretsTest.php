@@ -19,10 +19,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for a connection's secrets column (SSO-2.5): which secrets are
- * set is read and masked without decrypting one, a secret is revealed only by
- * decrypting it, a change sets, replaces, clears or keeps each secret on its
- * own, and a malformed column or a failed decryption never shows a secret.
+ * Feature tests for a connection's secrets column.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,8 +51,7 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * Which secrets are set, and each declared secret masked, without one being
-     * decrypted.
+     * Which secrets are set, and their masks, are read without decrypting.
      *
      * @return void
      */
@@ -96,9 +92,8 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * A ciphertext that cannot be decrypted propagates as a server error,
-     * Laravel's own `DecryptException`, naming no secret; a test failure is not
-     * mistaken for it.
+     * A failed decryption propagates as Laravel's `DecryptException`, naming no
+     * secret.
      *
      * @return void
      */
@@ -134,8 +129,8 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * A change sets, replaces and clears each secret on its own; a secret not
-     * named is kept exactly as stored; and none left is `null`.
+     * A change sets, replaces and clears each secret on its own and keeps the
+     * rest as stored.
      *
      * @return void
      */
@@ -175,8 +170,8 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * A change clears and sets secrets in one pass, whichever comes first, and
-     * the column keeps each ciphertext's slashes as they are.
+     * Clears and sets apply in one pass in either order, and ciphertext slashes
+     * are kept.
      *
      * @return void
      */
@@ -214,10 +209,8 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * Each secret given is checked in the order the protocol declares them,
-     * past one given as `null`, which is never refused; and a client secret is
-     * unsupported for an OIDC client that authenticates with `private_key_jwt`,
-     * once it is a usable string.
+     * Each secret is checked in declared order; a client secret is unsupported
+     * under `private_key_jwt`.
      *
      * @return void
      */
@@ -245,8 +238,8 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * The secrets a change alters are those given as a string and those given
-     * as `null` that are stored, in the order the protocol declares them.
+     * A change alters the secrets given as strings and those given as `null`
+     * that are stored.
      *
      * @return void
      */
@@ -321,8 +314,8 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * A malformed column is an `UnexpectedValueException` from every read and
-     * change, naming neither its content nor a secret.
+     * A malformed column is an `UnexpectedValueException` that names no content
+     * or secret.
      *
      * @param  string  $column
      * @return void
@@ -352,8 +345,8 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * A secret set is found and revealed, from the row or through the
-     * contract; one not set, or a connection that is gone, has none.
+     * A set secret is revealed from the row or the contract; an unset one or a
+     * gone connection has none.
      *
      * @return void
      */
@@ -378,8 +371,7 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * A row is read as it is given, never again from the table: what it holds
-     * unsaved is what is found.
+     * A row is read as given, never again from the table.
      *
      * @return void
      */
@@ -424,8 +416,7 @@ final class ConnectionSecretsTest extends TestCase
     }
 
     /**
-     * An encrypter that encrypts and refuses to decrypt, so a read that
-     * decrypts fails.
+     * An encrypter that refuses to decrypt.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\SecretEncrypter
      */

@@ -40,12 +40,7 @@ use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
 
 /**
- * Feature tests of the evidence contract asked directly (SSO-8.7): the default
- * accepting nothing; what the connection's policy accepts, as exactly what is
- * answered; every time bound, against the instant asked; a result of another
- * connection, a `link`, and a policy that is no policy, each insufficient; an
- * error propagating; and that what a driver hands it comes only from the
- * validated assertion, whatever UserInfo or another statement says.
+ * Feature tests of the evidence contract asked directly.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -209,10 +204,8 @@ final class EvidencePolicyTest extends TestCase
     }
 
     /**
-     * Rows of `[the connection's own maximum age, the ceiling, the age of the
-     * authentication in seconds, whether it is accepted]`: a connection only
-     * ever tightens the ceiling, and a value above it, stored before the
-     * ceiling was lowered, is clamped to the ceiling as it is now.
+     * Rows of `[connection maximum age, ceiling, authentication age,
+     * accepted]`: a stored value above the ceiling is clamped to it.
      *
      * @return iterable<string, array{0: int, 1: int, 2: int, 3: bool}>
      */
@@ -281,10 +274,8 @@ final class EvidencePolicyTest extends TestCase
     }
 
     /**
-     * A result stating a provider's own `amr` value alongside an accepted
-     * standard one is not class-only evidence: the standard one is accepted and
-     * the other left out; the provider's value alone satisfies nothing. A raw
-     * class that no combination lists stays data, never an accepted class.
+     * A provider-specific `amr` beside an accepted standard one is left out,
+     * and alone satisfies nothing.
      *
      * @return void
      */
@@ -303,9 +294,8 @@ final class EvidencePolicyTest extends TestCase
     }
 
     /**
-     * A registered driver's methods and class are read as its normalised
-     * evidence contract, whatever its wire protocol: its own protocol's name is
-     * enough.
+     * A registered driver's methods and class are read as normalised evidence,
+     * whatever its wire protocol.
      *
      * @return void
      */
@@ -497,9 +487,8 @@ final class EvidencePolicyTest extends TestCase
     }
 
     /**
-     * UserInfo never states the authentication context: what the ID token alone
-     * states is what is judged, whatever more UserInfo offers, so it completes
-     * no combination and adds no method, class or time.
+     * UserInfo never adds to the evidence: only the ID token's statement is
+     * judged.
      *
      * @return void
      */

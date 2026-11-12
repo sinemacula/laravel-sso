@@ -9,10 +9,8 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[domains]`: the settings of claimed domains and their checks, while the
- * package is in use (SSO-3.1 to SSO-3.3), each read as `DomainSettings` reads
- * it, so the check and the domain operations judge it the same way. The table's
- * name is checked under `[storage]`.
+ * `[domains]`: the domain settings, read through `DomainSettings` so the check
+ * judges them as the domain operations do.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,8 +40,7 @@ final readonly class DomainsCheck implements ConfigurationCheck
     }
 
     /**
-     * The record name, the refused domains, the pending expiry, the grace
-     * period and the linking maximum age.
+     * Read each domain setting.
      *
      * @return list<\Closure(): mixed>
      */

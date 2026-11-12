@@ -8,11 +8,8 @@ use Illuminate\Support\ServiceProvider;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 
 /**
- * The service provider of an application whose outbound traffic must leave
- * through an egress proxy (SSO-2.9): it binds the application's own fetcher in
- * place of the package's, which never uses a proxy. It registers after the
- * package's provider, as an application's providers do, so its binding replaces
- * the default as any later binding does.
+ * Binds a fetcher that sends through an egress proxy, which the package's
+ * fetcher never uses.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

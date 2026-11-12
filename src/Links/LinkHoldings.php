@@ -12,8 +12,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 
 /**
- * What an identity holds in a connection, and how much it may (SSO-8.4), as the
- * link store and its reservations each judge it under the connection's lock.
+ * How many links an identity holds in a connection, and how many it may.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,9 +27,7 @@ final class LinkHoldings
     private function __construct() {}
 
     /**
-     * The number of links the identity holds in the connection, by a locking
-     * read: active and suspended ones, and reserved ones expiring after the
-     * instant. The identity is compared byte for byte, whatever the collation.
+     * Count the identity's held links in the connection by a locking read.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -52,8 +49,7 @@ final class LinkHoldings
     }
 
     /**
-     * The most links the identity may hold in the connection, as the binding
-     * answers, refused when it is below one.
+     * The binding's link limit, refused when it is below one.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\LinkLimit  $binding
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -74,7 +70,7 @@ final class LinkHoldings
     }
 
     /**
-     * Whether the link is the identity's, byte for byte.
+     * Whether the link is the identity's, byte for byte whatever the collation.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -86,8 +82,7 @@ final class LinkHoldings
     }
 
     /**
-     * Whether the link counts toward the limit: active or suspended, or
-     * reserved until a moment after now.
+     * Whether the link counts toward the limit: any but an expired reservation.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  \Carbon\CarbonImmutable  $now

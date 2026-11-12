@@ -22,7 +22,7 @@ value your controller builds from the request.
 
 ## The routes
 
-The package registers no routes. With the example layout (SSO-12.5):
+The package registers no routes. With the example layout:
 
 ```text
 POST   /auth/sso/connections/{connection}/assertions    SAML assertion consumer service
@@ -180,10 +180,10 @@ identities itself when it redeems the code can allow unlinked handoffs, in `conf
 ```
 
 Its codes then carry no linked identity, and the redemption must decide who signed in. Never resolve an identity from
-the email or any other mapped attribute there either. An unlinked handoff is only for a link that is genuinely absent:
-a suspended link ends with `link_suspended`, one whose scope could not be judged with `principal_scope_unknown`, and
-another flow's live reservation with `link_reserved`, whatever this
-setting says. Under `laravel-iam` the sign-in adapter always requires a linked identity.
+the email or any other mapped attribute there either. An unlinked handoff is only for a link that is genuinely absent: a
+suspended link ends with `link_suspended`, one whose scope could not be judged with `principal_scope_unknown`, and
+another flow's live reservation with `link_reserved`, whatever this setting says. Under `laravel-iam` the sign-in
+adapter always requires a linked identity.
 
 `link` and `reauthenticate` flows are never refused as unlinked here, and never offered for provisioning.
 
@@ -216,13 +216,13 @@ Bind your own in a service provider's `register()`; each default fails closed.
 A completed flow reports `ResultVerified` then `HandoffIssued`. A refusal once the response was verified reports
 `ResultVerified` then one `FlowFailed`. A `sign_in` still unlinked reports `ResultVerified`, then `ResultUnlinked`, then
 what its listener made and how it ended ([Provisioning](provisioning.md)). Any earlier refusal, a full limit included,
-reports one `FlowFailed`, with the flow
-(`assertion` or `callback`) and the reason. Their context carries the connection, its tenant and protocol, the
-application, the purpose and the request's public reference (`request_reference`, the only flow identifier events and
-logs carry); the linked identity for a `sign_in`, the identity a `link` or `reauthenticate` was started for, and the
-session of a `reauthenticate`. Never a subject, an attribute or a code.
+reports one `FlowFailed`, with the flow (`assertion` or `callback`) and the reason. Their context carries the
+connection, its tenant and protocol, the application, the purpose and the request's public reference
+(`request_reference`, the only flow identifier events and logs carry); the linked identity for a `sign_in`, the identity
+a `link` or `reauthenticate` was started for, and the session of a `reauthenticate`. Never a subject, an attribute or a
+code.
 
-Events are dispatched after the transaction that caused them commits, but for `ResultUnlinked`, which is synchronous by
+Events are dispatched after the transaction that caused them commits, except `ResultUnlinked`, which is synchronous by
 design and is the one event that carries the result.
 
 ## Transactions

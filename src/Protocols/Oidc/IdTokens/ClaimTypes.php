@@ -12,39 +12,8 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * Every claim of an ID token the package reads has its exact type (SSO-7.4,
- * `docs/design/oidc-id-tokens.md`), and anything else is `id_token_invalid`:
- * nothing is coerced, trimmed or normalised, so a later check never meets a
- * value its comparison would read two ways.
- *
- * Required:
- *
- * - `iss`: a string;
- * - `sub`: a string of 1 to 1024 bytes, kept exactly;
- * - `aud`: a non-empty string, or a non-empty JSON array of non-empty strings
- *   with no two the same;
- * - `exp` and `iat`: finite JSON numbers.
- *
- * When present, a `null` being present:
- *
- * - `nbf` and `auth_time`: finite JSON numbers;
- * - `azp`, `nonce`, `at_hash` and `email`: strings;
- * - `acr` and `sid`: strings of 1 to 1024 bytes;
- * - `amr`: a JSON array of at most 32 strings of 1 to 255 bytes.
- *
- * The rest of a token's claims are not judged, `email_verified` among them: any
- * value but a JSON boolean is no evidence of anything (`EmailPairing`) and
- * never refuses a token.
- *
- * The token's claims keep an integer too large for PHP's as its digits, so a
- * numeric date refuses it, and read a JSON object as a PHP array, so
- * `{"0":"client"}` and `["client"]` are the same value by then. `refusal()`
- * also reads the payload as JSON wrote it (`StrictJson::decodeAsWritten()`), so
- * an object is never read as a list and a number is never read as a string of
- * its digits. A number too large for a float reads as infinity, and is refused,
- * since it could never expire.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The exact type of every ID token claim the package reads; nothing is coerced,
+ * trimmed or normalised.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,7 +22,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
  */
 final class ClaimTypes
 {
-    /** @var list<string> The claims that are strings, or lists of them, in the token's JSON. */
+    /** @var list<string> The claims that must be strings, or lists of them, as written. */
     private const array TEXT_CLAIMS = ['iss', 'sub', 'aud', 'azp', 'nonce', 'at_hash', 'email', 'acr', 'sid', 'amr'];
 
     /**
@@ -73,8 +42,8 @@ final class ClaimTypes
     }
 
     /**
-     * Whether every required claim is present with its type, and every other
-     * claim the package reads is absent or has its type.
+     * Whether every required claim is typed and every optional one is absent or
+     * typed.
      *
      * @param  array<array-key, mixed>  $claims
      * @return bool
@@ -93,7 +62,8 @@ final class ClaimTypes
     }
 
     /**
-     * Whether every optional claim is absent or has its type.
+     * Whether every optional claim is absent or typed; a `null` counts as
+     * present.
      *
      * @param  array<array-key, mixed>  $claims
      * @return bool
@@ -122,8 +92,8 @@ final class ClaimTypes
     }
 
     /**
-     * Whether the value is a non-empty string, or a non-empty list of them with
-     * no two the same.
+     * Whether the value is a non-empty string or a non-empty list of distinct
+     * ones.
      *
      * @param  mixed  $value
      * @return bool
@@ -153,7 +123,7 @@ final class ClaimTypes
     }
 
     /**
-     * Whether the array is a list of strings of 1 to the bytes given.
+     * Whether the array is a list of strings of 1 to `$maxBytes` bytes.
      *
      * @param  array<array-key, mixed>  $values
      * @param  int  $maxBytes
@@ -178,7 +148,7 @@ final class ClaimTypes
     }
 
     /**
-     * Whether the value is a string of 1 to the bytes given.
+     * Whether the value is a string of 1 to `$maxBytes` bytes.
      *
      * @param  mixed  $value
      * @param  int  $maxBytes
@@ -190,7 +160,7 @@ final class ClaimTypes
     }
 
     /**
-     * Whether the value is a finite JSON number.
+     * Whether the value is a finite JSON number; infinity could never expire.
      *
      * @param  mixed  $value
      * @return bool
@@ -203,10 +173,8 @@ final class ClaimTypes
     }
 
     /**
-     * Whether each claim that is a string, or a list of them, is one in the
-     * token's JSON: never an object read as a list, nor a number read as its
-     * digits. A payload PHP cannot read as objects (a member name an object
-     * cannot hold is refused by its decoder) is refused too.
+     * Whether each string claim is a string as written in the JSON, never an
+     * object read as a list or a number read as its digits.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
      * @return bool

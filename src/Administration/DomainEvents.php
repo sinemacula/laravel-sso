@@ -21,24 +21,9 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * Reports the changes to a connection's domains (SSO-3, SSO-10.3): claimed,
- * verified and removed by the management helpers, and a failed recheck, a
- * restoration and a lapse by the scheduled check. Each method builds the
- * event's context through the one projection (`Events\EventContexts`), from the
- * connection's id, tenant and protocol and, when there is a caller, its
- * identity as the acting identity, and hands the event to
- * `Events\AfterCommitDispatcher`, so it reaches listeners once the change
- * commits and never when it rolls back (SSO-10.5).
+ * Dispatches the events for changes to a connection's domains.
  *
- * The caller reports inside the transaction that made the change, after the
- * write, once per change; never for a refusal or a no-op. No event carries the
- * verification token or a DNS record's value (SSO-10.4).
- *
- * Every method takes the client the action is taken for (`Http\ClientContext`),
- * whose IP address and user agent the event's context carries; nothing reads
- * the request being served. It holds the projection and the dispatcher, which
- * read the clock and the transaction from the container on each call, so
- * nothing of one request is kept for the next (SSO-11.2).
+ * Call inside the change's transaction, after the write, once per real change.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -101,8 +86,7 @@ final readonly class DomainEvents
     }
 
     /**
-     * Report a scheduled check of a verified domain that did not confirm it,
-     * with the time it lapses, as the row now holds it.
+     * Report a failed recheck of a verified domain, with the row's lapse time.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
@@ -116,9 +100,7 @@ final readonly class DomainEvents
     }
 
     /**
-     * Report a domain whose record had gone confirmed again within its grace
-     * period, with the verification time it keeps and the time of the check
-     * that confirmed it.
+     * Report a domain confirmed again within its grace period.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
@@ -149,8 +131,7 @@ final readonly class DomainEvents
     }
 
     /**
-     * Report a claim removed. Called with the row as it was read before the
-     * delete, in the delete's transaction.
+     * Report a claim removed, given the row as read before the delete.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
@@ -164,8 +145,7 @@ final readonly class DomainEvents
     }
 
     /**
-     * The context of a change to the connection's domain, by the acting
-     * identity when there is one.
+     * The context of a change to the connection's domain by the caller.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller

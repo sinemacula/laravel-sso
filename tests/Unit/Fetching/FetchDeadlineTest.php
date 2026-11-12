@@ -10,10 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Fetching\FetchDeadline;
 
 /**
- * Unit tests for a fetch's one deadline: the timeout from the moment it is set,
- * counted in whole milliseconds on the monotonic clock given, passed once less
- * than a millisecond is left, and the time caps of a transfer started at any
- * point before it, or none once less than a millisecond is left.
+ * Unit tests for a fetch's deadline.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -33,8 +30,7 @@ final class FetchDeadlineTest extends TestCase
     private int $now = 0;
 
     /**
-     * The deadline is the seconds given from the instant it is set, not from
-     * the clock's zero.
+     * The deadline counts from the instant it is set, not the clock's zero.
      *
      * @return void
      */
@@ -69,8 +65,8 @@ final class FetchDeadlineTest extends TestCase
     }
 
     /**
-     * Time left is counted in whole milliseconds, and the deadline has passed
-     * once less than one is left: cURL reads a timeout of `0` as none.
+     * Time left is whole milliseconds, and under one has passed, since cURL
+     * reads `0` as none.
      *
      * @param  int  $elapsed
      * @param  int  $millisecondsLeft
@@ -90,7 +86,7 @@ final class FetchDeadlineTest extends TestCase
 
     /**
      * Rows of `[nanoseconds elapsed of a ten-second deadline, timeout, connect
-     * timeout]`, under a five-second connect timeout.
+     * timeout]`.
      *
      * @return iterable<string, array{int, float, float}>
      */
@@ -107,8 +103,8 @@ final class FetchDeadlineTest extends TestCase
     }
 
     /**
-     * A transfer is given what is left as its timeout, and the connect timeout
-     * capped to the same, in seconds.
+     * A transfer gets what is left, with the connect timeout capped to it, in
+     * seconds.
      *
      * @param  int  $elapsed
      * @param  float  $timeout
@@ -126,8 +122,8 @@ final class FetchDeadlineTest extends TestCase
     }
 
     /**
-     * Rows of `[nanoseconds elapsed of a ten-second deadline]` that leave less
-     * than a millisecond.
+     * Rows of `[nanoseconds elapsed of a ten-second deadline]` leaving under a
+     * millisecond.
      *
      * @return iterable<string, array{int}>
      */
@@ -142,8 +138,8 @@ final class FetchDeadlineTest extends TestCase
     }
 
     /**
-     * With less than a millisecond left, a transfer is given no caps at all
-     * rather than caps of `0`, which cURL reads as none, so it is not started.
+     * Under a millisecond left gives no caps rather than caps of `0`, which
+     * cURL reads as none.
      *
      * @param  int  $elapsed
      * @return void
@@ -159,8 +155,8 @@ final class FetchDeadlineTest extends TestCase
     }
 
     /**
-     * The time caps are read from the clock once: a clock that moves on with
-     * every read cannot pass a check and then give a cap of `0`.
+     * The caps come from one clock read, so a moving clock cannot yield a `0`
+     * cap.
      *
      * @return void
      */

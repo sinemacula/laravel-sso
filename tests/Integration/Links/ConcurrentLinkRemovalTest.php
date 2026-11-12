@@ -28,21 +28,11 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races removals of one link across processes, each with its own database
- * connection, on PostgreSQL and MySQL (SSO-8.4, SSO-4.5). Each removal locks
- * the link's connection, then reads the link again by a locking read, so
- * removals of one link are serialised: exactly one removes it, revokes the
- * identity's sessions through the connection once and reports `LinkRemoved`
- * once; the other finds it gone, `link_not_found`, and revokes and reports
- * nothing.
+ * Integration tests racing removals of one link across processes.
  *
- * The race runs twice: plainly, and with every process inside a transaction of
- * its own that read the link before the race began, so a re-read that answered
- * from that snapshot (MySQL's `REPEATABLE READ`) would find the link still
- * there and remove, revoke and report it a second time.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * The race also runs inside transactions that read the link first, to catch
+ * answers from a `REPEATABLE READ` snapshot. Skipped on SQLite and without
+ * `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -70,10 +60,8 @@ final class ConcurrentLinkRemovalTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock, a
-     * fresh caller and a revocation that writes through the storage connection,
-     * create the tables, a connection and its link, record each `LinkRemoved`
-     * to a file, and make the directory the processes report in.
+     * Skip where processes cannot share the database, then set up the
+     * revocation, a connection and its link, and the outcome directory.
      *
      * @return void
      *
@@ -139,8 +127,7 @@ final class ConcurrentLinkRemovalTest extends TestCase
     }
 
     /**
-     * Rows of `[inTransaction]`: the race plainly, and with every process
-     * inside a transaction of its own.
+     * Rows of `[inTransaction]`.
      *
      * @return iterable<string, array{bool}>
      */
@@ -151,8 +138,7 @@ final class ConcurrentLinkRemovalTest extends TestCase
     }
 
     /**
-     * Two removals of one link: exactly one removes it, with one revocation and
-     * one `LinkRemoved`; the other is `link_not_found`.
+     * Exactly one racer removes the link; the other is `link_not_found`.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -176,8 +162,7 @@ final class ConcurrentLinkRemovalTest extends TestCase
     }
 
     /**
-     * Fork a process per removal, have each remove the link at the same moment
-     * on a connection of its own, and collect what each reported.
+     * Fork a process per removal and collect what each reported.
      *
      * @param  bool  $inTransaction
      * @return list<string>
@@ -214,10 +199,8 @@ final class ConcurrentLinkRemovalTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, open a transaction
-     * that reads the link first when asked, wait for the start, remove the
-     * link, commit, report `removed` or the reason, and end without running the
-     * parent's shutdown.
+     * In a forked process: wait for the start, remove the link, report the
+     * outcome, and exit without the parent's shutdown.
      *
      * @param  int  $process
      * @param  float  $start
@@ -263,8 +246,8 @@ final class ConcurrentLinkRemovalTest extends TestCase
     }
 
     /**
-     * A revocation that writes the connection and identity it revokes for
-     * through the storage connection, so it commits with the removal.
+     * A revocation that writes through the storage connection, so it commits
+     * with the removal.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\SessionRevocation
      */

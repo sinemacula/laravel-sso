@@ -14,62 +14,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
 
 /**
- * Reads an identity provider's SAML 2.0 metadata for one pinned entity, by the
- * metadata validation profile (SSO-2.8, SSO-6.1, SSO-6.11): the package's one
- * reader of metadata, for an import and for a refresh alike, and the only class
- * besides the response adapter's that calls the SAML library.
- *
- * 1. The document is capped at `sso.metadata.max_bytes` before it is parsed,
- *    the cap a metadata fetch is held to too, and parsed hardened with no `ID`
- *    repeated anywhere in it (`HardenedParser`). libxml's default limits bound
- *    a single text node, name or attribute, never the document's size, so an
- *    aggregate of tens of MiB parses without `LIBXML_PARSEHUGE`, which stays
- *    off: no value in metadata comes near those limits, and the cap bounds the
- *    document.
- * 2. Its root is an `EntityDescriptor` or an `EntitiesDescriptor`. Exactly one
- *    `EntityDescriptor` anywhere in it has the pinned entity id, compared
- *    exactly: none is `metadata_entity_not_found`, more than one, wherever it
- *    hides, `metadata_invalid`. The one chosen is the root, or a child of an
- *    `EntitiesDescriptor` that is itself the root or such a child, checked by
- *    walking its ancestors, so an entity wrapped anywhere else is refused.
- * 3. Within the chosen entity, the only signature allowed is its own, a child
- *    of the entity; one anywhere else in it is refused. The chosen entity, and
- *    only it, must be valid against the metadata schema (`schema`): the other
- *    members of an aggregate are never validated, so a member a federation
- *    lists with a value the schema refuses never refuses the rest.
- * 4. With an anchor set (the connection's metadata signing certificates), the
- *    entity must be covered by a signature, its own or an enclosing
- *    `EntitiesDescriptor`'s, and every signature on that path must verify with
- *    an anchor through `PinnedVerifier`, each signed element copied into a
- *    document of its own first, as the library needs (`saml-library.md`), and
- *    verified as a `SignedDescriptor`, which models the signature alone. No
- *    signature, or one that does not verify, is `metadata_signature_invalid`.
- *    The entity is then read from the element parsed from the bytes the
- *    innermost signature on its path digested, never from the document given.
- *    Without anchors, signatures are not read. No member is modelled by the
- *    library's `EntityDescriptor`, the chosen one included: its stricter rules
- *    (a URL with a scheme, an ASCII email address, a `validUntil` in UTC) judge
- *    values the reader never reads, and the schema has judged the entity.
- * 5. Its expiry is the earliest `validUntil` of the entity and every descriptor
- *    enclosing it (`cacheDuration` is ignored); one not after the clock's now
- *    is `metadata_expired`. Each must be a real `xs:dateTime`
- *    (`SchemaDateTime`), an enclosing one too, which the schema never judged,
- *    or the document is `metadata_invalid`.
- * 6. The entity has exactly one `IDPSSODescriptor` that supports the SAML 2.0
- *    protocol, with a single sign-on service of the HTTP-Redirect or HTTP-POST
- *    binding (the first of each), the connection's current binding preferred,
- *    then HTTP-Redirect; and at least one RSA signing certificate, from a
- *    `KeyDescriptor` of use `signing` or of none. Encryption certificates come
- *    from one of use `encryption` or of none. A certificate the package cannot
- *    use (not RSA, too weak, unreadable) is ignored; one repeated is kept once,
- *    by fingerprint.
- *
- * Values are read as text content from the elements at the positions checked,
- * which the verified signatures cover, so a comment or a processing instruction
- * cannot change one. The answer is an `IdpMetadata`, read or refused with the
- * rule's name; the reader never logs or keeps the document. It holds the
- * parser, the verifier, the certificate inspector, the metadata settings and
- * the clock, none of which keeps anything between calls (SSO-11.2).
+ * Reads an identity provider's SAML 2.0 metadata for one pinned entity, for an
+ * import or a refresh. Only the chosen entity is schema-validated, so one bad
+ * federation member never refuses the rest.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -90,7 +37,7 @@ final readonly class MetadataReader
     /** @var string The SAML 2.0 protocol, as `protocolSupportEnumeration` names it. */
     public const string SAML2_PROTOCOL = 'urn:oasis:names:tc:SAML:2.0:protocol';
 
-    /** @var array<string, string> The bindings a single sign-on service may have, by URI, as the connection names them, in the order preferred. */
+    /** @var array<string, string> Accepted SSO bindings by URI, preferred first. */
     public const array BINDINGS = [
         'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect' => 'http_redirect',
         'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST'     => 'http_post',
@@ -124,8 +71,7 @@ final readonly class MetadataReader
     ) {}
 
     /**
-     * The most bytes a metadata document may hold, which a fetch of one is held
-     * to as well.
+     * The most bytes a metadata document may hold; a fetch is held to it too.
      *
      * @return int
      *
@@ -137,8 +83,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The metadata of the pinned entity, every signature on its path verified
-     * with an anchor when anchors are given, or why it was refused.
+     * The pinned entity's metadata, or why it was refused. With anchors, every
+     * signature on its path must verify; without, none is read.
      *
      * @param  string  $xml
      * @param  string  $entityId
@@ -170,8 +116,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The one `EntityDescriptor` with the entity id, whose only signature, if
-     * any, is its own.
+     * The one `EntityDescriptor` with the entity id, holding no signature but
+     * its own.
      *
      * @param  \DOMDocument  $document
      * @param  string  $entityId
@@ -200,8 +146,7 @@ final readonly class MetadataReader
     }
 
     /**
-     * Every `EntityDescriptor` anywhere in the document whose entity id is
-     * exactly the one given; none for an empty one.
+     * Every `EntityDescriptor` with exactly the entity id; none if it is empty.
      *
      * @param  \DOMDocument  $document
      * @param  string  $entityId
@@ -243,8 +188,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The entity, then each descriptor enclosing it out to the root, each an
-     * `EntitiesDescriptor`.
+     * The entity, then each enclosing `EntitiesDescriptor` out to the root; any
+     * other ancestor is refused.
      *
      * @param  \DOMElement  $entity
      * @return non-empty-list<\DOMElement>
@@ -268,11 +213,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The path as the anchors verified it: a signature required on it and every
-     * one there verified, then the entity, and each descriptor enclosing it
-     * within the innermost signed one, read from the element parsed from the
-     * bytes that signature digested, followed by the descriptors enclosing that
-     * one.
+     * The path with every signature verified, read from the bytes the innermost
+     * signature digested up to that descriptor.
      *
      * @param  non-empty-list<\DOMElement>  $path
      * @param  list<string>  $anchors
@@ -307,9 +249,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The signed descriptor copied into a document of its own, so the library
-     * digests the descriptor rather than the document that held it, as a
-     * descriptor that models its signature alone.
+     * The descriptor copied into its own document, so the library digests it
+     * rather than the document that held it.
      *
      * @param  \DOMElement  $element
      * @return \SineMacula\Laravel\Sso\Protocols\Saml2\Library\SignedDescriptor
@@ -372,8 +313,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The earliest `validUntil` on the path, in UTC, or `null` when none
-     * carries one.
+     * The earliest `validUntil` on the path, in UTC; `cacheDuration` is
+     * ignored.
      *
      * @param  non-empty-list<\DOMElement>  $path
      * @return ?\Carbon\CarbonImmutable
@@ -398,10 +339,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The `xs:dateTime` as an instant in UTC, one with no zone read as UTC; a
-     * value that is not a real one (`SchemaDateTime`), or a form the schema
-     * allows beyond a four-digit year, is refused, and so is any failure to
-     * parse one, never quoting the value.
+     * The `xs:dateTime` in UTC, a zoneless one read as UTC; anything else is
+     * refused without quoting the value.
      *
      * @param  string  $value
      * @return \Carbon\CarbonImmutable
@@ -444,8 +383,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The binding and URL of the single sign-on service chosen: the first of
-     * the binding preferred, else the first of HTTP-Redirect, then HTTP-POST.
+     * The SSO binding and URL: the preferred binding's first service, else
+     * HTTP-Redirect's, then HTTP-POST's.
      *
      * @param  \DOMElement  $descriptor
      * @param  ?string  $preferred
@@ -478,8 +417,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The RSA certificates of the descriptor's key descriptors of the use, or
-     * of none, each with its fingerprint, once each, in document order.
+     * The usable RSA certificates for the use (or no use), once each by
+     * fingerprint, in document order.
      *
      * @param  \DOMElement  $descriptor
      * @param  string  $use
@@ -513,9 +452,8 @@ final readonly class MetadataReader
     }
 
     /**
-     * The base64 body of an `X509Certificate`, decoded and encoded again as a
-     * canonical PEM, and its fingerprint, when it is an RSA certificate the
-     * package accepts; `null` otherwise, an empty body included.
+     * The `X509Certificate` body as canonical PEM with its fingerprint, or
+     * `null` unless it is an acceptable RSA certificate.
      *
      * @param  string  $body
      * @return ?Certificate
@@ -530,8 +468,7 @@ final readonly class MetadataReader
     }
 
     /**
-     * The NameID formats the descriptor offers, trimmed, once each, in document
-     * order.
+     * The NameID formats offered, trimmed, once each, in document order.
      *
      * @param  \DOMElement  $descriptor
      * @return list<string>

@@ -18,11 +18,8 @@ use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for an identity provider's JWKS as the package reads and stores it
- * (SSO-7.3): the caps, the strict reading, the keys left out and the refusals;
- * the stored form admitted again for the allow-list; the key chosen by exact
- * `kid`, the missing-`kid` rule, and an unknown `kid` never falling back; and
- * what a replacement adds and removes.
+ * Unit tests for an identity provider's JWKS as the package reads and stores
+ * it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -200,9 +197,8 @@ final class ProviderKeySetTest extends TestCase
     }
 
     /**
-     * The key is the one whose own `kid` is exactly the header's, or, with no
-     * header `kid`, the only key admissible for its algorithm; an unknown `kid`
-     * is unknown and never falls back.
+     * The key is chosen by exact `kid`, or without one the only admissible key;
+     * an unknown `kid` never falls back.
      *
      * @param  array<string, mixed>  $header
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome  $outcome

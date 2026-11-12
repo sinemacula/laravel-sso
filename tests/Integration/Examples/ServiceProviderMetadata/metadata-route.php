@@ -3,12 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The metadata route of `docs/guides/service-provider-metadata.md` (SSO-5.9,
- * SSO-12.5), as an application's routes file holds it: a `GET` route on the
- * path `sso.endpoints.paths.metadata` builds each connection's metadata URL
- * and entity id from, so the URL the metadata names is the one that serves it,
- * answering the description of the tenant's connection, and `404` for every
- * refusal alike. The application resolves the tenant before the route runs.
+ * The metadata route of `docs/guides/service-provider-metadata.md`; the
+ * application resolves the tenant before the route runs.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

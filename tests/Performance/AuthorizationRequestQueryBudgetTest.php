@@ -28,24 +28,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Protocols\StartingDriver;
 
 /**
- * Query budgets for starting a flow and consuming its request (SSO-5.1,
- * SSO-11.3, SSO-11.5, SSO-11.8):
- *
- * - a start is its attempt counted against the IP address (an update and an
- *   insert for a new counter, one update after), one read of the connection,
- *   then, in the transaction that stores the request, one locking read of the
- *   connection again, the insert of the request and the update that raises the
- *   connection's flows version; a `link` asks the freshness contract and costs
- *   the same;
- * - a start a full limit refuses stops at the limiter (its update, the insert
- *   its key refuses, the update again and one read); one whose application is
- *   not allowed at its attempt; one whose connection is unknown, or whose
- *   driver cannot start, after the connection's read;
- * - a consumption is one locking read of the request, the single-use record and
- *   the update that marks it; a replay of a marked request is the read alone; a
- *   request the store has seen the read, the refused insert, the store's delete
- *   of an expired row and the insert it refuses again; an unknown state the
- *   read alone; a correlation that names nothing no statement at all.
+ * Query budgets for starting a flow and consuming its request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,9 +51,7 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
     private Connection $connection;
 
     /**
-     * Bind a freshness contract that answers `fresh` and a request from an IP
-     * address, register the application and the driver, and make a usable
-     * connection.
+     * Answer `fresh` to every freshness check and make a usable connection.
      *
      * @return void
      */
@@ -101,9 +82,8 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
     }
 
     /**
-     * The first start creates the IP address's counter; a later one updates it.
-     * Each reads the connection, locks it again, inserts the request and raises
-     * the connection's flows version.
+     * The first start creates the IP counter, a later one updates it; then the
+     * connection, its lock, the request and the flows version.
      *
      * @return void
      */
@@ -120,9 +100,8 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
     }
 
     /**
-     * A refused start writes no request: a full limit stops at the limiter, an
-     * application that is not allowed at its attempt, an unknown connection and
-     * a driver that cannot start after reading the connection.
+     * A disallowed application stops at its attempt, an unknown connection or a
+     * driver that cannot start after the read, and a full limit at the limiter.
      *
      * @return void
      */
@@ -149,8 +128,8 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
     }
 
     /**
-     * A consumption is one locking read, the single-use record and the update
-     * that marks the request; a replay of it is the read alone.
+     * One locking read, the single-use record and the request's mark; a replay
+     * is the read alone.
      *
      * @return void
      */
@@ -166,9 +145,8 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
     }
 
     /**
-     * A request the store has seen is the read, the refused insert, the store's
-     * delete of an expired row and the insert it refuses again; an unknown
-     * state is the read alone; a correlation that names nothing sends nothing.
+     * A seen request is the read, refused insert, expired-row delete and
+     * refused insert; an unknown state reads once, an uncorrelated none.
      *
      * @return void
      */
@@ -188,8 +166,8 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
     }
 
     /**
-     * Start a flow, a `sign_in` for the application through the usable
-     * connection unless told otherwise.
+     * Start a flow, by default a `sign_in` for `web` through the usable
+     * connection.
      *
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -213,8 +191,7 @@ final class AuthorizationRequestQueryBudgetTest extends PerformanceContractTestC
     }
 
     /**
-     * Consume the request the correlation names, for a response at the usable
-     * connection.
+     * Consume the correlated request for a response at the usable connection.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @return \SineMacula\Laravel\Sso\Flows\ConsumptionResult

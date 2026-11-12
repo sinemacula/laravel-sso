@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 
 /**
- * Unit tests for the freshness contract's outcomes: two, of which only `fresh`
- * lets an operation write.
+ * Unit tests for the freshness outcomes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

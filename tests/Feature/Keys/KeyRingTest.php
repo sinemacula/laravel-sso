@@ -25,17 +25,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for the read side of a connection's keys and certificates
- * (SSO-2.6, SSO-2.7, SSO-5.9): the current and next key of a use; the keys
- * published, current then next; the keys that decrypt, the current one and each
- * retiring one until its overlap ends by the clock, newest first; the
- * certificates trusted, oldest first whatever their dates; and a private key,
- * decrypted for its own connection only. Every read is made on the write
- * connection.
- *
- * The rows are written directly, each with a distinct P-256 certificate, since
- * the ring reads them as stored; each own key's private half is the encrypted
- * private key of the fixtures' first P-256 certificate.
+ * Feature tests for reading a connection's keys and certificates. Rows are
+ * written directly, as the ring reads them as stored.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -80,7 +71,7 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * The current and next key of a use are the connection's own, of that use
+     * The current and next key of a use are the connection's own of that use
      * and state, or `null`.
      *
      * @return void
@@ -102,8 +93,8 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * The keys published are the current key, then the next one, however they
-     * were added; never a retiring key or another use's.
+     * The published keys are the current then the next, never a retiring key or
+     * another use's.
      *
      * @return void
      */
@@ -129,9 +120,8 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * Decryption accepts the current encryption key, then each retiring one
-     * whose overlap has not ended, the most recently current first; a retiring
-     * key stops being accepted the instant its overlap ends.
+     * Decryption accepts the current key, then retiring keys newest first until
+     * each overlap ends.
      *
      * @return void
      */
@@ -162,9 +152,8 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * The current encryption key decrypts first even when a retiring one was
-     * made current after it, and a retiring key with no record of when it was
-     * made current decrypts last.
+     * The current key decrypts first whatever the dates, and a retiring key
+     * with no current-since date last.
      *
      * @return void
      */
@@ -178,8 +167,8 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * Without a current encryption key, decryption accepts the retiring keys
-     * still within their overlap, and nothing once they end.
+     * Without a current key, decryption accepts retiring keys only within their
+     * overlap.
      *
      * @return void
      */
@@ -195,9 +184,8 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * The certificates trusted are every one of the connection's, oldest first,
-     * an expired one included; never an own key or another connection's
-     * certificate.
+     * Trusted certificates are all of the connection's, oldest first, expired
+     * included; never own keys or others'.
      *
      * @return void
      */
@@ -234,8 +222,8 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * A key of another connection, a trusted certificate or an unknown id has
-     * no private key the connection may use: the caller's mistake.
+     * Another connection's key, a trusted certificate or an unknown id has no
+     * usable private key.
      *
      * @return void
      */
@@ -271,9 +259,8 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * Every read is made on the write connection (SSO-11.3), so a lagging
-     * replica never answers a retired key as one that still decrypts: with the
-     * read connection unusable, every read still answers.
+     * Every read uses the write connection, so a lagging replica cannot answer
+     * a retired key as current.
      *
      * @return void
      */
@@ -314,8 +301,8 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * Write a row of the connection, of the use and state, with a certificate
-     * of its own and, for an own key, an encrypted private key.
+     * Write a row of the connection, use and state with its own certificate
+     * and, for an own key, an encrypted private key.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use

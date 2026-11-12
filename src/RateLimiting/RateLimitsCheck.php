@@ -11,15 +11,8 @@ use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptScope;
 
 /**
- * `[rate_limits]`: the limits on each flow, while the package is in use
- * (SSO-11.8). Each flow's limits are read as the limiter reads them (see
- * `AttemptLimits::for()`), so the check and the limiter judge them the same
- * way: one problem for each flow whose limits are missing or malformed.
- *
- * A limit the package does not count (a scope its flow is not counted in, such
- * as a `per_connection` under `redemption`, or a flow it does not have) would
- * seem to limit something and limit nothing, so it is a problem too. The table
- * and the connection are checked under `[storage]`.
+ * `[rate_limits]`: checks each flow's limits as the limiter reads them, and
+ * refuses limits the package does not count, which would limit nothing.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,8 +68,7 @@ final readonly class RateLimitsCheck implements ConfigurationCheck
     }
 
     /**
-     * Refuse a key of the limits block the package does not count: a flow it
-     * does not have, or a scope its flow is not counted in.
+     * Refuse an unknown flow, or a scope its flow is not counted in.
      *
      * @return void
      *
@@ -93,9 +85,7 @@ final readonly class RateLimitsCheck implements ConfigurationCheck
     }
 
     /**
-     * The keys of the limits block the package does not count, in order: each
-     * name that is neither a flow nor a storage key, and each scope under a
-     * flow that the flow is not counted in.
+     * The keys of the limits block the package does not count, in order.
      *
      * @param  array<array-key, mixed>  $block
      * @return list<string>
@@ -119,8 +109,7 @@ final readonly class RateLimitsCheck implements ConfigurationCheck
     }
 
     /**
-     * The name of the limits block's key when it is not a flow, unless it is
-     * one of the storage keys.
+     * The non-flow key, unless it is a storage key.
      *
      * @param  string  $name
      * @return list<string>
@@ -131,8 +120,7 @@ final readonly class RateLimitsCheck implements ConfigurationCheck
     }
 
     /**
-     * The scopes under the flow's key that the flow is not counted in, each as
-     * `<flow>.<scope>`.
+     * The flow's uncounted scopes, each as `<flow>.<scope>`.
      *
      * @param  \SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow  $flow
      * @param  mixed  $limits

@@ -14,17 +14,7 @@ use SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * One scan of every package event, with one list of what no event may carry
- * (SSO-10.4): every class under `Events` that is a `Contracts\SsoEvent` is
- * found, none is left out, and no public property of any of them, or of the
- * context each carries, is named as a secret, a verifier, a handoff code,
- * protocol state, a nonce, an assertion, a token, a subject, an email, an
- * attribute, a payload or a header, unless it is an enum, which carries none;
- * and only `ResultUnlinked` carries the verified result, through its grant.
- *
- * The family tests (`FlowEventClassesTest` and the others) pin each event's
- * exact properties; this scan holds every event, those families included, to
- * the one list, so an event added later is held to it without being named.
+ * Holds every package event to one list of what no event may carry.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,14 +25,14 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 #[CoversClass(ResultUnlinked::class)]
 final class EveryEventClassTest extends TestCase
 {
-    /** @var list<string> What no property name may contain, compared without case or underscores. */
+    /** @var list<string> Forbidden parts of a property name, ignoring case and underscores. */
     private const array FORBIDDEN_PARTS = [
         'secret', 'verifier', 'handoffcode', 'nonce', 'relaystate', 'assertion', 'token', 'password', 'privatekey',
         'subject', 'nameid', 'sessionindex', 'email', 'attribute', 'payload', 'header', 'rawcontext', 'samlresponse',
         'authorizationcode',
     ];
 
-    /** @var list<string> What no property may be named, compared without case or underscores. */
+    /** @var list<string> Forbidden property names, ignoring case and underscores. */
     private const array FORBIDDEN_NAMES = ['code', 'state', 'result', 'grant', 'claims'];
 
     /** @var list<class-string> The types that carry the verified result. */
@@ -81,8 +71,7 @@ final class EveryEventClassTest extends TestCase
     }
 
     /**
-     * No property of the event, or of its context, is named as something an
-     * event must never carry, unless it is an enum.
+     * No property of the event or its context has a forbidden name.
      *
      * @param  class-string<\SineMacula\Laravel\Sso\Contracts\SsoEvent>  $event
      * @return void
@@ -107,8 +96,7 @@ final class EveryEventClassTest extends TestCase
     }
 
     /**
-     * Only `ResultUnlinked` carries the verified result, and only through its
-     * grant: no other event has a property of a type that holds it.
+     * Only `ResultUnlinked` carries the verified result, through its grant.
      *
      * @param  class-string<\SineMacula\Laravel\Sso\Contracts\SsoEvent>  $event
      * @return void
@@ -125,9 +113,7 @@ final class EveryEventClassTest extends TestCase
     }
 
     /**
-     * The name checks catch a forbidden part anywhere in a name and a forbidden
-     * name exactly, without case or underscores, and pass over an enum so named
-     * and a name that only contains a forbidden name.
+     * The name check flags forbidden names, ignoring case and underscores.
      *
      * @return void
      */
@@ -204,8 +190,7 @@ final class EveryEventClassTest extends TestCase
     }
 
     /**
-     * Whether the property is named as something an event must never carry and
-     * is not an enum.
+     * Whether the property has a forbidden name and is not an enum.
      *
      * @param  \ReflectionProperty  $property
      * @return bool
@@ -229,8 +214,7 @@ final class EveryEventClassTest extends TestCase
     }
 
     /**
-     * Whether the property is the one through which the unlinked event carries
-     * the result.
+     * Whether the property is the unlinked event's carrier of the result.
      *
      * @param  class-string  $event
      * @param  \ReflectionProperty  $property

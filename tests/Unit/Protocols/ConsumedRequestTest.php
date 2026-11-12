@@ -15,10 +15,7 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
 use Tests\Fixtures\Secrets\CountingSecretEncrypter;
 
 /**
- * Unit tests for the consumed request a driver validates against: every part
- * kept, the nonce matched against its digest in constant time, the PKCE
- * verifier decrypted only when asked for, afresh each time, and neither the
- * nonce, the PKCE verifier nor its ciphertext shown or serialised.
+ * Unit tests for the consumed request a driver validates against.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -78,9 +75,8 @@ final class ConsumedRequestTest extends TestCase
     }
 
     /**
-     * The PKCE verifier is decrypted only when asked for, afresh on each call,
-     * into a secret of its own; a request with no ciphertext decrypts nothing,
-     * whatever encrypter it is given.
+     * The PKCE verifier is decrypted only when asked for, afresh on each call;
+     * with no ciphertext nothing is decrypted.
      *
      * @return void
      *

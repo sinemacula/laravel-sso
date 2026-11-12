@@ -11,9 +11,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 
 /**
- * Unit tests for the client context, read from a request or built from plain
- * values: the same rules hold either way, so no instance holds an unsafe IP
- * address or user agent.
+ * Unit tests for the client context, built from a request or plain values.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,8 +41,7 @@ final class ClientContextTest extends TestCase
     }
 
     /**
-     * Only a valid IPv4 or IPv6 address read from a request is kept; anything
-     * else is `null`.
+     * Only a valid IP address is kept from a request.
      *
      * @param  ?string  $remoteAddress
      * @param  ?string  $expected
@@ -87,9 +84,7 @@ final class ClientContextTest extends TestCase
     }
 
     /**
-     * A user agent read from a request has invalid UTF-8 replaced and its
-     * control and bidirectional characters removed, and is then cut to 512
-     * characters (not bytes); one empty after cleaning, or not sent, is `null`.
+     * The user agent is cleaned and cut to 512 characters, or `null`.
      *
      * @param  ?string  $header
      * @param  ?string  $expected
@@ -108,8 +103,7 @@ final class ClientContextTest extends TestCase
     }
 
     /**
-     * An IP address handed to the constructor is kept only when it is valid, as
-     * one read from a request is.
+     * The constructor keeps only a valid IP address.
      *
      * @param  ?string  $ip
      * @param  ?string  $expected
@@ -122,8 +116,7 @@ final class ClientContextTest extends TestCase
     }
 
     /**
-     * A user agent handed to the constructor is cleaned as one read from a
-     * request is.
+     * The constructor cleans the user agent as a request read does.
      *
      * @param  ?string  $userAgent
      * @param  ?string  $expected
@@ -136,8 +129,7 @@ final class ClientContextTest extends TestCase
     }
 
     /**
-     * A request is read for both values at once: its IP address and its user
-     * agent, each held to its rule.
+     * A request yields both its IP address and user agent.
      *
      * @return void
      */
@@ -149,8 +141,7 @@ final class ClientContextTest extends TestCase
     }
 
     /**
-     * The context of work with no client, as the console, a queued job or the
-     * schedule builds it, holds neither value.
+     * The background context holds neither value.
      *
      * @return void
      */

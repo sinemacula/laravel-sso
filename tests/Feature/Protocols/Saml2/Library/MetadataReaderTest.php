@@ -21,21 +21,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for the metadata validation profile (SSO-2.8, SSO-6.1,
- * SSO-6.11), through the reader every import and refresh uses, on the fake
- * identity provider's metadata: the entity chosen from an aggregate by its
- * pinned id; an entity missing, named twice, wrapped or carrying a signature
- * anywhere but its own refused; with anchors, a signature of its own or of its
- * aggregate required and every signature on its path verified, one by another
- * key or tampered with refused; the earliest `validUntil` of the path as the
- * expiry, one naming no real instant, on the entity or its aggregate, refused
- * as invalid metadata; a document type, an entity or a document over the cap
- * refused; a signed aggregate of several MiB verified whole; a member other
- * than the pinned entity never validated or modelled, so one the schema or the
- * library refuses never refuses the aggregate, while the pinned entity is
- * validated with its aggregate's namespaces; only RSA certificates, once each,
- * by use; the HTTP-Redirect and HTTP-POST services, the connection's binding
- * preferred; and the read value redacted.
+ * Feature tests for the metadata validation profile, through the reader every
+ * import and refresh uses.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -78,9 +65,8 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * An entity alone is read whole: its id, its HTTP-Redirect service, its
-     * signing certificate as a canonical PEM with its fingerprint, no
-     * encryption certificate, its NameID format and no expiry.
+     * An entity alone is read whole: id, service, signing certificate, NameID
+     * format and no expiry.
      *
      * @return void
      */
@@ -156,9 +142,7 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * An entity named twice is refused, wherever the second is: beside the
-     * first with an id of its own, or with the same `ID`, which the unique
-     * identifier check refuses before an entity is chosen.
+     * An entity named twice is refused, beside the first or with the same `ID`.
      *
      * @return void
      */
@@ -173,9 +157,8 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * Rows of `[xml, anchored, reason, detail]`: an entity wrapped where no
-     * entity may be, extensions included, and a signature where no signature
-     * may be.
+     * Rows of `[xml, anchored, reason, detail]`: an entity or a signature
+     * wrapped where none may be.
      *
      * @return iterable<string, array{0: \Closure(): string, 1: bool, 2: \SineMacula\Laravel\Sso\Events\Enums\FailureReason, 3: string}>
      */
@@ -289,9 +272,8 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * Every signature on the entity's path must verify: an aggregate signed by
-     * the anchor around an entity the attacker signed is refused, and the
-     * reverse; both signed by the anchor is read.
+     * Every signature on the entity's path must verify, the aggregate's and the
+     * entity's alike.
      *
      * @return void
      */
@@ -424,9 +406,8 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * A `validUntil` naming no real instant on an enclosing aggregate, which
-     * the schema never judges, is refused as invalid metadata, never thrown,
-     * and the refusal names the rule alone.
+     * An unreal `validUntil` on an enclosing aggregate, which the schema never
+     * judges, is refused as invalid metadata.
      *
      * @param  string  $validUntil
      * @return void
@@ -599,10 +580,8 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * An aggregate of several MiB, its whole signed by the anchor, is read once
-     * the metadata cap allows it: the aggregate's signature is verified and
-     * exactly the entity pinned is chosen from among more than a thousand; a
-     * byte over the cap, it is refused before it is parsed.
+     * A signed aggregate of several MiB within the cap is verified whole and
+     * its pinned entity chosen; a byte over is refused unparsed.
      *
      * @return void
      */
@@ -629,9 +608,8 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * Rows of `[member, pinned read]`: what a member of an aggregate may hold
-     * that the library's model refuses, or the metadata schema too, and whether
-     * the pinned entity holding it is still read.
+     * Rows of `[member, pinned read]`: what an aggregate member may hold that
+     * the library or schema refuses.
      *
      * @return iterable<string, array{0: string, 1: bool}>
      */
@@ -645,11 +623,8 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * A signed aggregate is read for its pinned entity even when an unrelated
-     * member holds what the library's model or the metadata schema refuses: the
-     * aggregate's signature is verified over its bytes, no member is modelled,
-     * and only the chosen entity is held to the schema, so the same value in
-     * the pinned entity is refused only when the schema refuses it.
+     * An unrelated member the library or schema refuses never refuses a signed
+     * aggregate, since only the pinned entity is modelled.
      *
      * @param  string  $member
      * @param  bool  $pinnedRead
@@ -672,9 +647,8 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * An unrelated member the schema refuses never refuses the aggregate, and
-     * the pinned entity is validated with the namespaces its aggregate
-     * declares, so a prefix an attribute value names still resolves.
+     * Only the pinned entity is schema validated, with the namespaces its
+     * aggregate declares.
      *
      * @return void
      */
@@ -695,9 +669,8 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
-     * Only RSA certificates of at least 2048 bits are read, each once: an
-     * elliptic curve or a weak one is ignored, and metadata with no usable
-     * signing certificate is refused.
+     * Only RSA certificates of at least 2048 bits are read, each once, and none
+     * usable for signing is refused.
      *
      * @return void
      */

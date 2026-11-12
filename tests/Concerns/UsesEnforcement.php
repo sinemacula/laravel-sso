@@ -10,7 +10,7 @@ use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 
 /**
  * Makes a tenant's enforcement for a test to work on. A test that uses it calls
- * `usePackageTables()` in its `setUp()`, so the table exists.
+ * `usePackageTables()` in its `setUp()`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -20,9 +20,7 @@ use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 trait UsesEnforcement
 {
     /**
-     * Make and save a tenant's enforcement: `tenant-1`'s, off, with no
-     * satisfying connection, a new version and changed at the claim fixture's
-     * time, unless the attributes given say otherwise.
+     * Make and save `tenant-1`'s enforcement, off, unless overridden.
      *
      * @param  array<string, mixed>  $attributes
      * @return \SineMacula\Laravel\Sso\Models\TenantEnforcement

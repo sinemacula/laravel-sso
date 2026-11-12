@@ -7,14 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols;
 use Illuminate\Http\Request;
 
 /**
- * What arrived at a connection's assertion consumer service or callback
- * (SSO-5.3, SSO-5.4, SSO-7.1): the HTTP method, the raw query string (so a
- * repeated or conflicting parameter can be refused, which a parsed query would
- * hide) and the posted form fields.
- *
- * It carries an assertion or an authorisation code, so it never reaches a log,
- * an exception, a queue or an event (SSO-9.8, SSO-11.9): a dump shows only the
- * method and the names of what it holds, and it refuses to be serialised.
+ * What arrived at a connection's ACS or callback. The raw query is kept so a
+ * repeated parameter can be refused; dumps redact it and serialising throws.
  *
  * @api
  *
@@ -33,12 +27,7 @@ final readonly class CompletionRequest implements \JsonSerializable
     private array $fields;
 
     /**
-     * Constructor.
-     *
-     * The query string and the posted fields are held in
-     * `\SensitiveParameterValue`, so no dump (PHP's own, or the one behind
-     * Laravel's `dump()`, which also lists private properties), export, array
-     * cast or JSON encoding shows them.
+     * Wraps the query and fields so no dump, export or array cast shows them.
      *
      * @param  string  $method
      * @param  string  $query
@@ -49,11 +38,11 @@ final readonly class CompletionRequest implements \JsonSerializable
         /** The HTTP method, in upper case. */
         public string $method,
 
-        // The raw query string, without the `?`; held wrapped.
+        // Held wrapped, so not promoted.
         #[\SensitiveParameter]
         string $query,
 
-        // The posted form fields, as parsed; held wrapped.
+        // Held wrapped, so not promoted.
         #[\SensitiveParameter]
         array $body,
     ) {
@@ -63,8 +52,7 @@ final readonly class CompletionRequest implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the method and the names of the posted fields, never a
-     * value.
+     * Show the method and field names, never a value.
      *
      * @return array<string, mixed>
      */
@@ -74,8 +62,7 @@ final readonly class CompletionRequest implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: a response is validated in the request it
-     * arrived in and kept nowhere.
+     * Refuse to be serialised; a response is validated in its own request.
      *
      * @return array<string, mixed>
      *
@@ -105,7 +92,7 @@ final readonly class CompletionRequest implements \JsonSerializable
     }
 
     /**
-     * What JSON encoding shows: the same as a dump, never a value.
+     * Encode the same redacted view as a dump.
      *
      * @return array<string, mixed>
      */

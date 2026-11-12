@@ -19,10 +19,7 @@ use Tests\Concerns\DumpsValues;
 use Tests\Fixtures\Results\ExampleResults;
 
 /**
- * Unit tests for the verified result: what it holds, its stored form, which
- * serialisation and JSON write, read back with every part checked again, the
- * bounds on each part, and the asserted email: stored and read back whole, and
- * shown by the result's and the claims' JSON and dumps only without its email.
+ * Unit tests for the verified result and its stored form.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,8 +41,7 @@ final class VerifiedResultTest extends TestCase
     private const string ASSERTED_PART = 'Asserted+Tag';
 
     /**
-     * The stored form holds every part, under its snake_case name, and nothing
-     * else; the subject exactly as received.
+     * The stored form holds every part under its snake_case name, and no more.
      *
      * @return void
      */
@@ -82,8 +78,7 @@ final class VerifiedResultTest extends TestCase
     }
 
     /**
-     * What is stored reads back as the same result, through `restore()` and
-     * through `unserialize()`.
+     * The stored form reads back via `restore()` and `unserialize()`.
      *
      * @return void
      */
@@ -172,8 +167,7 @@ final class VerifiedResultTest extends TestCase
     }
 
     /**
-     * Each text part is bounded: the issuer and subject at 1024 bytes, the
-     * NameID format at 255, the ids at 255.
+     * Each text part is bounded in bytes.
      *
      * @return void
      *
@@ -266,8 +260,7 @@ final class VerifiedResultTest extends TestCase
     }
 
     /**
-     * Rows of `[attributes]`: attributes that are not strings or lists of
-     * strings under non-empty names.
+     * Rows of `[attributes]`: anything but strings or string lists under names.
      *
      * @return iterable<string, array{0: array<array-key, mixed>}>
      */
@@ -315,8 +308,7 @@ final class VerifiedResultTest extends TestCase
     }
 
     /**
-     * A result with no asserted email stores no key for one, reads back with
-     * none, and may give it as `null` in what it stored.
+     * A result without an asserted email stores no key for one.
      *
      * @return void
      */
@@ -344,8 +336,7 @@ final class VerifiedResultTest extends TestCase
     }
 
     /**
-     * The asserted email is stored whole, last, its email and flag exact, and
-     * reads back the same through `restore()` and `unserialize()`.
+     * The asserted email is stored last, whole, and reads back exactly.
      *
      * @param  ?bool  $verified
      * @return void
@@ -373,8 +364,7 @@ final class VerifiedResultTest extends TestCase
     }
 
     /**
-     * JSON is the stored form but for the asserted email, which it shows only
-     * as its source and flag, in its place.
+     * JSON is the stored form with the asserted email redacted.
      *
      * @return void
      */
@@ -387,8 +377,7 @@ final class VerifiedResultTest extends TestCase
     }
 
     /**
-     * What JSON writes of an asserted email cannot be read back as one, so a
-     * result is never restored from JSON with its email lost.
+     * The redacted JSON cannot be restored as a result.
      *
      * @return void
      */
@@ -416,9 +405,7 @@ final class VerifiedResultTest extends TestCase
     }
 
     /**
-     * Claims take the asserted email last and optionally; their JSON adds its
-     * redacted form when they have one and no key when they have none, and
-     * their dump stays as it was.
+     * Claims' JSON adds the redacted email only when there is one.
      *
      * @return void
      */
@@ -441,8 +428,7 @@ final class VerifiedResultTest extends TestCase
     }
 
     /**
-     * What claims encode is exactly this: the issuer, the format and the kind
-     * of each attribute, never a subject or a value.
+     * Claims encode the issuer, the format and attribute kinds, never values.
      *
      * @return void
      */

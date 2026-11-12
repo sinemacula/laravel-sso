@@ -26,20 +26,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races runs of the domain recheck across processes, each with its own database
- * connection, on PostgreSQL and MySQL (BL-21, SSO-3.3, SSO-11.12): however they
- * interleave, every verified claim is checked by exactly one run, the rest
- * skipping it, so a suspension's times are written once and no claim is left
- * leased; and runs racing the removal of some of the claims never fail and
- * never write a claim that was removed. Each race runs with every process
- * working plainly, and again with each inside a transaction of its own that
- * read the domains before the race began, so a re-read that decides a write
- * must see what another process committed rather than its transaction's
- * snapshot (MySQL's `REPEATABLE READ`), and the locks must be taken in one
- * order for the races not to deadlock.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Races recheck runs, and removals, across processes, plainly and inside
+ * transactions that read first. Skipped on SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -76,9 +64,8 @@ final class ConcurrentDomainRechecksTest extends TestCase
     private string $results;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock, a
-     * fresh caller and a fake resolver, create the tables, and make the
-     * verified claims, last checked a day ago, with their answers.
+     * Skip where processes cannot share the database, bind the collaborators,
+     * and seed verified claims checked a day ago.
      *
      * @return void
      *
@@ -160,8 +147,7 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * The same race, each run inside a transaction of its own that read the
-     * domains before the race began.
+     * The same race, each run inside a transaction that read the domains first.
      *
      * @return void
      */
@@ -173,9 +159,8 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * Runs racing the removal of some of the claims never fail: each claim
-     * removed is gone, checked at most once, and every other is checked exactly
-     * once.
+     * Runs racing removals never fail or write a removed claim, and check each
+     * other claim once.
      *
      * @return void
      */
@@ -185,8 +170,8 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * The same race, each process inside a transaction of its own that read the
-     * domains before the race began.
+     * The same race, each process inside a transaction that read the domains
+     * first.
      *
      * @return void
      */
@@ -196,8 +181,8 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * In a race with removals: the first four processes run the recheck, and
-     * each of the last four removes one claim.
+     * The first four processes run the recheck and the last four each remove a
+     * claim.
      *
      * @param  \SineMacula\Laravel\Sso\Domains\DomainRechecker  $rechecker
      * @param  \SineMacula\Laravel\Sso\Domains\DomainService  $domains
@@ -221,8 +206,7 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * Assert no process failed, every claim was checked by exactly one, its
-     * times written once and as that check reported, and none is leased.
+     * Assert every claim was checked by exactly one process and none is leased.
      *
      * @param  list<array{result: list<array<string, ?string>>, error: ?string}>  $results
      * @return void
@@ -239,9 +223,8 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * Assert no process failed, every removal removed its claim, which is gone
-     * and was checked at most once, every other claim was checked exactly once,
-     * and none is leased.
+     * Assert each removal won, removed claims were checked at most once, and
+     * none is leased.
      *
      * @param  list<array{result: list<array<string, ?string>>, error: ?string}>  $results
      * @return void
@@ -269,8 +252,8 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * Assert the claim was checked by exactly one process, as its answer
-     * should, and holds what that check wrote.
+     * Assert the claim was checked by exactly one process and holds what it
+     * wrote.
      *
      * @param  int  $index
      * @param  list<array<string, ?string>>  $checks
@@ -299,8 +282,8 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * The checks every process reported that did not skip, by claim, after
-     * asserting no process failed.
+     * The checks that did not skip, by claim, after asserting no process
+     * failed.
      *
      * @param  list<array{result: list<array<string, ?string>>, error: ?string}>  $results
      * @return array<string, list<array<string, ?string>>>
@@ -362,8 +345,8 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * Fork the processes, have each do its work at the same moment on a
-     * connection of its own, and collect what each reported.
+     * Fork the processes, have each work at the same moment on its own
+     * connection, and collect the results.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Domains\DomainRechecker, \SineMacula\Laravel\Sso\Domains\DomainService, int): list<array<string, ?string>>  $work
      * @param  bool  $inTransaction
@@ -405,13 +388,8 @@ final class ConcurrentDomainRechecksTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own and build the services,
-     * so only the work itself runs after the start, wait for the start, do the
-     * work, report what it did, and end without running the parent's shutdown.
-     *
-     * Racing inside a transaction, the process opens one and reads the domains
-     * before the start, so the transaction's snapshot predates every change,
-     * and commits after its own work.
+     * In a child: build the services, wait for the start, work and report; in a
+     * transaction, read first.
      *
      * @param  int  $process
      * @param  float  $start

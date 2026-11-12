@@ -78,8 +78,8 @@ final class SsoServiceProviderTest extends TestCase
     use ChecksTheFoundations;
 
     /**
-     * The fetcher the container builds logs through `SanitizingLogger`, while
-     * the application's own logger is left as the application bound it.
+     * The fetcher logs through `SanitizingLogger`, leaving the application's
+     * logger alone.
      *
      * @return void
      */
@@ -95,9 +95,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The fetcher the container builds resolves host names with the container's
-     * `HostResolver`: the system resolver by default, bound as a singleton, and
-     * the application's own once it binds one.
+     * The fetcher resolves hosts with the bound `HostResolver`.
      *
      * @return void
      */
@@ -138,10 +136,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Each contract that reads configuration or a connection resolves to its
-     * default, one instance within a request or job, and a new one once the
-     * scoped instances are forgotten, as Octane and a queue worker do between
-     * them, so nothing of one outlives it (SSO-11.2).
+     * Each scoped default is rebuilt once the scoped instances are forgotten.
      *
      * @param  class-string  $abstract
      * @param  class-string  $default
@@ -166,9 +161,8 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The clock and the host resolver hold nothing between calls, so the same
-     * instance serves every request; the configuration checker is built afresh
-     * each time it is resolved.
+     * The clock and host resolver are shared; the configuration checker is
+     * built afresh.
      *
      * @return void
      */
@@ -189,9 +183,8 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The stranded transactions are one instance for the process, and the
-     * listener the provider registers marks the record a failed commit left
-     * when the next outermost transaction begins.
+     * The stranded transactions are one instance, marked as the next outermost
+     * transaction begins.
      *
      * @return void
      *
@@ -231,9 +224,8 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The listener marks nothing when a savepoint begins, though the
-     * transaction it sits in and a savepoint before it are held, and a
-     * transaction begins with no transactions manager bound.
+     * The listener marks nothing on a savepoint or without a transactions
+     * manager.
      *
      * @return void
      *
@@ -291,9 +283,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The enforcement inheritance, exemption and session revocation defaults
-     * hold nothing, so one instance serves every request (SSO-4.2, SSO-4.4,
-     * SSO-4.5).
+     * Each stateless enforcement default is one instance for every request.
      *
      * @param  class-string  $abstract
      * @param  class-string  $default
@@ -329,10 +319,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The flow defaults that hold nothing (the application policy, the redirect
-     * URI resolver, the linker, the link limit, the reauthentication sessions
-     * and the provider session deadline) are each one instance for every
-     * request (SSO-11.2).
+     * Each stateless flow default is one instance for every request.
      *
      * @param  class-string  $abstract
      * @param  class-string  $default
@@ -353,8 +340,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The package's configuration is merged under the `sso` key, with the
-     * package's defaults.
+     * The package configuration is merged under the `sso` key.
      *
      * @return void
      */
@@ -368,8 +354,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * A value the application sets in its own `sso` configuration takes
-     * precedence over the package's default.
+     * The application's own `sso` configuration takes precedence.
      *
      * @return void
      */
@@ -387,8 +372,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The `sso-config` publish group is registered with the framework's publish
-     * registry.
+     * The `sso-config` publish group is registered.
      *
      * @return void
      */
@@ -400,8 +384,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The config tag publishes the package's config file to the application's
-     * `config/sso.php`.
+     * The config tag publishes `config/sso.php`.
      *
      * @return void
      */
@@ -419,9 +402,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Booting outside the console registers no publish path, checked against an
-     * emptied registry so the paths the test application's boot registered
-     * cannot hide one.
+     * Booting outside the console registers no publish path.
      *
      * @return void
      */
@@ -446,9 +427,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The migrations tag publishes each shipped migration to the application's
-     * `database/migrations`, under its own name, and the package runs none
-     * itself (SSO-11.7).
+     * The migrations are published under their own names and never loaded.
      *
      * @return void
      */
@@ -487,8 +466,8 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The translations are loaded under the `sso` namespace and published to
-     * the application's `lang/vendor/sso` for overrides.
+     * The translations are loaded under `sso` and published to
+     * `lang/vendor/sso`.
      *
      * @return void
      */
@@ -537,8 +516,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Outside the console, booting checks the configuration of what is enabled:
-     * with every feature off, or a well-configured package, it boots.
+     * Outside the console, an unused or well-configured package boots.
      *
      * @return void
      */
@@ -575,8 +553,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * In the console the boot check does not run, so a misconfigured
-     * application can still run its commands; `sso:check` reports instead.
+     * In the console the boot check is left to `sso:check`.
      *
      * @return void
      */
@@ -593,9 +570,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Every command that starts long-running or scheduled work: the queue
-     * workers, Horizon's master, supervisors and workers, the scheduler and the
-     * Octane servers.
+     * Every command that starts long-running or scheduled work.
      *
      * @return iterable<string, array{string}>
      */
@@ -612,9 +587,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * In the console, each command that starts long-running or scheduled work
-     * fails as it starts with every problem of what is enabled, before it takes
-     * a job or runs a task (SSO-12.3).
+     * A worker command fails as it starts on any problem.
      *
      * @param  string  $command
      * @return void
@@ -633,8 +606,8 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * In the console, each command that starts long-running or scheduled work
-     * starts with every feature off, and with a well-configured package.
+     * A worker command starts with every feature off or a well-configured
+     * package.
      *
      * @param  string  $command
      * @return void
@@ -674,9 +647,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * In the console, a command that repairs or inspects the application starts
-     * whatever the configuration, so a misconfigured application can still run
-     * `sso:check`, its migrations, and clear and rebuild its caches.
+     * A recovery command starts whatever the configuration.
      *
      * @param  string  $command
      * @return void
@@ -709,8 +680,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Announce that the command is starting, as Artisan does once it has
-     * resolved the command's name and before it runs it.
+     * Announce the command as starting, as Artisan does before running it.
      *
      * @param  string  $command
      * @return void
@@ -721,8 +691,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The test application, checking the foundations' configuration alone and
-     * reporting that it is not running in the console, as it does serving a
+     * The test application, checking only the foundations, as when serving a
      * request.
      *
      * @return \Illuminate\Foundation\Application

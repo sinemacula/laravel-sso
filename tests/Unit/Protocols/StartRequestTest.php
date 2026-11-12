@@ -12,9 +12,7 @@ use SineMacula\Laravel\Sso\Protocols\StartRequest;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * Unit tests for what a driver is given to start a flow: the protocol state is
- * held as secrets, so it never shows in a dump and the request cannot be
- * serialised.
+ * Unit tests for what a driver is given to start a flow.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

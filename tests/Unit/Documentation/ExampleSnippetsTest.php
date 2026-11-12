@@ -10,18 +10,7 @@ use PHPUnit\Framework\TestCase;
 use Tests\Integration\Examples\Snippets;
 
 /**
- * Holds every snippet the documentation shows to the executable example it is
- * taken from (SSO-12.4, SSO-12.5): each `<!-- snippet: <path>#<name> -->` in a
- * guide or the README is followed by a fenced block that is exactly that region
- * of that source, so changing an example without its snippet, or a snippet
- * without its example, fails here. Every region an example opens is shown
- * somewhere, so no example is kept for a snippet nobody reads. Every PHP block
- * is such a snippet: none is exempt, so no guide shows code no test runs. A
- * sibling package's API the guides call runs against the examples' stand-ins
- * for it (`Examples\SiblingStandIns`).
- *
- * The examples themselves run in the Integration suite, against the public API
- * alone (`ExamplesUsePublicApiTest`); this reads files and covers no code.
+ * Holds every documented snippet identical to the example region it names.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,8 +24,7 @@ final class ExampleSnippetsTest extends TestCase
     private const string EXAMPLES = 'tests/Integration/Examples';
 
     /**
-     * Rows of `[source path, region name, the snippet's code]`: every snippet
-     * the guides and the README show, by the file and line of its marker.
+     * Rows of `[source path, region name, code]`, keyed by the marker's place.
      *
      * @return iterable<string, array{0: string, 1: string, 2: ?string}>
      */
@@ -50,8 +38,7 @@ final class ExampleSnippetsTest extends TestCase
     }
 
     /**
-     * The snippet is a fenced block, and exactly the region of the source it
-     * names.
+     * The snippet is a fenced block identical to the region it names.
      *
      * @param  string  $path
      * @param  string  $name
@@ -73,8 +60,7 @@ final class ExampleSnippetsTest extends TestCase
     }
 
     /**
-     * Every region of every example is shown by a snippet, and no source opens
-     * a region twice.
+     * Every example region is shown by a snippet, and none is opened twice.
      *
      * @return void
      */
@@ -105,10 +91,7 @@ final class ExampleSnippetsTest extends TestCase
     }
 
     /**
-     * Every PHP block of a guide or the README is a marked snippet, held to the
-     * executed example it is taken from: no block is exempt, whatever the
-     * reason, so a block no example runs fails here, by its document and its
-     * place among that document's PHP blocks.
+     * Every PHP block in the guides and README is a marked snippet.
      *
      * @return void
      */
@@ -131,12 +114,7 @@ final class ExampleSnippetsTest extends TestCase
     }
 
     /**
-     * The reader finds a marker's fenced block after blank lines, and none
-     * where no block follows or one never closes; it reads a region with its
-     * shared indentation removed and its blank lines emptied, and none where a
-     * region is missing or never closes; it lists the regions a source opens;
-     * and it tells a marked PHP block, indented or not, from one with no marker
-     * right before it.
+     * The reader parses markers, blocks and regions as the docs write them.
      *
      * @return void
      */
@@ -219,8 +197,7 @@ final class ExampleSnippetsTest extends TestCase
     }
 
     /**
-     * Every PHP source of the examples, by its path relative to the package's
-     * root.
+     * Every example PHP source, keyed by its path from the package root.
      *
      * @return array<string, string>
      */

@@ -16,14 +16,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the service provider metadata writer (SSO-5.9,
- * `docs/design/saml-library.md` condition 5): every element and attribute,
- * pinned as the whole document and valid against the SAML 2.0 metadata schema;
- * the defaults with no certificate; the encryption methods, data algorithms
- * first, following the allow-list and never AES-256-GCM or RSA 1.5; anything
- * but exactly one PEM certificate refused before the library sees it; a value
- * the schema does not allow refused at its limit, quoting nothing given; and
- * the same bytes for the same input.
+ * Feature tests for the service provider metadata writer.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -67,10 +60,8 @@ final class MetadataWriterTest extends TestCase
     private const string RSA_1_5 = 'http://www.w3.org/2001/04/xmlenc#rsa-1_5';
 
     /**
-     * Every element and attribute of the metadata, for two certificates of each
-     * use, signed requests, assertions not required to be signed, the email
-     * NameID format and AES-CBC listed: the whole document, valid against the
-     * SAML 2.0 metadata schema.
+     * Every element and attribute is written, the whole document valid against
+     * the SAML 2.0 metadata schema.
      *
      * @return void
      */
@@ -106,9 +97,8 @@ final class MetadataWriterTest extends TestCase
     }
 
     /**
-     * With the default settings and no certificate, the metadata holds no key
-     * descriptor, requests are not signed, assertions must be, and the NameID
-     * format is persistent.
+     * With the defaults and no certificate, requests are unsigned, assertions
+     * must be signed and NameID is persistent.
      *
      * @return void
      */
@@ -129,9 +119,8 @@ final class MetadataWriterTest extends TestCase
     }
 
     /**
-     * Rows of `[encryption algorithms, methods]`: what the connection stores
-     * and the encryption methods written, data algorithms first, each group in
-     * the order stored.
+     * Rows of `[encryption algorithms, methods]`: data algorithms first, each
+     * group in the order stored.
      *
      * @return iterable<string, array{0: ?list<string>, 1: list<string>}>
      */

@@ -37,33 +37,10 @@ use Tests\Feature\Linking\LinkingTestCase;
 use Tests\Fixtures\Clients;
 
 /**
- * Races a reservation against the provisioning of the same subject, across
- * processes, each with its own database connection, on PostgreSQL and MySQL
- * (SSO-8.4, SSO-8.6, SSO-8.8), for what no other suite puts together: one flow
- * whose email matches an identity, so it reserves in T2, and one whose email
- * matches none, so it stops at the provisioning boundary and a listener
- * provisions a new identity in TP. Whichever wins, exactly one row holds the
- * subject, and it resolves to one identity.
+ * Integration tests racing a reservation against provisioning the same subject.
  *
- * Three orders are forced, each by the holder of the connection's lock and the
- * database's own lock wait, never by timing:
- *
- * - the reservation holds T2 while the helper waits: the helper finds the
- *   subject
- *   held, and the final continuation `link_reserved`;
- * - the helper holds TP while the other completion waits, at its consumption:
- *   that
- *   completion finds the link, and reserves nothing;
- * - the other completion has read the subject absent, and matched its identity,
- *   when TP commits: under its locks it finds the link, and reserves nothing.
- *
- * A completion runs in no caller's transaction, so what runs in one is the
- * helper in the listener's: plainly, and in a `REPEATABLE READ` transaction
- * opened once the result is offered. On PostgreSQL such a helper that waited on
- * the reservation fails to serialise, which is accepted there alone, and leaves
- * the reservation.
- *
- * Skipped on SQLite and without `pcntl`.
+ * Orders are forced by lock waits, never timing. Skipped on SQLite and without
+ * `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -95,7 +72,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
 
     /**
      * Skip where processes cannot share the database, and bind a fresh caller
-     * and a limiter that allows every attempt.
+     * and an open limiter.
      *
      * @return void
      *
@@ -139,9 +116,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The reservation holds T2 while the helper waits on the connection: the
-     * subject is the reservation's, and the helper makes nothing. Its code,
-     * once redeemed, activates the one link, for the identity matched.
+     * With the reservation holding T2, the helper makes nothing.
      *
      * @param  bool  $reads
      * @return void
@@ -198,10 +173,8 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The helper holds TP while the other completion waits at its consumption,
-     * which locks the connection first: that completion then finds the subject
-     * linked, reserves nothing, and its code resolves to the identity
-     * provisioned.
+     * With the helper holding TP, the other completion finds the link and
+     * reserves nothing.
      *
      * @param  bool  $reads
      * @return void
@@ -237,9 +210,8 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * The reserving flow has read the subject absent and matched its identity
-     * when TP commits, before it takes its first lock: under its locks it finds
-     * the link, and a reservation is never made beside it.
+     * A reserving flow that read before TP committed finds the link under its
+     * locks.
      *
      * @param  bool  $reads
      * @return void
@@ -279,8 +251,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Assert the helper made the one link, the other flow reserved nothing, and
-     * its code resolves to the identity provisioned.
+     * Assert the helper made the one link and the other flow reserved nothing.
      *
      * @param  list<array{result: mixed, error: ?string}>  $reports
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
@@ -310,8 +281,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: complete the flow as one whose email matches the
-     * person.
+     * In a forked process: complete the flow whose email matches the person.
      *
      * @param  string  $state
      * @return array{completion: string, code: ?string}
@@ -324,10 +294,8 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: complete the flow as one whose email matches nobody,
-     * with a listener that opens its transaction once the result is offered
-     * when told to, signals, links, commits a link it made or rolls back a
-     * refusal, and runs what follows.
+     * In a forked process: complete the unmatched flow, provisioning from a
+     * listener.
      *
      * @param  string  $state
      * @param  bool  $reads
@@ -366,8 +334,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Commit the listener's transaction when the helper linked, and roll it
-     * back otherwise, when it opened one.
+     * Commit the listener's transaction if the helper linked, else roll back.
      *
      * @param  bool  $linked
      * @return void
@@ -384,8 +351,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Link the offered result to the identity provisioned, and say how it
-     * ended.
+     * Link the offered result to the provisioned identity and say how it ended.
      *
      * @param  \SineMacula\Laravel\Sso\Events\ResultUnlinked  $event
      * @return string
@@ -396,8 +362,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Hold the completion just before it opens T2, its second transaction, its
-     * plain reads done, until the helper's link has committed.
+     * Hold the completion just before T2 until the helper's link has committed.
      *
      * @return void
      */
@@ -459,7 +424,7 @@ final class ReservationProvisioningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Redeem the code the racer reported, in this process, once the race ended.
+     * Redeem the racer's code once the race has ended.
      *
      * @param  array{result: mixed, error: ?string}  $report
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start

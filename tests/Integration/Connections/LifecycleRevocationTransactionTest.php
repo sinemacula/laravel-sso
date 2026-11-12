@@ -34,14 +34,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests, on a real database, that a disable, a deletion and a
- * subject migration commit or roll back together with the session revocation
- * each needs (SSO-4.5, SSO-10.5, decision D5): a revocation that writes through
- * the storage connection and succeeds commits with the change; one that writes
- * and then throws leaves neither its write nor anything of the change (the
- * connection, its domains, links, requests and codes, and what was voided), and
- * nothing is reported; and inside a transaction the application opened, a
- * rollback undoes all of it though the helpers succeeded.
+ * Integration tests that lifecycle changes commit or roll back with their
+ * session revocation.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -79,9 +73,8 @@ final class LifecycleRevocationTransactionTest extends TestCase
     private array $rows;
 
     /**
-     * Bind a fixed clock and a fresh caller, create the tables, the
-     * revocation's table and an enabled connection with a verified domain, a
-     * link, a request and a code, and record events.
+     * Bind a fixed clock and a fresh caller, create the tables, and seed a
+     * connection with its rows.
      *
      * @return void
      */
@@ -132,8 +125,8 @@ final class LifecycleRevocationTransactionTest extends TestCase
     }
 
     /**
-     * A revocation that writes and succeeds commits with the disable, which is
-     * then reported once.
+     * A revocation that succeeds commits with the disable, which is reported
+     * once.
      *
      * @return void
      */
@@ -162,10 +155,8 @@ final class LifecycleRevocationTransactionTest extends TestCase
     }
 
     /**
-     * A revocation that writes and then throws leaves neither its write nor
-     * anything of the change: the connection, its domain, link, request and
-     * code are as they were, nothing is voided, and nothing is reported; the
-     * exception propagates and no transaction is left open.
+     * A revocation that throws rolls the whole change back, reports nothing and
+     * leaves no transaction open.
      *
      * @param  string  $change
      * @return void
@@ -188,9 +179,8 @@ final class LifecycleRevocationTransactionTest extends TestCase
     }
 
     /**
-     * Inside a transaction the application opened, each change succeeds and its
-     * revocation writes, reporting nothing; the application's rollback then
-     * undoes all of it, and still nothing is reported.
+     * An application rollback undoes a change and its revocation, reporting
+     * nothing.
      *
      * @param  string  $change
      * @return void
@@ -216,8 +206,8 @@ final class LifecycleRevocationTransactionTest extends TestCase
     }
 
     /**
-     * Assert the connection and its rows are as they were before the change,
-     * and the revocation's table holds nothing.
+     * Assert the connection and its rows are untouched and the revocation table
+     * is empty.
      *
      * @return void
      */
@@ -235,8 +225,7 @@ final class LifecycleRevocationTransactionTest extends TestCase
     }
 
     /**
-     * Each change that revokes sessions, by name: a disable, a deletion, and a
-     * migration that removes the connection's one link.
+     * Each change that revokes sessions, by name.
      *
      * @return array<string, \Closure(): \SineMacula\Laravel\Sso\Connections\ConnectionResult>
      */
@@ -262,8 +251,8 @@ final class LifecycleRevocationTransactionTest extends TestCase
     }
 
     /**
-     * Bind a revocation that records the scope in the revocation's table,
-     * through the storage connection, and then throws when asked to.
+     * Bind a revocation that writes its scope through the storage connection,
+     * then throws if asked.
      *
      * @param  bool  $fails
      * @return void

@@ -10,27 +10,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation;
 
 /**
- * What a validated SAML assertion is recorded as against replay (SSO-6.6, SAML
- * 2.0 Profiles §4.1.4.5): its id, scoped by the connection and its issuer, so
- * one tenant's identity provider cannot poison another's, until the last moment
- * any rule would still accept it. That is the earliest of:
- *
- * - the `Conditions`' `NotOnOrAfter` plus the skew, when present;
- * - the chosen bearer confirmation's `NotOnOrAfter` plus the skew (the latest
- *   of the confirmations that could be chosen, `BearerConfirmations`);
- * - the assertion's `IssueInstant` plus `issue_instant_max_age_seconds` plus
- *   the skew, which bounds every record.
- *
- * Each bound keeps its fractions of a second, and the earliest is chosen to the
- * microsecond, so the record never ends before the last moment a rule accepts;
- * a store that keeps whole seconds rounds it up (`DatabaseSingleUseStore`).
- *
- * Every bound is read from inside the assertion its signature covers, never
- * from the response's envelope, which a replay may carry afresh. Nothing is
- * recorded here: the completion records it under the connection's lock once the
- * response is validated (`Completion\Stages\RecordReplay`), so an invalid
- * assertion records nothing, and refuses a record whose expiry is not after its
- * own now.
+ * The replay record of a validated SAML assertion, held until the last moment
+ * any rule would accept it. Bounds come only from inside the signed assertion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -60,7 +41,8 @@ final class ReplayWindow
     }
 
     /**
-     * The last moment any rule would still accept the assertion.
+     * The earliest skewed bound, to the microsecond, so the record never ends
+     * before a rule stops accepting.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation  $confirmation

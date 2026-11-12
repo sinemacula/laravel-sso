@@ -14,9 +14,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\SignatureWrapping;
 use Tests\Concerns\OutlinesSamlDocuments;
 
 /**
- * Unit tests for the signature wrapping attacks the fake SAML identity provider
- * mounts: where each variant puts the signed element, its signature and the
- * evil element, and which subject the evil element carries.
+ * Unit tests for the fake identity provider's signature wrapping attacks.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -81,9 +79,7 @@ final class SignatureWrappingTest extends TestCase
 
     /**
      * The evil element carries the evil subject and the signed one the real
-     * subject, in document order: the signed response, inside the signature,
-     * first for XSW1, the evil assertion first for XSW3, and the signed
-     * assertion first for the same-`ID` variant after.
+     * subject, in each variant's document order.
      *
      * @return void
      */

@@ -7,17 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\Enums;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 
 /**
- * The settings of an OpenID Connect connection (SSO-2.4, SSO-7.1, SSO-7.3), by
- * the name each is stored, given, refused and reported under; the value is that
- * name. What each holds and how it is validated belongs to the OIDC settings;
- * which changes need fresh authentication, which may change what existing
- * subjects mean, and which is a secret, is fixed here, so every part of the
- * package classifies a change the same way.
- *
- * The callback URL is built by the endpoint resolver, never stored (SSO-5.5);
- * the `private_key_jwt` key pair is kept with the connection's keys (SSO-2.7).
- *
- * The names are stable once released: a value is never renamed or reused.
+ * The settings of an OpenID Connect connection and how a change to each is
+ * classified. Values are stable once released and never renamed or reused.
  *
  * @api
  *
@@ -26,8 +17,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
  */
 enum OidcSetting: string
 {
-    // The issuer, which the ID token's `iss`, the discovery document and the
-    // RFC 9207 `iss` parameter must equal exactly (SSO-2.8, SSO-7.1, SSO-7.4)
+    // The issuer every `iss` and the discovery document must equal exactly
     case ISSUER = 'issuer';
 
     // The authorisation endpoint the browser is sent to
@@ -42,61 +32,46 @@ enum OidcSetting: string
     // The optional UserInfo endpoint
     case USERINFO_ENDPOINT = 'userinfo_endpoint';
 
-    // Whether the provider returns the RFC 9207 `iss` parameter, which is then
-    // required (SSO-7.1)
+    // Whether the provider returns the RFC 9207 `iss`, which is then required
     case RETURNS_ISS = 'returns_iss';
 
     // The connection's client id at the identity provider
     case CLIENT_ID = 'client_id';
 
-    // The client secret, for `client_secret_basic` and `client_secret_post`:
-    // stored encrypted and never read back (SSO-2.5)
+    // The client secret, stored encrypted and never read back
     case CLIENT_SECRET = 'client_secret';
 
-    // How the client authenticates at the token endpoint:
-    // `client_secret_basic`, `client_secret_post` or `private_key_jwt`
+    // How the client authenticates at the token endpoint
     case CLIENT_AUTHENTICATION = 'client_authentication';
 
-    // The algorithm `private_key_jwt` client assertions are signed with:
-    // `PS256` (the default for an RSA key) or `RS256`, `ES256` for a P-256 key;
-    // pinned, never negotiated, and apart from `id_token_algorithms`
+    // The pinned `private_key_jwt` signing algorithm, apart from
+    // `id_token_algorithms`
     case CLIENT_ASSERTION_ALGORITHM = 'client_assertion_algorithm';
 
     // The scopes requested, always including `openid`
     case SCOPES = 'scopes';
 
-    // The ID token signature algorithms accepted, asymmetric only (SSO-7.3)
+    // The ID token signature algorithms accepted, asymmetric only
     case ID_TOKEN_ALGORITHMS = 'id_token_algorithms';
 
-    // Extra authorisation parameters from the allow-list (`prompt`,
-    // `acr_values`, `login_hint`, ...), never one the flow controls
+    // Extra allow-listed authorisation parameters, never one the flow controls
     case EXTRA_PARAMETERS = 'extra_parameters';
 
-    // The audiences an ID token may name beside the client id (SSO-7.4), none
-    // by default
+    // The audiences an ID token may name beside the client id
     case TRUSTED_AUDIENCES = 'trusted_audiences';
 
-    // The `max_age` every authorisation request sends, in seconds, whose
-    // `auth_time` the ID token must then carry and satisfy (SSO-7.4); none by
-    // default
+    // The `max_age` sent with every authorisation request, in seconds
     case MAX_AGE = 'max_age';
 
-    // Whether the UserInfo endpoint is called, which is then mandatory and
-    // fails closed (SSO-7.5); off by default
+    // Whether UserInfo is called, which is then mandatory and fails closed
     case FETCH_USERINFO = 'fetch_userinfo';
 
     // Whether the discovery document and the JWKS are refreshed on a schedule
-    // (SSO-2.8), while `sso.features.metadata_refresh` is on; on by default
     case METADATA_REFRESH = 'metadata_refresh';
 
     /**
-     * The operation whose freshness a change to the setting needs, or `null`
-     * when its change never widens or redirects access (SSO-2.12): what decides
-     * whom the connection trusts, where it sends people or the code, what a
-     * subject means, what a signature or a token must be, what the provider's
-     * authentication must prove, where identity claims come from, whether its
-     * discovery document and keys refresh, and the client's credentials, is
-     * trust.
+     * The operation whose freshness a change needs, or `null` when the change
+     * never widens or redirects access.
      *
      * @return ?\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation
      */
@@ -109,8 +84,7 @@ enum OidcSetting: string
     }
 
     /**
-     * Whether a change to the setting may alter what existing subjects mean
-     * (SSO-2.13).
+     * Whether a change may alter what existing subjects mean.
      *
      * @return bool
      */
@@ -120,8 +94,7 @@ enum OidcSetting: string
     }
 
     /**
-     * Whether the setting is a secret, stored encrypted and masked on read
-     * (SSO-2.5).
+     * Whether the setting is a secret, stored encrypted and masked on read.
      *
      * @return bool
      */
@@ -131,8 +104,7 @@ enum OidcSetting: string
     }
 
     /**
-     * The names of the settings a change to which may alter what existing
-     * subjects mean.
+     * The names of the settings that may alter what existing subjects mean.
      *
      * @return list<string>
      */

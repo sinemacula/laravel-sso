@@ -22,18 +22,8 @@ use Tests\Fixtures\Fetching\TlsServer;
 use Tests\TestCase;
 
 /**
- * Integration tests of the default fetcher on the wire: real requests through
- * Guzzle's cURL handler to a local HTTPS server, so what the fetcher asks of
- * cURL is shown to happen, not only to be asked (SSO-2.9).
- *
- * The host is `idp.invalid`, a name DNS never resolves, and the stub resolver
- * answers a public address for it, which the fetcher checks and pins. Loopback
- * is always refused, so the handler the fetcher sends through rewrites only the
- * pinned address to 127.0.0.1, where the server listens, and, where a test
- * trusts the server, points certificate verification at its self-signed
- * certificate rather than turning it off. Everything else is the fetcher's own.
- *
- * Skipped where `ext-curl` or `ext-openssl` is not loaded.
+ * Integration tests of the default fetcher against a local HTTPS server. Only
+ * the pinned address is rewritten; verification stays on.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,9 +61,8 @@ final class TlsTransportTest extends TestCase
     }
 
     /**
-     * The connection goes to the address the fetcher pinned, though DNS cannot
-     * resolve the name: cURL honours `CURLOPT_RESOLVE`, verifies the server's
-     * certificate against the name, and sends the name in the request.
+     * The connection goes to the pinned address with the name verified and
+     * sent.
      *
      * @return void
      *
@@ -95,8 +84,7 @@ final class TlsTransportTest extends TestCase
     }
 
     /**
-     * A certificate nothing trusts fails the fetch as a transport failure, and
-     * the request is never sent: certificate verification is on.
+     * An untrusted certificate fails the fetch before the request is sent.
      *
      * @return void
      *
@@ -116,10 +104,7 @@ final class TlsTransportTest extends TestCase
     }
 
     /**
-     * A trusted certificate for another name fails the fetch the same way, and
-     * the request is never sent: the host name is verified, not only the chain.
-     * (cURL checks the name once the handshake is done, so the server's side of
-     * it may complete.).
+     * A trusted certificate for another name fails the fetch.
      *
      * @return void
      *
@@ -139,9 +124,7 @@ final class TlsTransportTest extends TestCase
     }
 
     /**
-     * A body of no declared length, far past the cap, fails as too large, and
-     * the transfer is aborted rather than read to its end: the server sees the
-     * connection go before it has sent the whole body.
+     * A body past the cap is aborted during the transfer.
      *
      * @return void
      *
@@ -164,9 +147,8 @@ final class TlsTransportTest extends TestCase
     }
 
     /**
-     * Fetch the server's metadata through the default fetcher on the real cURL
-     * handler, the pinned address rewritten to the server's, and the server's
-     * certificate trusted when asked.
+     * Fetch the server's metadata through the real cURL handler, trusting it
+     * when asked.
      *
      * @param  \Tests\Fixtures\Fetching\TlsServer  $server
      * @param  bool  $trusted

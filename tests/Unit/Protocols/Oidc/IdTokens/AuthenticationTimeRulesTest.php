@@ -13,10 +13,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\IdTokens\AuthenticationTimeRules;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for when the person authenticated (SSO-7.4, SSO-5.10): `auth_time`
- * never inferred from `iat`, required when `max_age` was asked for, every
- * boundary at, under and over (future, `max_age`, the reauthentication's start
- * less the skew), at full precision, each call with its own clock and skew.
+ * Unit tests for an ID token's `auth_time` rules.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -147,10 +144,8 @@ final class AuthenticationTimeRulesTest extends TestCase
     }
 
     /**
-     * Rows of `[auth_time, start, skew, reason]`: a `max_age` of 0 with the
-     * request's start given, as the validator asks it. An authentication made
-     * for the request passes however long ago the request started, so a slow
-     * callback is never refused; one before it is, the skew allowed.
+     * Rows of `[auth_time, start, skew, reason]` for a `max_age` of 0: an
+     * authentication made for the request passes however slow the callback.
      *
      * @return iterable<string, array{0: float|int, 1: int, 2: int, 3: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -226,9 +221,8 @@ final class AuthenticationTimeRulesTest extends TestCase
     }
 
     /**
-     * Rows of `[auth_time, skew, reason]`: around the request's start less the
-     * skew, judged after the start with no `max_age`, so the start alone
-     * decides.
+     * Rows of `[auth_time, skew, reason]` around the request's start less the
+     * skew, with no `max_age`.
      *
      * @return iterable<string, array{0: float|int, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */

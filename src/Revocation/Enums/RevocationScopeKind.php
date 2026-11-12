@@ -5,13 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Revocation\Enums;
 
 /**
- * Which sessions a call to the `Contracts\SessionRevocation` contract concerns
- * (SSO-4.5, SSO-8.8): those active in a tenant that no longer comply with its
- * enforcement, those established through a connection, one identity's
- * established through a connection, or one identity's established through one
- * link.
+ * Which sessions a revocation concerns.
  *
- * Backed, and stable once released: a value is never renamed or reused.
+ * Values are stable; never rename or reuse one.
  *
  * @api
  *
@@ -20,8 +16,7 @@ namespace SineMacula\Laravel\Sso\Revocation\Enums;
  */
 enum RevocationScopeKind: string
 {
-    // The sessions active in the tenant that its enforcement, as it now is, no
-    // longer allows
+    // The tenant's sessions its current enforcement no longer allows
     case TENANT = 'tenant';
 
     // Every session established through the connection

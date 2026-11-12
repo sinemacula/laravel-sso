@@ -32,29 +32,12 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races a refresh of an OIDC connection's discovery document and JWKS across
- * processes, each with its own database connection, on PostgreSQL and MySQL
- * (SSO-2.8, SSO-2.13, SSO-11.12):
+ * Races an OIDC discovery and JWKS refresh across processes on PostgreSQL and
+ * MySQL, ordered by signal files.
  *
- * - two refreshers of one connection: the claim lets exactly one fetch;
- * - a refresh paused between its fetch and its write while an administrator
- *   changes a setting: a setting the refresh depends on is a conflict, and it
- *   writes nothing, so the administrator's change stands; a setting it neither
- *   depends on nor changes stands beside it;
- * - a refresh whose claim expired while it fetched and was taken over: the one
- *   that lost its claim writes nothing, whether it then applies or records a
- *   failure, and the new owner's refresh stands.
- *
- * The order is forced with signal files, never with timing. A refresh refuses
- * to run inside a transaction, so it always runs plainly; the administrator
- * runs plainly, and again inside a `REPEATABLE READ` transaction of its own
- * that read the connection before the refresh claimed it. On PostgreSQL that
- * transaction then fails to serialise (SQLSTATE 40001) when it locks the
- * connection the claim wrote, which leaves the refresh to apply: an accepted
- * safe outcome, on PostgreSQL only.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * On PostgreSQL an administrator's `REPEATABLE READ` transaction that read
+ * before the claim fails to serialise (40001), leaving the refresh to apply: an
+ * accepted safe outcome.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -98,10 +81,9 @@ final class ConcurrentOidcRefreshTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock, a
-     * fake fetcher serving the provider and a fresh freshness contract; switch
-     * OIDC and the refresh on; create the tables, a refreshing connection
-     * storing the provider's key, and the directory the processes use.
+     * Skip without a shared database or pcntl; bind a fixed clock, a fake
+     * fetcher and fresh freshness; enable OIDC and refresh; create a refreshing
+     * connection.
      *
      * @return void
      *
@@ -165,9 +147,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * Two refreshers of one connection: the first claims it and fetches, and
-     * the second, running while the first fetches, finds nothing due and
-     * fetches nothing.
+     * Of two refreshers of one connection, only the first fetches; the second
+     * finds nothing due.
      *
      * @return void
      */
@@ -201,8 +182,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * A refresh inside a transaction already open, which read the connection,
-     * refuses, with nothing claimed or fetched.
+     * A refresh inside an open transaction that read the connection refuses,
+     * claiming and fetching nothing.
      *
      * @return void
      *
@@ -231,8 +212,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * Rows of `[settings the administrator changes, in transaction]`, each a
-     * trust change the refresh's snapshot holds.
+     * Rows of `[settings changed, in transaction]`, each a trust change in the
+     * refresh's snapshot.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: bool}>
      */
@@ -250,11 +231,9 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * A refresh paused between its fetch and its write while an administrator
-     * changes a setting it depends on is `metadata_conflict` and writes
-     * nothing, and the change stands; on PostgreSQL, an administrator inside a
-     * transaction older than the refresh's claim fails to serialise instead,
-     * changes nothing, and the refresh applies.
+     * A paused refresh loses to an administrator's change of a setting it
+     * depends on; on PostgreSQL an older transaction may fail to serialise
+     * instead.
      *
      * @param  array<string, mixed>  $settings
      * @param  bool  $inTransaction
@@ -286,9 +265,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * A change of a setting a refresh neither depends on nor changes raises no
-     * trust version and is no conflict: the refresh applies, and the change
-     * stands.
+     * A change of a setting the refresh does not depend on is no conflict, and
+     * both stand.
      *
      * @return void
      */
@@ -305,8 +283,7 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * Rows of `[served]`: what the refresh whose claim is taken over is served,
-     * the JWKS to apply or a failed fetch to record.
+     * Rows of `[served]`: the JWKS to apply or a failed fetch to record.
      *
      * @return iterable<string, array{0: bool}>
      */
@@ -319,10 +296,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * A refresh whose claim expired while it fetched, and was taken over by
-     * another server's refresh once it had, writes nothing when it then applies
-     * or records a failure: it is `conflict`, and the other refresh's write
-     * stands.
+     * A refresh whose expired claim was taken over writes nothing, and the new
+     * owner's refresh stands.
      *
      * @param  bool  $served
      * @return void
@@ -381,10 +356,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * Wait until the other process has signalled, and fail loudly once the
-     * deadline passes without it: the process then reports an error, so a race
-     * whose processes ran one after the other never passes as one that
-     * overlapped.
+     * Wait for the other process's signal, failing after the deadline so a
+     * serial run never passes as a race.
      *
      * @param  string  $signal
      * @return void
@@ -437,8 +410,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * Have the JWKS note each fetch and signal it, then wait for the signal
-     * before it answers.
+     * Have the JWKS signal each fetch, then wait for the signal before
+     * answering.
      *
      * @param  string  $signal
      * @param  string  $await
@@ -459,9 +432,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * In a forked process: inside a `REPEATABLE READ` transaction that read the
-     * connection first, or plainly, signal it has read, wait for the refresh to
-     * fetch, then make the change and signal once that is done or failed.
+     * In a fork, read the connection (optionally in `REPEATABLE READ`), wait
+     * for the refresh to fetch, then make the change.
      *
      * @param  array<string, mixed>  $settings
      * @param  bool  $inTransaction
@@ -544,8 +516,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * Fork a process per body, have each run its body on a connection of its
-     * own, and collect what each reported, in order.
+     * Fork a process per body, each on its own connection, and collect their
+     * reports in order.
      *
      * @param  list<\Closure(): array<string, mixed>>  $bodies
      * @return list<array<string, mixed>>
@@ -584,9 +556,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, run the body, report
-     * what it answered, a PostgreSQL serialisation failure, or the error it
-     * threw, and end without running the parent's shutdown.
+     * In a fork, run the body on a fresh connection, report its outcome and
+     * exit without the parent's shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): array<string, mixed>  $body
@@ -612,10 +583,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure: SQLSTATE 40001 on PostgreSQL. Inside a caller's
-     * transaction, Laravel rethrows it as a `DeadlockException` whose previous
-     * error is the query's.
+     * Whether the error or its cause is PostgreSQL's SQLSTATE 40001; inside a
+     * transaction Laravel wraps it in a `DeadlockException`.
      *
      * @param  \Throwable  $exception
      * @return bool
@@ -632,8 +601,8 @@ final class ConcurrentOidcRefreshTest extends TestCase
     }
 
     /**
-     * The statement that makes every later transaction of the session
-     * `REPEATABLE READ`.
+     * The statement that makes the session's later transactions `REPEATABLE
+     * READ`.
      *
      * @param  string  $driver
      * @return string

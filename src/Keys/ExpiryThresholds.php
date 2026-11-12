@@ -7,17 +7,8 @@ namespace SineMacula\Laravel\Sso\Keys;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The days before its end of validity a key or certificate is warned of, each a
- * day of 86400 seconds, one of them always 0, for a key whose validity has
- * ended (SSO-2.6, SSO-11.12).
- *
- * A threshold is reached when the end of validity is at or before now plus its
- * days, so 0 is reached from the very second the validity ends. The report
- * warns of the most urgent one reached and only ever escalates, so a threshold
- * it has passed while nothing ran is skipped. A change of the thresholds is
- * read by the next run: a key whose most urgent threshold reached under the new
- * list is less urgent than the one it was last warned of stays quiet until it
- * reaches a more urgent one.
+ * The days before its end of validity a key or certificate is warned of; 0 is
+ * always one, for a key whose validity has ended.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,8 +35,7 @@ final readonly class ExpiryThresholds
     ) {}
 
     /**
-     * The thresholds a value names: a non-empty list of distinct integers from
-     * 0 to 365, including 0, in any order. Anything else fails closed.
+     * Parse a list of distinct days from 0 to 365, in any order, including 0.
      *
      * @param  mixed  $value
      * @return self
@@ -79,7 +69,7 @@ final readonly class ExpiryThresholds
 
     /**
      * The most urgent threshold a validity ending then has reached by now, or
-     * `null` when it has reached none.
+     * `null`; one is reached when the end is at or before now plus its days.
      *
      * @param  \DateTimeInterface  $notAfter
      * @param  \DateTimeInterface  $now

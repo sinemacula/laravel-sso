@@ -11,9 +11,7 @@ use SineMacula\Laravel\Sso\Linking\RefusingLinkConfirmation;
 use Tests\TestCase;
 
 /**
- * Unit tests for the link confirmation contract's binding and its verdict: the
- * package binds the default, which `RefusingLinkConfirmationTest` covers, and
- * only `independent` counts.
+ * Unit tests for the link confirmation contract's binding and verdict.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

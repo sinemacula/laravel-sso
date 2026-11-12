@@ -9,23 +9,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues;
 
 /**
- * An identity provider's metadata as the SAML adapter read it for one pinned
- * entity (SSO-2.8, SSO-6.11), or why it was refused.
- *
- * Read metadata holds the entity id; the single sign-on service chosen, its URL
- * and its binding (`http_redirect` or `http_post`, as the connection's
- * `sso_binding` names them); the RSA signing certificates and the encryption
- * certificates, each as its canonical PEM and lower-case hex SHA-256
- * fingerprint, once per fingerprint, in document order; the NameID formats
- * offered; and the earliest `validUntil` of the entity and every descriptor
- * enclosing it, or `null` for undated metadata.
- *
- * What the provider published lives in one `\SensitiveParameterValue`, so a
- * dump, an array cast and `json_encode()` show `[redacted]`, and the value
- * refuses to be serialised or unserialised. Refused metadata holds nothing but
- * the reason and the rule's name in the package's own words (`schema`,
- * `entity_location`, `signature`, say); asking it for a value is the caller's
- * mistake, a `LogicException`.
+ * An identity provider's metadata for one pinned entity, or why it was refused.
+ * Asking refused metadata for a value throws.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,10 +39,10 @@ final readonly class IdpMetadata implements \JsonSerializable
         /** Why the metadata was refused, for refused metadata. */
         public ?FailureReason $reason,
 
-        /** Which rule refused it, in the package's own words, for refused metadata. */
+        /** Which rule refused it, for refused metadata. */
         public ?string $detail,
 
-        // What the provider published, by name; held wrapped
+        // Held wrapped, so not promoted
         #[\SensitiveParameter]
         array $values,
     ) {
@@ -124,8 +109,7 @@ final readonly class IdpMetadata implements \JsonSerializable
     }
 
     /**
-     * The binding of the single sign-on service chosen: `http_redirect` or
-     * `http_post`.
+     * The chosen service's binding: `http_redirect` or `http_post`.
      *
      * @return string
      *
@@ -138,7 +122,7 @@ final readonly class IdpMetadata implements \JsonSerializable
     }
 
     /**
-     * The RSA signing certificates, each with its fingerprint, once each.
+     * The RSA signing certificates as canonical PEM with SHA-256 fingerprint.
      *
      * @return list<Certificate>
      *
@@ -151,7 +135,7 @@ final readonly class IdpMetadata implements \JsonSerializable
     }
 
     /**
-     * The encryption certificates, each with its fingerprint, once each.
+     * The encryption certificates as canonical PEM with SHA-256 fingerprint.
      *
      * @return list<Certificate>
      *
@@ -191,7 +175,7 @@ final readonly class IdpMetadata implements \JsonSerializable
     }
 
     /**
-     * The value held under the name, which only read metadata has.
+     * The value under the name; only read metadata has one.
      *
      * @param  string  $name
      * @return mixed

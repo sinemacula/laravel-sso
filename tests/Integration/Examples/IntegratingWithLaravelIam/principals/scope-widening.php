@@ -3,12 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The principal change of `docs/guides/integrating-with-laravel-iam.md`
- * (SSO-8.8, SSO-12.5), as the application's principal mutation runs it, given
- * the person and the new principal's tenant (`null` for a platform principal):
- * the package's `widened()` first, in the change's own transaction on the
- * storage connection, then the application's principal guard, then the write,
- * all committing together.
+ * The application's principal change, as its mutation runs it with `$change`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

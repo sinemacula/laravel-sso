@@ -3,10 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The comparisons of `docs/guides/secrets.md` (SSO-11.9, SSO-12.5), as the
- * application's own code makes them, given a known secret and one given to it,
- * the stored SHA-256 and SHA-512 digests of a value and the value presented:
- * each is compared in constant time, and whether each matched is answered.
+ * The constant-time comparisons of `docs/guides/secrets.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -49,13 +49,13 @@ JWKS is fetched and written is `oidc-discovery.md`.
   and the library reads as a float: a token signed with such a header member does not verify. Anything the library
   throws is a signature that does not verify.
 - `JoseAdapter::signClientAssertion()` signs with the connection's current `client_assertion` key (`ClientKey`), under
-  the algorithm the connection pins, or the key's default: `PS256` or `RS256` for an RSA key, `ES256` for a P-256 key. A
-  pinned algorithm the key cannot sign under is an `InvalidArgumentException`, never a fallback. Its header is `alg`,
-  `kid` (the key's RFC 7638 thumbprint, stable for as long as the key is and whatever the algorithm) and `typ` `JWT`.
-  Its claims are `iss` and `sub` the client id, `aud` the token endpoint exactly, a fresh 256-bit `jti`, `iat` now and
-  `exp` 60 seconds later. A fresh assertion is signed for each attempt, and it is answered as a `Secrets\Secret`.
-  Anything the library throws while it signs becomes a `\InvalidArgumentException` with a fixed message and no previous
-  exception, since the library's frames hold the private JWK.
+  the algorithm the connection pins, or the key's default: `PS256` for an RSA key (`RS256` only when pinned), `ES256`
+  for a P-256 key. A pinned algorithm the key cannot sign under is an `InvalidArgumentException`, never a fallback. Its
+  header is `alg`, `kid` (the key's RFC 7638 thumbprint, stable for as long as the key is and whatever the algorithm)
+  and `typ` `JWT`. Its claims are `iss` and `sub` the client id, `aud` the token endpoint exactly, a fresh 256-bit
+  `jti`, `iat` now and `exp` 60 seconds later. A fresh assertion is signed for each attempt, and it is answered as a
+  `Secrets\Secret`. Anything the library throws while it signs becomes a `\InvalidArgumentException` with a fixed
+  message and no previous exception, since the library's frames hold the private JWK.
 - `CompactToken` and `ClientKey` hold what they carry in a `\SensitiveParameterValue`: a dump shows no token, header
   value, claim, signature or private member, and each refuses to be serialised (SSO-7.6). A `CompactToken`'s dump and
   JSON encoding show its `alg` only when it is one of `AlgorithmAllowList::ALGORITHMS`, and `[unknown]` otherwise, and

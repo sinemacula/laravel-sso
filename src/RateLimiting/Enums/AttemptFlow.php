@@ -5,37 +5,31 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\RateLimiting\Enums;
 
 /**
- * A flow the package limits (SSO-11.8), and the scopes each is counted in. The
- * value is the flow's key in `sso.rate_limits`. Every limit is always on: the
- * configuration sets how many attempts a window allows, never whether it is
- * counted.
+ * A rate-limited flow, keyed in `sso.rate_limits`; its limits cannot be turned
+ * off.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  */
 enum AttemptFlow: string
 {
-    // Starting an authorisation request, by IP address and, for discovery, by
-    // the email's domain
+    // Starting an authorisation request
     case AUTHORIZATION_REQUEST = 'authorization_request';
 
-    // A response at an assertion consumer service or a callback, by IP address
-    // and by connection
+    // A response at an assertion consumer service or a callback
     case COMPLETION = 'completion';
 
-    // Redeeming a handoff code, by IP address
+    // Redeeming a handoff code
     case REDEMPTION = 'redemption';
 
-    // Importing or refreshing a connection's metadata or discovery document, by
-    // connection
+    // Importing or refreshing metadata or a discovery document
     case METADATA = 'metadata';
 
-    // Checking a domain's DNS record, by connection
+    // Checking a domain's DNS record
     case DOMAIN_CHECK = 'domain_check';
 
     /**
-     * The scopes the flow is counted in, each with a limit of its own under the
-     * flow's key in `sso.rate_limits`.
+     * The scopes the flow is counted in, each with its own limit.
      *
      * @return non-empty-list<\SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptScope>
      */

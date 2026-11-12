@@ -9,16 +9,8 @@ use SineMacula\Laravel\Sso\Config\UrlSetting;
 use SineMacula\Laravel\Sso\Endpoints\Enums\Endpoint;
 
 /**
- * Reads what the default endpoint resolver builds a connection's URLs from
- * (SSO-5.5), the one way both the resolver and the boot check
- * (`Config\Checks\EndpointsCheck`) read it, on each call, failing closed with
- * an `InvalidArgumentException` that names the key and what it must be, never
- * the configured value.
- *
- * `sso.endpoints.base_url` is a web URL with no query (`UrlSetting::web()`),
- * and may carry a path prefix. Each pattern in `sso.endpoints.paths` is an
- * absolute path of unreserved characters holding `{connection}` once, with no
- * query, fragment, other placeholder or dot segment, and the patterns differ.
+ * The `sso.endpoints` settings, read the same way by the resolver and the boot
+ * check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -30,7 +22,7 @@ final readonly class EndpointSettings
     /** @var string The placeholder each pattern holds once, for the connection's id. */
     public const string PLACEHOLDER = '{connection}';
 
-    /** @var string A path pattern: an absolute path of unreserved characters, `/`, `{` and `}`, with nothing after them. */
+    /** @var string An absolute path of unreserved characters and braces. */
     private const string PATTERN = '#^/[A-Za-z0-9\-._~/{}]*$#D';
 
     /** @var string A dot segment anywhere in a path. */
@@ -82,8 +74,7 @@ final readonly class EndpointSettings
     }
 
     /**
-     * Refuse two endpoints with the same pattern; patterns `pattern()` refuses
-     * are left to it.
+     * Refuse two endpoints with the same pattern.
      *
      * @return void
      *
@@ -110,8 +101,8 @@ final readonly class EndpointSettings
     }
 
     /**
-     * Whether the pattern is an absolute path of allowed characters, holding
-     * `{connection}` once, no other brace, and no dot segment.
+     * Whether the pattern holds `{connection}` once, no other brace and no dot
+     * segment.
      *
      * @param  string  $pattern
      * @return bool

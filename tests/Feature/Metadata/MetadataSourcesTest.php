@@ -26,11 +26,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the sources the shared refresh machinery refreshes through
- * (SSO-2.8, SSO-11.12): one per package protocol and none for a protocol an
- * application registered, whose connection is never due and an administrator's
- * refresh of which is `feature_disabled`, with nothing claimed or fetched; and
- * what a fetch found, holding its document out of every dump.
+ * Feature tests for the per-protocol metadata refresh sources.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,8 +43,7 @@ final class MetadataSourcesTest extends TestCase
     private FakeFetcher $fetcher;
 
     /**
-     * Bind a fixed clock and a fetcher, turn the refresh on and create the
-     * tables.
+     * Bind a fixed clock and a fetcher, enable refresh and create the tables.
      *
      * @return void
      */
@@ -111,8 +106,7 @@ final class MetadataSourcesTest extends TestCase
     }
 
     /**
-     * What a fetch found holds its document, when it read one, out of every
-     * dump, and refuses to be serialised.
+     * Fetched metadata hides its document from dumps and refuses serialisation.
      *
      * @return void
      */

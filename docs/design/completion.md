@@ -66,12 +66,12 @@ Each stage is in `Completion\Stages`.
   `request_unknown`.
 - `ConsumeRequest` calls `Flows\RequestConsumption::consume()` inside a transaction of its own on the storage connection
   that first locks the row of the connection the response arrived for, so a completion takes the connection's lock
-  before its request's, in the package's order (see "Transactions and locks" below). `consumed`
-  goes on; `unknown` and `replayed` are `request_unknown` with no target; `refused` keeps its reason and, while the
-  request's application is still registered, the request and the application, so the failure is redirected. A refused
-  request is kept as a `Protocols\ConsumedRequest` without its nonce digest or its PKCE verifier. A consumed one keeps
-  the verifier encrypted: it is decrypted only when the driver calls `codeVerifier()` to build the token request, so a
-  SAML completion never decrypts it.
+  before its request's, in the package's order (see "Transactions and locks" below). `consumed` goes on; `unknown` and
+  `replayed` are `request_unknown` with no target; `refused` keeps its reason and, while the request's application is
+  still registered, the request and the application, so the failure is redirected. A refused request is kept as a
+  `Protocols\ConsumedRequest` without its nonce digest or its PKCE verifier. A consumed one keeps the verifier
+  encrypted: it is decrypted only when the driver calls `codeVerifier()` to build the token request, so a SAML
+  completion never decrypts it.
 - `ValidateResponse` refuses a connection that is no longer usable (`ProtocolManager::isUsable()`) with
   `connection_unavailable` before its driver is asked, so no provider is contacted (no OIDC token request) for a
   connection that cannot complete; otherwise it asks the driver to `complete()` against the consumed request. A refusal
@@ -108,8 +108,8 @@ Each stage is in `Completion\Stages`.
   issues through `Contracts\HandoffIssuer` a `Handoffs\HandoffGrant` of the result, the request's S256 challenge, an
   expiry of the application's `handoff_ttl_seconds` from now, the connection's `trust_version` as its locked row holds
   it (SSO-2.13), the linked identity, the request's identity and session, the session's latest end, the link and the
-  reservation. A code bound to a reservation expires exactly when it does,
-  and its reference and stored expiry are written to the reservation in the same transaction.
+  reservation. A code bound to a reservation expires exactly when it does, and its reference and stored expiry are
+  written to the reservation in the same transaction.
 - A stage run before the steps it needs throws a `LogicException` naming what it needs: the pipeline's mistake.
 
 ### The verified result
@@ -151,20 +151,20 @@ made, from what a driver verified and never from client input (SSO-8.1):
   provider called for a flow a trust change has overtaken.
 - Once a request is consumed with a trusted target, one transaction on the storage connection takes `flows.md`'s lock
   order. For a completion still going on, under `DatabaseEnforcement` with the `enforcement` feature on, it first calls
-  `DatabaseEnforcement::lock()` at the start of `CompletionPipeline::finish()`: the enforcing tenant's row (named by the
+  `DatabaseEnforcement::lock()` from `Completion\CompletionLocks::take()`: the enforcing tenant's row (named by the
   inheritance contract, inserted unconfigured when it has none) and then, in one statement in ascending id order, the
   connection and the connections the rule names. Otherwise (feature off, another contract bound, or a completion already
   refused) it locks the connection's row alone, with no enforcement statement and no inheritance call. Then the
   request's row. Each is a locking read on the write connection, so none answers from an older `REPEATABLE READ`
   snapshot. A completion still going on is refused with `connection_unavailable` when the connection is gone or no
   longer usable, when the request is gone, its `voided_at` is set or its `trust_version` is not the locked connection's
-  (unless `Metadata\TransitionReceipts` permits exactly the key rotation its own validation made, `oidc-driver.md`),
-  or when the inheritance contract, asked again, no longer names the tenant whose rule is locked: validation was based
-  on the connection and the request as they were before, and a change since (a disable, a trust change that voids the
-  connection's requests, BL-37) wins. It is refused with `metadata_expired` when anything fetched for the locked
-  connection has expired by now (`Metadata\MetadataExpiry`, SSO-2.8): metadata that lapses, by its `validUntil`
-  or the stale limit, while the response is validated is never used. Otherwise every locked step runs in that
-  transaction, on the rows as locked, with the policy the locked rule gives.
+  (unless `Metadata\TransitionReceipts` permits exactly the key rotation its own validation made, `oidc-driver.md`), or
+  when the inheritance contract, asked again, no longer names the tenant whose rule is locked: validation was based on
+  the connection and the request as they were before, and a change since (a disable, a trust change that voids the
+  connection's requests) wins. It is refused with `metadata_expired` when anything fetched for the locked connection has
+  expired by now (`Metadata\MetadataExpiry`, SSO-2.8): metadata that lapses, by its `validUntil` or the stale limit,
+  while the response is validated is never used. Otherwise every locked step runs in that transaction, on the rows as
+  locked, with the policy the locked rule gives.
 - The same transaction sets the request's `completed_at`, whether the completion completed or was refused (a refusal at
   consumption or validation included), and reports the completion. A response no request matches marks nothing. A
   request whose application is no longer registered is marked completed by its consumption instead, in the same write
@@ -247,11 +247,11 @@ no target is dispatched at once.
 
 ## Implementation Anchors
 
-- `src/Completion/CompletionService.php`, `src/Completion/CompletionPipeline.php`, `src/Completion/ResultBuilder.php`,
-  `src/Completion/CompletionEvents.php`.
-- `src/Completion/Stages/CorrelateResponse.php`, `ConsumeRequest.php`, `ValidateResponse.php`, `ResolveLink.php`,
-  `CheckEnforcement.php`, `CheckPurpose.php`, `DecideUnlinked.php`, `IssueHandoff.php`, `DomainReservation.php` and
-  `Provisioning.php`.
+- `src/Completion/CompletionService.php`, `src/Completion/CompletionPipeline.php`, `src/Completion/CompletionLocks.php`,
+  `src/Completion/ResultBuilder.php`, `src/Completion/CompletionEvents.php`.
+- `src/Completion/Stages/CorrelateResponse.php`, `ConsumeRequest.php`, `ValidateResponse.php`, `RecordReplay.php`,
+  `ResolveLink.php`, `CheckEnforcement.php`, `CheckPurpose.php`, `DecideUnlinked.php`, `IssueHandoff.php`,
+  `DomainReservation.php` and `Provisioning.php`.
 - `src/Completion/CompletionState.php`, `src/Completion/StageOutcome.php`, `src/Completion/CompletionResult.php`,
   `src/Flows/RequestConsumption.php`.
 
@@ -259,8 +259,8 @@ no target is dispatched at once.
 
 - `tests/Feature/Completion/CompletionServiceTest.php`: every outcome and its exact result, the method and protocol of
   each endpoint, an unknown connection, a disabled connection, another connection's request, the expiry boundaries, a
-  replay, unlinked handoffs off and on, enforcement satisfied, unsatisfied and with no version, the policy turned off, the
-  deadline limiting, ignored and absent, the grant field by field, the limits, a database error.
+  replay, unlinked handoffs off and on, enforcement satisfied, unsatisfied and with no version, the policy turned off,
+  the deadline limiting, ignored and absent, the grant field by field, the limits, a database error.
 - `tests/Feature/Completion/CompletionEventSequenceTest.php`: each sequence and its whole context, and no secret.
 - `tests/Feature/Completion/ResultBuilderTest.php`: the result, the mapping and its caps, every `emailDomainVerified`
   boundary, the asserted email passed through, never derived from the mapped attributes, and kept by the handoff store.

@@ -23,35 +23,8 @@ use SineMacula\Laravel\Sso\Protocols\Start;
 use SineMacula\Laravel\Sso\Protocols\StartRequest;
 
 /**
- * The `oidc` driver (SSO-2.2, SSO-2.4, SSO-5.4, SSO-5.9, SSO-7): one OpenID
- * Connect connection's flows, each through a collaborator of its own, with the
- * connection's settings read afresh into `OidcOptions` on every call.
- *
- * - `settings()` reads `OidcSettings`.
- * - `isComplete()`: the settings are complete (`OidcSettings::isComplete()`),
- *   and the connection holds its client authentication's credential: a client
- *   secret for `client_secret_basic` and `client_secret_post`, a current
- *   `client_assertion` key that fits the connection's pinned algorithm for
- *   `private_key_jwt`. Only a complete, enabled connection is used (SSO-2.1).
- * - `start()` (`AuthorizationRequests`) and `complete()` (`CallbackCompletion`)
- *   are refused with `metadata_expired`, before their collaborator is asked,
- *   while what was fetched for the connection has expired (its discovery
- *   document or its JWKS, `Metadata\MetadataExpiry`, SSO-2.8).
- * - `correlate()` (`CallbackCorrelator`) reads which request a callback answers
- *   by its `state`, validating nothing.
- * - `describe()` (`RelyingPartyDescription`) is what an administrator registers
- *   at the provider, naming the public JWKS URL for `private_key_jwt`;
- *   `describeWithInlineKeys()` is the same document with the keys in it
- *   instead, for a provider that requires uploaded keys; and `publicKeys()` is
- *   the body of the public JWKS URL, which the application serves.
- *
- * Every JOSE library call is made inside the adapter's namespace
- * (`Protocols\Oidc\Jose`); the driver and its collaborators read only the
- * package's own values. The protocol manager keeps one instance per process
- * (and per application under Octane), so it and its collaborators hold no
- * connection, flow or result state between calls (SSO-11.2), and never touch
- * the package's storage beyond the reads of the key ring, the secrets, the
- * stored JWKS and the metadata expiry, and the JWKS refetch's own writes.
+ * The `oidc` protocol driver. One instance lives per process, so it and its
+ * collaborators hold no connection or flow state between calls.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,7 +36,7 @@ final readonly class OidcDriver implements ProtocolDriver
     /** @var string The name the driver is registered under, and an OIDC connection's protocol. */
     public const string NAME = 'oidc';
 
-    /** @var string The client authentication that signs a client assertion with the connection's own key. */
+    /** @var string The client authentication that signs with the connection's own key. */
     private const string PRIVATE_KEY_JWT = 'private_key_jwt';
 
     /**
@@ -205,8 +178,8 @@ final readonly class OidcDriver implements ProtocolDriver
     }
 
     /**
-     * Describe the connection's relying party side with its public keys in the
-     * document, for a provider that requires uploaded keys.
+     * Describe the relying party side with its public keys inline, for a
+     * provider that requires uploaded keys.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription
@@ -217,8 +190,7 @@ final readonly class OidcDriver implements ProtocolDriver
     }
 
     /**
-     * The body of the connection's public JWKS URL: its current and next public
-     * keys.
+     * The body of the connection's public JWKS URL: its current and next keys.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription

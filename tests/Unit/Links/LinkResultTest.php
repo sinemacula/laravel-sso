@@ -14,9 +14,7 @@ use SineMacula\Laravel\Sso\Links\LinkResult;
 use SineMacula\Laravel\Sso\Links\LinkSummary;
 
 /**
- * Unit tests for the result of a link's removal (SSO-8.4, outcomes convention):
- * a removal with its link, a refusal with one of the only two reasons it may
- * carry, the predicates, and the snake_case encoding.
+ * Unit tests for link removal results.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -84,8 +82,7 @@ final class LinkResultTest extends TestCase
     }
 
     /**
-     * Rows of `[reason]`: reasons a removal is never refused for, among them
-     * the creation's.
+     * Rows of `[reason]`: reasons a removal is never refused for.
      *
      * @return iterable<string, array{\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */

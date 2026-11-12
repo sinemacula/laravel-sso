@@ -19,10 +19,7 @@ use SineMacula\Laravel\Sso\Events\ResultVerified;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 
 /**
- * Unit tests for the flow and link events (SSO-10.1, SSO-10.3, SSO-10.4): each
- * is a final, read-only package event returning its context, survives a queue
- * unchanged, and holds exactly its declared public properties, none of them a
- * code, a verifier, a state, a subject, an attribute or a result.
+ * Unit tests for the flow and link events.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,7 +34,7 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 #[CoversClass(LinkRemoved::class)]
 final class FlowEventClassesTest extends TestCase
 {
-    /** @var list<string> Names no such event may give a property, compared without case or underscores. */
+    /** @var list<string> Forbidden property names, ignoring case and underscores. */
     private const array FORBIDDEN = ['code', 'handoffcode', 'verifier', 'state', 'nonce', 'subject', 'attributes', 'result', 'assertion', 'token'];
 
     /**
@@ -58,8 +55,7 @@ final class FlowEventClassesTest extends TestCase
     }
 
     /**
-     * Each event is a final, read-only package event that returns its context
-     * and declares exactly these public properties.
+     * Each event is a final, read-only package event with these properties.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  list<string>  $properties

@@ -25,40 +25,8 @@ use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * Builds what an OpenID Connect completion verified from the validated ID token
- * and, when the connection fetches it, its UserInfo response (SSO-7.5, SSO-7.6,
- * SSO-7.7, SSO-8.1).
- *
- * When the connection fetches UserInfo it is read first, and mandatory: a
- * refusal is the completion's (`UserInfoReader`), with no fallback to the ID
- * token alone. A `provider_error` is logged by its bearer token error code
- * alone, under `sso.oidc.userinfo_error`, never a body or a description.
- *
- * From what passed:
- *
- * - the issuer, the subject and the authentication context come from the ID
- *   token alone, whatever UserInfo says: `auth_time` at full precision, `amr`,
- *   `acr` and `sid`. OIDC states no session deadline. A claim that does not fit
- *   what a result holds is `id_token_invalid`, never an exception, though the
- *   ID token's validation has typed them;
- * - the raw attributes are the ID token's claims with UserInfo's laid over
- *   them, so UserInfo wins, less every name
- *   `AttributeMapping::RESERVED_OIDC_SOURCES` lists, from either source; their
- *   `email` is the pair's, or is removed when there is none, so a mapped email
- *   and the asserted one never disagree;
- * - the pair of `email` and `email_verified` comes from one source
- *   (`EmailPairing`), and is carried as asserted. It gives a linking email only
- *   when linking by a verified domain is on, by its feature and its connection,
- *   and `email_verified` is exactly `true`, with the organisation claim the
- *   connection names read from that same source (SSO-8.8). With linking off, no
- *   linking email is built at all.
- *
- * It answers with no replay record: the single use of the request and of the
- * code stand in for one. It reports no event, since the pipeline reports the
- * completion. The access token is used for the UserInfo request alone and
- * nothing keeps a token (SSO-7.6). It holds its collaborators, none of which
- * keeps anything of one completion for the next (SSO-11.2). It is not final, so
- * a test of the flow around it can observe and answer its calls.
+ * Builds the verified claims from the ID token and any UserInfo response. Not
+ * final, so a flow test can observe and answer its calls.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,13 +40,13 @@ readonly class ClaimsAssembler
     /** @var string The log message of an error the UserInfo endpoint answered. */
     private const string USERINFO_ERROR = 'sso.oidc.userinfo_error';
 
-    /** @var string What is logged when the endpoint named no bearer token error code. */
+    /** @var string What is logged when no bearer error code was named. */
     private const string UNRECOGNIZED_ERROR = '[unrecognized]';
 
     /** @var string The form an `auth_time` is read in, to the microsecond. */
     private const string NUMERIC_DATE_FORMAT = 'U.u';
 
-    /** @var float The latest `auth_time` a result can store: the last second of the year 9999. */
+    /** @var float The latest storable `auth_time`: the last second of 9999. */
     private const float LATEST_AUTHENTICATION_TIME = 253402300799.0;
 
     /**
@@ -97,7 +65,8 @@ readonly class ClaimsAssembler
     ) {}
 
     /**
-     * Build the verified claims, or refuse them.
+     * Build the verified claims, or refuse them; an enabled UserInfo is
+     * mandatory, with no fallback to the ID token alone.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -128,8 +97,7 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * Log a provider's error by its code alone, naming the request by its
-     * public reference; any other refusal logs nothing here.
+     * Log a provider error by its code alone; other refusals log nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
@@ -151,9 +119,8 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * The verified claims of the ID token and UserInfo's claims, `null` when it
-     * was not fetched, or `id_token_invalid` when the token's claims do not
-     * fit.
+     * The verified claims, or `id_token_invalid` when the token's claims do not
+     * fit a result. Identity and context come from the ID token alone.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken  $idToken
@@ -184,9 +151,8 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * The linking email of the pair, with the organisation read from the pair's
-     * own source, or `null` while the feature or the connection's linking is
-     * off.
+     * The linking email, with the organisation from the pair's own source, or
+     * `null` while linking is off.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Results\AssertedEmail  $asserted
@@ -212,8 +178,7 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * Whether every part of the ID token the claims are built from fits what a
-     * result holds.
+     * Whether every part of the ID token used fits what a result holds.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken  $idToken
      * @param  array<array-key, mixed>  $claims
@@ -235,9 +200,8 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * The raw attributes the mapping reads: the ID token's claims with
-     * UserInfo's over them, less the protocol values and tokens, and the pair's
-     * email alone under `email`.
+     * The raw attributes: UserInfo over the ID token's claims, less reserved
+     * names, with only the pair's email under `email`.
      *
      * @param  array<array-key, mixed>  $idToken
      * @param  ?array<array-key, mixed>  $userInfo
@@ -253,7 +217,7 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * The authentication context the ID token states, its claims known to fit.
+     * The ID token's authentication context; OIDC states no session deadline.
      *
      * @param  array<array-key, mixed>  $claims
      * @return \SineMacula\Laravel\Sso\Results\AuthenticationContext
@@ -271,8 +235,7 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * When the ID token says the person authenticated, at full precision, or
-     * `null` when it does not say.
+     * The `auth_time` at full precision, or `null` when absent.
      *
      * @param  array<array-key, mixed>  $claims
      * @return ?\Carbon\CarbonImmutable
@@ -285,7 +248,7 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * Whether `auth_time` is absent, or a number a result can store.
+     * Whether `auth_time` is absent or a number a result can store.
      *
      * @param  array<array-key, mixed>  $claims
      * @return bool
@@ -302,8 +265,7 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * Whether `amr` is absent, or a list of at most 32 strings of 1 to 255
-     * bytes.
+     * Whether `amr` is absent or a list of at most 32 short strings.
      *
      * @param  array<array-key, mixed>  $claims
      * @return bool
@@ -324,7 +286,7 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * Whether the claim is absent, or a string of 1 to 1024 bytes.
+     * Whether the claim is absent or a string of 1 to 1024 bytes.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  string  $name
@@ -336,7 +298,7 @@ readonly class ClaimsAssembler
     }
 
     /**
-     * Whether the value is a string of 1 to the bytes allowed.
+     * Whether the value is a string of 1 to `$maxBytes` bytes.
      *
      * @param  mixed  $value
      * @param  int  $maxBytes

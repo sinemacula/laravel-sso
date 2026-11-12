@@ -18,11 +18,7 @@ use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\Caller;
 
 /**
- * The example application's re-authentication route (SSO-5.10, SSO-9.5,
- * SSO-12.5): it redeems only `reauthenticate` codes, inside its own
- * transaction, where the package renews the session the code is bound to once,
- * through the application's `ReauthenticationSessions`. Nothing here renews it
- * again.
+ * The example application's re-authentication route.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

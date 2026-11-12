@@ -7,11 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols\Saml2\Messages;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\Concerns\HoldsProviderValues;
 
 /**
- * One `Attribute` of a verified assertion's `AttributeStatement` (SAML 2.0 Core
- * §2.7.3.1), as the SAML adapter read it: its `Name`, `NameFormat` and
- * `FriendlyName`, and each `AttributeValue` in order, as its text exactly as
- * received, or `null` for a value that is not simple text (an element, or
- * `xsi:nil`), which is never mapped or taken as a subject.
+ * One `Attribute` of a verified assertion. A non-text value (an element or
+ * `xsi:nil`) is `null` and never mapped or taken as a subject.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

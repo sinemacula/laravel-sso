@@ -10,9 +10,8 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * `[saml2]`: the caps and windows every SAML connection is held to, while the
- * `saml2` feature is on (SSO-6.1, SSO-6.5, SSO-12.3), each read as
- * `Saml2Limits` reads it, so the check and the flows judge it the same way.
+ * `[saml2]`: the SAML caps and windows, read through `Saml2Limits` so the check
+ * and the flows agree.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +30,7 @@ final readonly class Saml2Check implements ConfigurationCheck
     ) {}
 
     /**
-     * The limits are checked while the `saml2` feature is on, or its switch is
-     * malformed.
+     * Applies while the `saml2` feature is on, or its switch is malformed.
      *
      * @return bool
      */

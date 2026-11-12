@@ -8,18 +8,9 @@ use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How a management helper's change to a connection ended (SSO-2.1, SSO-2.11 to
- * SSO-2.13): created, updated, unchanged, enabled, disabled or migrated, each
- * with the connection's summary as it now is (and, when updated or migrated,
- * the names of what changed); deleted, with no summary, since the connection is
- * gone; refused, with the reason (`freshness_required`, `connection_not_found`,
- * `protocol_unavailable`, `connection_has_links` or `links_unaccounted`); or
- * invalid, with every violation found and the reason `settings_invalid`.
+ * How a management helper's change to a connection ended.
  *
- * A refusal is a value, never thrown, and changed nothing: no row was written
- * and no event dispatched. A violation names a setting and a code, never the
- * value given, so the result can be returned, logged or shown whatever was
- * given, a secret included.
+ * A refusal changed nothing, and no part of a result carries a given value.
  *
  * @api
  *
@@ -28,7 +19,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  */
 final readonly class ConnectionResult implements \JsonSerializable
 {
-    /** @var list<\SineMacula\Laravel\Sso\Events\Enums\FailureReason> The reasons a change to a connection is refused for. */
+    /** @var list<\SineMacula\Laravel\Sso\Events\Enums\FailureReason> The reasons a change may be refused for. */
     private const array REFUSALS = [
         FailureReason::FRESHNESS_REQUIRED,
         FailureReason::CONNECTION_NOT_FOUND,
@@ -64,7 +55,7 @@ final readonly class ConnectionResult implements \JsonSerializable
         /** The connection as it now is, for a success other than `deleted` only. */
         public ?ConnectionSummary $connection = null,
 
-        /** The names of the settings, secrets, name or mapping that changed, for `updated` and `migrated` only. */
+        /** What changed, for `updated` and `migrated` only. */
         public array $changedSettings = [],
 
         /** Why the change was refused, for `refused` and `invalid` only. */
@@ -86,8 +77,7 @@ final readonly class ConnectionResult implements \JsonSerializable
     }
 
     /**
-     * The connection was updated: these settings, secrets, its name or its
-     * mapping changed, by name.
+     * The connection was updated; `$changedSettings` must not be empty.
      *
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionSummary  $connection
      * @param  list<string>  $changedSettings
@@ -127,8 +117,7 @@ final readonly class ConnectionResult implements \JsonSerializable
     }
 
     /**
-     * The connection was disabled: the requests and handoff codes in flight
-     * through it were voided, and the sessions established through it revoked.
+     * The connection was disabled.
      *
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionSummary  $connection
      * @return self
@@ -139,8 +128,7 @@ final readonly class ConnectionResult implements \JsonSerializable
     }
 
     /**
-     * The connection was deleted, with its domains, links, keys, requests and
-     * handoff codes, and the sessions established through it revoked.
+     * The connection was deleted, so there is no summary.
      *
      * @return self
      */
@@ -150,9 +138,8 @@ final readonly class ConnectionResult implements \JsonSerializable
     }
 
     /**
-     * The connection's subjects were migrated: these settings, secrets, its
-     * name or its mapping changed, by name, and its links were relinked or
-     * removed.
+     * The connection's subjects were migrated; `$changedSettings` must not be
+     * empty.
      *
      * @param  \SineMacula\Laravel\Sso\Connections\ConnectionSummary  $connection
      * @param  list<string>  $changedSettings
@@ -170,9 +157,7 @@ final readonly class ConnectionResult implements \JsonSerializable
     }
 
     /**
-     * The change was refused for the reason given: `freshness_required`,
-     * `connection_not_found`, `protocol_unavailable`, `connection_has_links` or
-     * `links_unaccounted`.
+     * The change was refused for one of the `REFUSALS` reasons.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @return self
@@ -189,7 +174,7 @@ final readonly class ConnectionResult implements \JsonSerializable
     }
 
     /**
-     * What was given was refused, for each of these violations.
+     * The input was refused for at least one violation.
      *
      * @param  list<\SineMacula\Laravel\Sso\Connections\SettingViolation>  $violations
      * @return self
@@ -206,8 +191,7 @@ final readonly class ConnectionResult implements \JsonSerializable
     }
 
     /**
-     * Whether the change succeeded: created, updated, unchanged, enabled,
-     * disabled, deleted or migrated.
+     * Whether the change succeeded, including `unchanged`.
      *
      * @return bool
      */
@@ -217,8 +201,7 @@ final readonly class ConnectionResult implements \JsonSerializable
     }
 
     /**
-     * Whether the change wrote something: created, updated, enabled, disabled,
-     * deleted or migrated.
+     * Whether the change wrote something.
      *
      * @return bool
      */
@@ -248,8 +231,7 @@ final readonly class ConnectionResult implements \JsonSerializable
     }
 
     /**
-     * The result, with snake_case keys: the status, the connection, what
-     * changed, the reason and the violations.
+     * The result with snake_case keys.
      *
      * @return array<string, mixed>
      */

@@ -5,9 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Fetching\Enums;
 
 /**
- * How an outbound request ended (SSO-2.9). A response of any HTTP status is
- * `fetched`: whether a `400` from a token endpoint is an error is the caller's
- * to read from it.
+ * How an outbound request ended. A response of any HTTP status is `fetched`;
+ * the caller decides whether that status is an error.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

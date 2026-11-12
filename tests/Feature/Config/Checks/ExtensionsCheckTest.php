@@ -11,10 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[extensions]`: checked while the package is in use, every
- * extension `composer.json` requires and the IDNA conversion present, and a
- * missing one named with what it is needed for; and, while SAML is on, each XML
- * provider's element registry loaded by the XML library exactly once.
+ * Feature tests for the `[extensions]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +59,7 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
-     * Not checked while the package is not in use; passes on this runtime once
-     * it is.
+     * Extensions are checked only while the package is in use, and pass here.
      *
      * @return void
      */
@@ -94,8 +90,7 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
-     * A missing extension, and a missing IDNA conversion, are each named with
-     * what the package needs them for; every one is reported in a run.
+     * Each missing extension is named with what it is needed for.
      *
      * @return void
      */
@@ -119,8 +114,7 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
-     * Each registry loaded once passes; a file `ElementRegistry` would not load
-     * (a name it does not match, or a directory) is not counted.
+     * Each registry loaded once passes.
      *
      * @return void
      */
@@ -140,8 +134,7 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
-     * A registry the library does not load is named by its package, as is one
-     * whose loaded copy differs, even only as the same number written apart.
+     * A registry the library does not load, or loads differently, is named.
      *
      * @return void
      */
@@ -157,8 +150,7 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
-     * With the installed packages, a directory that does not exist loads none
-     * of their registries.
+     * A missing loaded directory loads none of the installed registries.
      *
      * @return void
      */
@@ -175,8 +167,7 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
-     * A registry loaded twice is named, since the library would merge the two
-     * into lists where it expects class names.
+     * A registry loaded twice is named.
      *
      * @return void
      */
@@ -191,8 +182,7 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
-     * A loaded registry that is no installed package's, such as a stale copy
-     * left beside the current one, is named by its file.
+     * A loaded registry that is no installed package's is named by its file.
      *
      * @return void
      */
@@ -241,8 +231,7 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
-     * The registries are checked only while the `saml2` feature is on, or its
-     * switch is malformed.
+     * The registries are checked only while `saml2` is on or malformed.
      *
      * @return void
      */
@@ -286,8 +275,8 @@ final class ExtensionsCheckTest extends TestCase
     }
 
     /**
-     * The problems of a check given the packages' registries written and the
-     * loaded directory.
+     * The check's problems given the written registries and the loaded
+     * directory.
      *
      * @return ?list<string>
      */

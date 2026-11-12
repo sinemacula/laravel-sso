@@ -22,13 +22,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for when what a metadata refresh applied stops being used
- * (SSO-2.8): never for a connection no refresh wrote and whose refresh is off;
- * never for a SAML connection that has not opted in, whatever was stamped;
- * otherwise at the earlier of its `validUntil` and its last validated fetch
- * plus the stale limit, or the `validUntil` alone with no limit, and of its
- * JWKS's own validated fetch plus the limit; expired from that instant on; read
- * again by id for a connection given only through its contract.
+ * Feature tests for when metadata a refresh applied stops being used.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -78,9 +72,8 @@ final class MetadataExpiryTest extends TestCase
     }
 
     /**
-     * With no `validUntil`, what a refresh applied expires the stale limit
-     * after its last validated fetch: not a second before, and from that
-     * instant on.
+     * With no `validUntil`, applied metadata expires exactly the stale limit
+     * after its last validated fetch.
      *
      * @return void
      */
@@ -134,9 +127,7 @@ final class MetadataExpiryTest extends TestCase
     }
 
     /**
-     * Rows of `[validated, valid until, stale limit, expiry, expired]`: when a
-     * fetched document was validated, its `validUntil`, the stale limit, when
-     * it expires and whether it has by now.
+     * Rows of `[validated, valid until, stale limit, expiry, expired]`.
      *
      * @return iterable<string, array{0: string, 1: ?string, 2: int, 3: ?string, 4: bool}>
      */
@@ -154,9 +145,8 @@ final class MetadataExpiryTest extends TestCase
     }
 
     /**
-     * The expiry of a fetched document, as a refresh judges it at commit, is
-     * the earlier of its `validUntil` and the moment it was validated plus the
-     * stale limit, and it has expired from that instant on.
+     * A fetched document expires at the earlier of its `validUntil` and its
+     * validation plus the stale limit.
      *
      * @param  string  $validated
      * @param  ?string  $validUntil
@@ -177,10 +167,8 @@ final class MetadataExpiryTest extends TestCase
     }
 
     /**
-     * An OIDC connection's JWKS counts from its own validated fetch: the
-     * earlier of it and the discovery document's decides, the stale limit after
-     * each, and a JWKS refetched since moves only its own; with nothing
-     * fetched, nothing expires.
+     * An OIDC connection expires at the earlier of its JWKS's and its discovery
+     * document's own deadlines.
      *
      * @return void
      */
@@ -212,9 +200,8 @@ final class MetadataExpiryTest extends TestCase
     }
 
     /**
-     * Rows of `[seconds fetched ago, refresh, expired]`: a JWKS a refetch
-     * stamped on a connection no refresh has written, around the limit, and
-     * whether its refresh is on.
+     * Rows of `[seconds fetched ago, refresh, expired]`: a refetched JWKS on a
+     * connection no refresh wrote.
      *
      * @return iterable<string, array{0: int, 1: mixed, 2: bool}>
      */
@@ -233,9 +220,8 @@ final class MetadataExpiryTest extends TestCase
     }
 
     /**
-     * Keys count from their own validated fetch whatever the refresh's switch
-     * says, no refresh having written the connection: turning the schedule off
-     * never means unlimited trust.
+     * Keys age out from their own validated fetch even with the refresh
+     * switched off.
      *
      * @param  int  $seconds
      * @param  mixed  $refresh
@@ -254,8 +240,7 @@ final class MetadataExpiryTest extends TestCase
 
     /**
      * Rows of `[anchored, settings, expiry]`: what a fetch stamped on a SAML
-     * connection expires by: the stale limit where it holds a deadline, and
-     * never otherwise.
+     * connection expires by.
      *
      * @return iterable<string, array{0: bool, 1: array<string, mixed>, 2: ?string}>
      */
@@ -278,9 +263,8 @@ final class MetadataExpiryTest extends TestCase
     }
 
     /**
-     * A document stamped now holds the deadline the anchor and the switch give
-     * it, and one with a `validUntil` long past has expired only where a
-     * deadline holds.
+     * A SAML document holds the deadline its anchor and refresh switch give it,
+     * and expires only where one holds.
      *
      * @param  bool  $anchored
      * @param  array<string, mixed>  $settings
@@ -323,8 +307,8 @@ final class MetadataExpiryTest extends TestCase
     }
 
     /**
-     * A connection with nothing fetched yet has no deadline, its settings and
-     * keys saved by hand, however old the row and whatever its switch says.
+     * A connection with nothing fetched has no deadline, however old the row
+     * and whatever its switch says.
      *
      * @return void
      */
@@ -346,8 +330,8 @@ final class MetadataExpiryTest extends TestCase
     }
 
     /**
-     * With no stale limit, keys never age out, whatever the refresh; and a
-     * connection whose refresh is on but holds no fetched keys never expires.
+     * With no stale limit keys never age out, and a refreshing connection with
+     * no fetched keys never expires.
      *
      * @return void
      */

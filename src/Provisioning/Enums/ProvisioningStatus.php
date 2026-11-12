@@ -7,14 +7,9 @@ namespace SineMacula\Laravel\Sso\Provisioning\Enums;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How a call of the provisioning helper ended (SSO-8.6): the status of a
- * `Provisioning\ProvisioningResult`. `created` names a link made, whose event
- * waits for the listener's outer commit; every other names a refusal, which
- * wrote nothing, with the failure reason it carries. A listener rolls its own
- * transaction back on a refusal, and the final continuation then finishes the
- * completion against what the link resolves to.
+ * How a provisioning call ended: `created`, or a refusal that wrote nothing.
  *
- * Backed, and stable once released: a value is never renamed or reused.
+ * Stable once released: a value is never renamed or reused.
  *
  * @api
  *
@@ -23,27 +18,22 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  */
 enum ProvisioningStatus: string
 {
-    // The link was made, active, with provisioning as its origin
+    // An active link was made, with provisioning as its origin
     case CREATED = 'created';
 
     // The grant is not this dispatch's, or is used or closed
     case GRANT_INVALID = 'grant_invalid';
 
-    // The listener gave the grant another result object than the event's: a bug
-    // of the listener, which rolls its identity and membership back; the grant
-    // is spent, and recovery is a new flow
+    // A listener bug: not the event's result object; the grant is spent
     case GRANT_WRONG_RESULT = 'grant_wrong_result';
 
-    // The connection is no longer usable, what was fetched for it has expired,
-    // or the request is no longer consumed, unfinished, unvoided and of the
-    // connection's trust version
+    // The connection or the request no longer stands
     case REQUEST_UNAVAILABLE = 'request_unavailable';
 
     // The verified response's deadline has passed
     case EXPIRED = 'expired';
 
-    // The subject is held in the connection: linked to this identity or
-    // another, suspended, or reserved by another flow
+    // The subject is linked, suspended or reserved in the connection
     case SUBJECT_ALREADY_LINKED = 'subject_already_linked';
 
     // The identity holds as many links in the connection as it may

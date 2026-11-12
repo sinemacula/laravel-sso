@@ -44,40 +44,9 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Races a `reauthenticate` redemption across processes, each with its own
- * database connection, on MySQL and PostgreSQL (SSO-5.10, SSO-9.5, SSO-9.9,
- * `docs/design/linking.md`), against what can change the session or the link
- * under it: the session's revocation, the link's removal, its suspension by a
- * widened scope, and a second redemption of the one code.
- *
- * The session is a row on the storage connection, in a table of this test's,
- * behind a contract written as an implementation must be: `lockedStanding()`
- * locks the row, and `renewAuthentication()` writes only an active one,
- * throwing otherwise, so a renewal of a revoked session fails the race loudly
- * instead of passing unseen. A revocation locks the row too, and records
- * whether it saw a renewal when it did.
- *
- * The order is fixed by signal files, never by time, and a barrier that times
- * out fails the racer loudly: each process opens its connection and, racing in
- * a transaction, begins one at `REPEATABLE READ` and reads the connection, the
- * links, the codes and the session; once both have signalled that, the first
- * does its work and signals before it commits; only then does the second start.
- * So in a transaction, the second's snapshot predates everything the first
- * wrote, and its locking reads either wait for the first to commit or find it
- * committed; on MySQL they must answer what is committed rather than the
- * snapshot, and on PostgreSQL a locking read of a row the first changed fails
- * to serialise (SQLSTATE `40001`, possibly wrapped in a `DeadlockException`),
- * which rolls it back whole and is accepted there alone. A redemption writes
- * neither the connection's row nor the link's, so what follows it fails on the
- * session's row or the code's; a removal or a suspension raises the
- * connection's links version, so a redemption following one fails on the
- * connection's row. Each race runs both ways round; those with no fixed order
- * run with both going at once, once both have read.
- *
- * A process reports how its work ended, then how many
- * `ReauthenticationCompleted` it reported once it committed. Skipped on SQLite,
- * whose in-memory database each process would have to itself, and where `pcntl`
- * is not available.
+ * Races a `reauthenticate` redemption across processes against what can change
+ * its session or link; skipped on SQLite and without `pcntl`. A stale snapshot
+ * may fail to serialise (`40001`), accepted on PostgreSQL only.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -111,10 +80,8 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     private string $signals;
 
     /**
-     * Bind a fresh caller, the session and revocation contracts over the table,
-     * and a limiter that allows every attempt, whose counters a racer's
-     * transaction would otherwise hold locked; and create the table and the
-     * directory the processes report in.
+     * Bind a fresh caller, the table-backed session and revocation contracts
+     * and an allow-all limiter, and create the table.
      *
      * @return void
      *
@@ -253,9 +220,7 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     }
 
     /**
-     * A redemption and a revocation going at once, once both have read:
-     * whichever takes the row first, a revoked session is never renewed. The
-     * contract throws if it is asked to, and an error fails the race.
+     * A redemption racing a revocation never renews a revoked session.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -345,9 +310,8 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     }
 
     /**
-     * A redemption then a principal change suspending the link: the session is
-     * renewed while the link stands, and the change then suspends the link and
-     * revokes the session, seeing the renewal.
+     * A redemption then a suspending principal change revokes the renewed
+     * session.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -554,9 +518,8 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     }
 
     /**
-     * What a process widening the person's scope does: report a principal of
-     * another tenant in a transaction of its own, which suspends the link and
-     * revokes through the contract, and say how many links it suspended.
+     * Widen the person's scope in a transaction and report how many links were
+     * suspended.
      *
      * @return \Closure(): string
      */
@@ -637,9 +600,8 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     }
 
     /**
-     * The session contract over the table: `lockedStanding()` locks the row and
-     * compares all five values, and `renewAuthentication()` writes only an
-     * active row, throwing otherwise.
+     * A session contract over the table whose renewal throws unless the row is
+     * active.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions
      */
@@ -786,10 +748,8 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     }
 
     /**
-     * Fork a process for each racer on a connection of its own, plain or inside
-     * a transaction of its own, and collect what each reported, in the racers'
-     * order. In turn, the first signals once it has done its work and the
-     * second starts only then; otherwise both start once both have read.
+     * Fork a process per racer and collect what each reported; in turn, the
+     * second starts once the first has worked.
      *
      * @param  \Closure(): string  $first
      * @param  \Closure(): string  $second
@@ -827,11 +787,8 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     }
 
     /**
-     * In a forked process: open a connection of its own and, in a transaction,
-     * begin one at `REPEATABLE READ` and read; signal that; wait for the
-     * other's signal; wait for the first's work, when the second in turn; do
-     * its work, signalling before it commits; report how it ended and what it
-     * reported; and end without running the parent's shutdown.
+     * Run the work in a forked process on its own connection, ordered by signal
+     * files.
      *
      * @param  int  $process
      * @param  \Closure(): string  $work
@@ -918,9 +875,8 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error, so a race whose
-     * racers ran one after the other never passes as one that overlapped.
+     * Wait for the signal for at most `SIGNAL_SECONDS`, failing loudly so a
+     * serial run never passes as a race.
      *
      * @param  string  $signal
      * @return void
@@ -943,9 +899,8 @@ final class ConcurrentReauthenticationTest extends LinkingTestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure (SQLSTATE `40001`), accepted only there: a
-     * `DeadlockException` wraps it, so every previous error is walked.
+     * Whether the error chain holds PostgreSQL's serialisation failure, which
+     * `DeadlockException` may wrap.
      *
      * @param  \Throwable  $exception
      * @return bool

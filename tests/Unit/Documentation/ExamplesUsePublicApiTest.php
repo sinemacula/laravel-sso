@@ -11,19 +11,7 @@ use Tests\Concerns\ScansLibraryNames;
 use Tests\Integration\Examples\Snippets;
 
 /**
- * The public-API gate of the executable examples (SSO-12.4): an application
- * tests its flows with what the package publishes, so every example, and the
- * harness they run on, names only the package's public classes (none marked
- * `@internal`, and no model, since reading a table is not the public API, but
- * for the two `@api` models whose class alone is public, admitted by name with
- * their reason in `ADMITTED_MODELS`), none of the package's own test traits or
- * fixtures (only the examples' own classes, and the base test case in the
- * harness alone, for the database the suite runs on), names none of the
- * package's tables, and builds no verified result by hand; the application's
- * own tables are its to use. And every public testing helper is in the testing
- * guide, so the guide covers the whole helper surface.
- *
- * Names are read as `ScansLibraryNames` reads them, from the source's tokens.
+ * Holds the examples to the public API and the testing guide to every helper.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,7 +26,7 @@ final class ExamplesUsePublicApiTest extends TestCase
     /** @var string A name in the package's namespace or the tests'. */
     private const string NAMES = '/^\\\?(?:SineMacula\\\Laravel\\\Sso|Tests)\\\/';
 
-    /** @var string What names one of the package's tables (by its default name, or by its setting) or builds a verified result. */
+    /** @var string What names a package table, by default name or setting, or builds a result. */
     private const string FORBIDDEN = '/[\'"]sso_(?:single_use_keys|rate_limits|connections|keys|domains|enforcement|links'
         . '|authorization_requests|handoff_codes|identity_guards)[\'"]|config\(\s*[\'"]sso\.[a-z_.]*table[\'"]|new\s+\\\?(?:\w+\\\)*VerifiedResult\b/';
 
@@ -82,8 +70,7 @@ final class ExamplesUsePublicApiTest extends TestCase
     }
 
     /**
-     * The source names only the package's public API, and only the tests'
-     * classes an example may.
+     * The source names only public package classes and the examples' own.
      *
      * @param  string  $path
      * @return void
@@ -97,8 +84,7 @@ final class ExamplesUsePublicApiTest extends TestCase
     }
 
     /**
-     * The source names none of the package's tables and builds no verified
-     * result; the application's own tables are its to use.
+     * The source reads no package table and builds no verified result.
      *
      * @param  string  $path
      * @return void
@@ -141,11 +127,7 @@ final class ExamplesUsePublicApiTest extends TestCase
     }
 
     /**
-     * The gate catches an internal class, a model, a class that does not exist,
-     * the package's own test traits and its base test case outside the harness,
-     * a table of the package's and a hand-built result, and passes a public
-     * class, the two admitted models, the examples' own, and the application's
-     * own table.
+     * The gate flags internal classes, models, fixtures, tables and results.
      *
      * @return void
      */
@@ -203,9 +185,7 @@ final class ExamplesUsePublicApiTest extends TestCase
     }
 
     /**
-     * The names in the source an example may not use, in order: a tests' class
-     * outside the examples (the base test case allowed in the harness alone),
-     * and a package class that is not public.
+     * The names in the source an example may not use, in order.
      *
      * @param  string  $source
      * @param  string  $file
@@ -220,8 +200,7 @@ final class ExamplesUsePublicApiTest extends TestCase
     }
 
     /**
-     * Whether a tests' name is one an example may use: the examples' own, or
-     * the base test case in the harness.
+     * Whether an example may use the name: its own, or the harness's base case.
      *
      * @param  string  $name
      * @param  string  $file
@@ -233,8 +212,7 @@ final class ExamplesUsePublicApiTest extends TestCase
     }
 
     /**
-     * Whether the package's class, interface or enum exists, is not a model,
-     * and is not marked `@internal`.
+     * Whether the package type exists, is not a model and is not `@internal`.
      *
      * @param  string  $name
      * @return bool

@@ -7,23 +7,8 @@ namespace SineMacula\Laravel\Sso\Flows;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * The client's handoff verifier (SSO-5.1, SSO-5.2, SSO-5.12): a secret the
- * client that started a flow holds for its authorisation request, whose S256
- * challenge binds the handoff code to that client, as in PKCE (RFC 7636). It is
- * independent of the PKCE verifier the package uses with the identity provider,
- * which never leaves the API.
- *
- * A verifier is 43 to 128 unreserved characters (`A-Z`, `a-z`, `0-9`, `-`, `.`,
- * `_`, `~`, RFC 7636 §4.1); one the package generates is 43 base64url
- * characters from 32 random bytes, 256 bits, returned once in the start
- * response's body and never again. It leaves the client only in the redemption
- * request, never in a URL.
- *
- * The value is held in a `\SensitiveParameterValue` and leaves the object only
- * through `reveal()`: a dump or `json_encode()` shows `[redacted]`, it has no
- * `__toString()`, and it refuses to be serialised or unserialised, so it never
- * reaches a log, an exception, a queue or an event (SSO-9.8). It is a type of
- * its own, never accepted as a handoff code or a request reference (SSO-9.2).
+ * The client's handoff verifier, whose S256 challenge binds a handoff code to
+ * the client that started the flow (RFC 7636).
  *
  * @api
  *
@@ -41,7 +26,7 @@ final readonly class Verifier implements \JsonSerializable
     /** @var int The random bytes a generated verifier is made from: 256 bits. */
     private const int BYTES = 32;
 
-    /** @var string A verifier: 43 to 128 unreserved characters, with nothing after them. */
+    /** @var string 43 to 128 unreserved characters (RFC 7636 section 4.1). */
     private const string FORMAT = '/^[A-Za-z0-9\-._~]{43,128}$/D';
 
     /** @var \SensitiveParameterValue The verifier. */
@@ -58,7 +43,7 @@ final readonly class Verifier implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: never the verifier.
+     * Dump without the verifier.
      *
      * @return array<string, string>
      */
@@ -68,8 +53,7 @@ final readonly class Verifier implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: a verifier lives only for the request that
-     * carries it.
+     * Refuse to be serialised.
      *
      * @return array<string, mixed>
      *
@@ -160,8 +144,7 @@ final readonly class Verifier implements \JsonSerializable
     }
 
     /**
-     * The verifier, for the start response's body and the challenge, and for
-     * nothing else.
+     * The verifier, for the start response's body and the challenge only.
      *
      * @return string
      */
@@ -172,7 +155,7 @@ final readonly class Verifier implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: never the verifier.
+     * Encode without the verifier.
      *
      * @return string
      */

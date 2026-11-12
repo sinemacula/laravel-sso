@@ -13,9 +13,7 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Unit tests for the link confirmation contract's default: it never counts a
- * caller's session as independent of the links, whoever the caller, on a
- * session or not, through any connection.
+ * Unit tests for the default link confirmation contract.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -26,8 +24,7 @@ use Tests\TestCase;
 final class RefusingLinkConfirmationTest extends TestCase
 {
     /**
-     * The default answers `dependent` for any caller, on a session or not,
-     * through any connection.
+     * The default answers `dependent` for any caller through any connection.
      *
      * @return void
      */

@@ -19,33 +19,8 @@ use SineMacula\Laravel\Sso\Links\LinkReservations;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * The `handoff_issuance` step (SSO-9.2, SSO-6.10, SSO-9.10), the last of a
- * completion, inside its locked transaction:
- *
- * 1. the application policy is asked again: an application that no longer
- *    allows sign-in through an external provider refuses with
- *    `application_not_allowed`;
- * 2. a result carrying the provider's session deadline asks the bound
- *    `Contracts\ProviderSessionDeadline` whether it limits the application's
- *    session; when it does, the deadline is the session's latest end;
- * 3. the bound `Contracts\HandoffIssuer` issues a code for a
- *    `Handoffs\HandoffGrant` of the result, the request's S256 challenge, an
- *    expiry of the application's handoff lifetime from now, the connection's
- *    trust version as its row is locked in this transaction (T2, or T3 after
- *    the provisioning boundary), the identity the link resolved to, the
- *    identity and the session the request was started for, and the session's
- *    latest end;
- * 4. the issued handoff goes on with the state. A result holding a reservation
- *    is issued a code bound to it and expiring exactly when it does, whose
- *    reference and stored expiry are written to the reservation in this same
- *    transaction (`Links\LinkReservations::bindHandoff()`), and it names no
- *    linked identity: a reservation resolves nothing.
- *
- * An issuer signals failure by throwing, which rolls the completion back as a
- * server error (SSO-11.4); it is never turned into a refusal.
- *
- * It holds the policy, the deadline contract, the issuer and the clock, none of
- * which keeps anything of one completion for the next (SSO-11.2).
+ * The `handoff_issuance` step: asks the application policy again and issues the
+ * code.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,7 +43,7 @@ final readonly class IssueHandoff implements CompletionStage
         /** Whether the application allows sign-in through an external provider. */
         private ApplicationPolicy $policy,
 
-        /** Whether the provider's session deadline limits the application's session. */
+        /** Whether the provider's session deadline limits the session. */
         private ProviderSessionDeadline $deadlines,
 
         /** Issues the handoff code. */
@@ -125,9 +100,8 @@ final readonly class IssueHandoff implements CompletionStage
     }
 
     /**
-     * The state with the session's latest end, when the result carries the
-     * provider's session deadline and the deadline contract says it limits the
-     * application's session.
+     * The state with the provider's deadline as the session's latest end, when
+     * the deadline contract says it limits the session.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result

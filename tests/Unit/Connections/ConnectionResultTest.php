@@ -17,9 +17,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Secrets\MaskedSecret;
 
 /**
- * Unit tests for the result of a change to a connection: one constructor per
- * outcome, each carrying only its own payload, the predicates, the reasons a
- * change may be refused for, and its JSON.
+ * Unit tests for connection change results.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -40,8 +38,7 @@ final class ConnectionResultTest extends TestCase
     ];
 
     /**
-     * Each success carries the summary, and only `updated` and `migrated` what
-     * changed.
+     * Each success carries the summary; only updates and migrations add more.
      *
      * @return void
      */
@@ -88,8 +85,7 @@ final class ConnectionResultTest extends TestCase
     }
 
     /**
-     * A deletion succeeds and wrote something, and carries nothing: the
-     * connection is gone.
+     * A deletion succeeds and carries nothing.
      *
      * @return void
      */
@@ -173,8 +169,7 @@ final class ConnectionResultTest extends TestCase
     }
 
     /**
-     * Rows of `[reason]`: every reason a change to a connection is never
-     * refused for.
+     * Rows of `[reason]`: reasons a connection change is never refused for.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -191,8 +186,7 @@ final class ConnectionResultTest extends TestCase
     }
 
     /**
-     * Any other reason is the caller's mistake, `settings_invalid` included,
-     * which only `invalid()` carries.
+     * Any other reason is refused, `settings_invalid` included.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @return void
@@ -254,8 +248,7 @@ final class ConnectionResultTest extends TestCase
     }
 
     /**
-     * The JSON holds the status, the connection, what changed, the reason and
-     * the violations, under snake_case keys.
+     * Each outcome serialises to snake_case JSON.
      *
      * @return void
      */

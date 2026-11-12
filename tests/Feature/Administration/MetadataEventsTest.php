@@ -21,11 +21,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the reporter of a metadata refresh (SSO-2.8, SSO-10.3,
- * SSO-10.4): a refresh and a failed one, each dispatched once with the
- * connection, its tenant and protocol, the acting identity where one asked, and
- * the IP address and user agent of the client the helper was given, never those
- * of the request being served.
+ * Feature tests for the metadata refresh event reporter.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,8 +34,8 @@ final class MetadataEventsTest extends TestCase
     use RecordsEventSequences, UsesConnections;
 
     /**
-     * Bind a fixed clock and a request being served from another client, create
-     * the tables and record events.
+     * Bind a fixed clock and a request from another client, create the tables
+     * and record events.
      *
      * @return void
      */
@@ -56,8 +52,8 @@ final class MetadataEventsTest extends TestCase
     }
 
     /**
-     * A refresh an administrator asked for is reported once, naming each
-     * setting it changed once, with the acting identity and the client.
+     * A requested refresh is reported once with the acting identity and its
+     * client.
      *
      * @return void
      */
@@ -94,9 +90,8 @@ final class MetadataEventsTest extends TestCase
     }
 
     /**
-     * A failed scheduled refresh is reported once, with the failures in a row
-     * and the next attempt in UTC, no acting identity, and no client when the
-     * schedule gives none.
+     * A failed scheduled refresh is reported with no acting identity and no
+     * client.
      *
      * @return void
      */
@@ -123,8 +118,7 @@ final class MetadataEventsTest extends TestCase
     }
 
     /**
-     * A failure an administrator's refresh met carries the client, and no next
-     * attempt when there is none.
+     * An administrator's failed refresh carries the client.
      *
      * @return void
      */

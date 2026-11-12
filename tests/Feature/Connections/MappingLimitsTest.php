@@ -11,11 +11,7 @@ use SineMacula\Laravel\Sso\Connections\MappingLimits;
 use Tests\TestCase;
 
 /**
- * Feature tests for what an attribute mapping may carry (SSO-2.10): the caps'
- * defaults, the digit strings `env()` gives, each range failing closed naming
- * its key, the custom keys the application declares (none by default, at most
- * 100 distinct well-formed keys, none standard or reserved), and a read on each
- * call.
+ * Feature tests for the attribute mapping limits.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +27,8 @@ final class MappingLimitsTest extends TestCase
         . 'lower-case letters, digits or underscores, and none a standard or reserved key.';
 
     /**
-     * The shipped configuration and an absent one both give the defaults: no
-     * custom key is declared.
+     * The shipped and absent configuration both give the defaults, with no
+     * custom key.
      *
      * @return void
      */
@@ -53,8 +49,7 @@ final class MappingLimitsTest extends TestCase
     }
 
     /**
-     * The digit string `env()` gives is read as its integer, and each setting
-     * is read on each call.
+     * The digit string `env()` gives is read as an integer, on each call.
      *
      * @return void
      */
@@ -76,8 +71,7 @@ final class MappingLimitsTest extends TestCase
     }
 
     /**
-     * Up to 100 declared keys, the longest of 64 characters, are kept in the
-     * order given.
+     * Up to 100 declared keys of up to 64 characters are kept in order.
      *
      * @return void
      */
@@ -92,8 +86,7 @@ final class MappingLimitsTest extends TestCase
     }
 
     /**
-     * Rows of `[key, value, message]`: a malformed setting and the problem it
-     * fails with.
+     * Rows of `[key, value, message]`: a malformed setting and its problem.
      *
      * @return iterable<string, array{0: string, 1: mixed, 2: string}>
      */

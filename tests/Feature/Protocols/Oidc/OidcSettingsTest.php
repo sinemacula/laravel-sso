@@ -13,11 +13,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
 use Tests\TestCase;
 
 /**
- * Feature tests for the OIDC settings (SSO-2.4, SSO-7.1, SSO-7.3): their
- * defaults, every rule with its code and path, the extra parameters that can
- * never set one the flow controls, the client secret that never travels among
- * the settings, completeness, and the classification they take from
- * `OidcSetting`.
+ * Feature tests for the OIDC settings.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -125,9 +121,8 @@ final class OidcSettingsTest extends TestCase
     }
 
     /**
-     * The refresh switch is a plain boolean: it is inert while the feature is
-     * off, never refused, so turning the schedule off leaves every connection
-     * able to change.
+     * The refresh switch is a plain boolean, inert and never refused while the
+     * feature is off.
      *
      * @return void
      */
@@ -143,9 +138,8 @@ final class OidcSettingsTest extends TestCase
     }
 
     /**
-     * A client assertion algorithm is one the package signs with, compared
-     * exactly; none is stored unless it is given, so each key keeps its
-     * default.
+     * A client assertion algorithm is one the package signs with; none is
+     * stored unless given.
      *
      * @return void
      */
@@ -302,7 +296,7 @@ final class OidcSettingsTest extends TestCase
     }
 
     /**
-     * A parameter the flow controls can never be set, in any case (SSO-2.4).
+     * A parameter the flow controls can never be set, in any case.
      *
      * @param  string  $name
      * @return void

@@ -112,8 +112,8 @@ shares that value.
 To attach a subject to an existing identity, use one of the two paths made for it:
 
 - the [`link` purpose](starting-a-flow.md), started for an identity your application has authenticated with fresh
-  authentication (SSO-8.5);
-- [linking by a verified domain](linking-by-domain.md), which requires the conditions of SSO-8.8.
+  authentication;
+- [linking by a verified domain](linking-by-domain.md), under the conditions that guide lists.
 
 The package holds only an opaque identity reference, so it cannot tell when an identity was created: the grant proves
 the authority to provision for this result, not that the identity is new. That the identity is new is your listener's

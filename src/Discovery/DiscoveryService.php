@@ -18,60 +18,10 @@ use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
- * Starts a flow by email domain (SSO-3.4, SSO-3.5): for an application that
- * offers discovery, the email's domain picks the usable connection it is
- * verified for and the flow starts through it; a domain that routes nowhere
- * leads to the application's fallback, in the same shape, status and time. Only
- * the domain is read, never a user, so the answer cannot tell whether a person
- * has an account.
+ * Starts a flow through the connection an email's domain routes to, or leads to
+ * the application's fallback in the same shape, status and time.
  *
- * A discovery start runs outside any transaction open on the storage
- * connection: called inside one, it is a `LogicException` before anything else,
- * since a match calls the protocol driver, which may reach the identity
- * provider while the caller's transaction kept the connection's lock
- * (SSO-11.5).
- *
- * `start()` goes in a fixed order, and every refusal reports exactly one
- * `FlowFailed` (`Flow::AUTHORIZATION_REQUEST`) and writes no request:
- *
- * 1. the purpose's caller (`Identities\Caller`) is checked by the check a named
- *    start runs (`AuthorizationRequestService::assertBinding()`): `sign_in`
- *    with no caller, `link` for a caller, on a session or not, `reauthenticate`
- *    for a caller on a session; anything else is application
- *    code's mistake, an `InvalidArgumentException`, before anything else;
- * 2. the start is counted against the client's IP address and the email's
- *    normalised domain (SSO-11.8), the domain not at all when it does not
- *    normalise, and a full limit is `rate_limited` with its wait;
- * 3. the application is admitted (`Applications\ApplicationGate`), else
- *    `application_not_allowed`;
- * 4. the application must offer discovery while the `discovery` feature is on,
- *    else `feature_disabled`;
- * 5. the client's S256 challenge, when given, must be well formed, else
- *    `challenge_invalid`;
- * 6. `DomainRouter` resolves the email to a usable connection. A match starts
- *    through it (`AuthorizationRequestService::begin()`), which reports
- *    `AuthorizationRequestStarted`, or answers its own refusal (freshness,
- *    session, driver). A miss reports `discovery_no_match`, with the
- *    application and the purpose and never the email or its domain, and answers
- *    `AuthorizationRequestService::fallback()`: `started`, with a fresh
- *    reference that names no request, a fresh verifier when no challenge was
- *    given, and a redirect to the application's fallback.
- *
- * Every answer from step 2 on, a refusal included, is held by the `Pacer` until
- * the least time a discovery start takes has passed since it started; an
- * exception is not. That is a timing mitigation, not indistinguishability: work
- * that outlasts the floor still shows in the time. Where the answer leads still
- * shows whether a domain routes to an identity provider, as any discovery does.
- *
- * The email and its domain appear in no event and no log; the public reference
- * is the only flow identifier either carries (SSO-9.8). A database error, a
- * misconfiguration and a driver's exception propagate (SSO-11.4).
- *
- * It takes the client the start is made for as an `Http\ClientContext`, which
- * the application builds where it reads the request, and never reads the
- * request being served itself. It holds the limiter, the gate, the router, the
- * start helper, the reporter and the pacer, none of which keeps anything of one
- * request for the next (SSO-11.2). Resolve it from the container per request.
+ * Call outside any transaction on the storage connection.
  *
  * @api
  *
@@ -115,13 +65,8 @@ final readonly class DiscoveryService
     ) {}
 
     /**
-     * Start a flow for the application and the purpose through the connection
-     * the email's domain routes to, or lead to the application's fallback, for
-     * the client, with the client's S256 challenge, or with a verifier the
-     * package generates when none is given; for the caller a `link` or a
-     * `reauthenticate` is started for, on the session a `reauthenticate` is
-     * bound to. A `link` stores its caller's identity and gives the session,
-     * when given, to freshness alone.
+     * Start a flow through the connection the email's domain routes to, or lead
+     * to the application's fallback.
      *
      * @param  string  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -155,8 +100,7 @@ final readonly class DiscoveryService
     }
 
     /**
-     * Count the start against the client's IP address and the email's domain
-     * (step 2), then admit the application.
+     * Count the start against the client's IP address and the email's domain.
      *
      * @param  string  $name
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -184,8 +128,8 @@ final readonly class DiscoveryService
     }
 
     /**
-     * Admit the application, require that it offers discovery, and check the
-     * challenge (steps 3 to 5), then route the email.
+     * Admit the application and check it may start discovery with the
+     * challenge.
      *
      * @param  string  $name
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -215,8 +159,8 @@ final readonly class DiscoveryService
     }
 
     /**
-     * Resolve the email to a connection and start through it, or report the
-     * miss and lead to the application's fallback (step 6).
+     * Start through the connection the email routes to, or report the miss and
+     * answer the fallback.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -249,8 +193,7 @@ final readonly class DiscoveryService
     }
 
     /**
-     * Report a refused start, with the application once admitted, and answer
-     * it.
+     * Report a refused start and answer it.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -271,8 +214,8 @@ final readonly class DiscoveryService
     }
 
     /**
-     * Why an admitted application may not start discovery with the challenge
-     * (steps 4 and 5), or `null` when it may.
+     * Why the application may not start discovery with the challenge, or `null`
+     * when it may.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  ?string  $codeChallenge

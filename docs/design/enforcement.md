@@ -50,16 +50,16 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   stop the rule changing before the session it admits commits. It is for answering, not for admitting under a lock.
 - `DatabaseEnforcement::lock($tenantId, $application, $connectionIds)` is what an admission takes first, inside its
   transaction on the storage connection: the package's redemption (`HandoffRecheck::lock()`, before the code) and the
-  locked steps of a completion (at the start of `CompletionPipeline::finish()`). While the feature is off it answers
-  `null` with no statement, no row and no inheritance call. Otherwise the inheritance contract names the enforcing
-  tenant, `EnforcementLock::acquire()` upserts that tenant's row unconfigured unless it has one (never changing an
-  existing row's values) and reads it locked, and `EnforcementFinder::lockConnections()` locks the connections given
-  and, for a rule that is on, those it names, in one statement in ascending id order. The `Enforcement\LockedEnforcement`
-  answers `policy()` from the locked rows (the same answer `policy()` gives for the same state) and `isCurrent()`,
-  which asks the inheritance contract again; an admission whose enforcing tenant moved refuses
-  (`connection_unavailable`) rather than lock another tenant's row out of order. Held until the admission's
-  transaction ends, the lock makes a change to the rule, or a disable of a satisfying connection, wait for the
-  admission, whose session its revocation then sees, or makes the admission wait for the change and see it.
+  locked steps of a completion (`Completion\CompletionLocks::take()`). While the feature is off it answers `null` with
+  no statement, no row and no inheritance call. Otherwise the inheritance contract names the enforcing tenant,
+  `EnforcementLock::acquire()` upserts that tenant's row unconfigured unless it has one (never changing an existing
+  row's values) and reads it locked, and `EnforcementFinder::lockConnections()` locks the connections given and, for a
+  rule that is on, those it names, in one statement in ascending id order. The `Enforcement\LockedEnforcement` answers
+  `policy()` from the locked rows (the same answer `policy()` gives for the same state) and `isCurrent()`, which asks
+  the inheritance contract again; an admission whose enforcing tenant moved refuses (`connection_unavailable`) rather
+  than lock another tenant's row out of order. Held until the admission's transaction ends, the lock makes a change to
+  the rule, or a disable of a satisfying connection, wait for the admission, whose session its revocation then sees, or
+  makes the admission wait for the change and see it.
 - An application that binds its own `Contracts\Enforcement` is asked as it is bound, under the connection's lock alone;
   the package locks nothing of its own enforcement then. Such a contract must itself serialise an admission against
   changes to its rule through the session's commit (a current read alone is not enough), and its revocation must find
@@ -107,16 +107,16 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   retries the whole transaction, never a part of it.
 - Revocation runs synchronously inside the change's transaction, after the write and before the report, whenever the
   rule is now on (turned on, or its set changed while on): `SessionRevocation::revoke(RevocationScope::tenant($policy))`
-  with `$policy = EnforcementPolicy::required($tenantId, $tenantId, <the given connections that are enabled>,
-  $version)`, the contract resolved from the container at that moment. Turning it off revokes nothing. An adapter
-  writes through the same Laravel connection as the package (decision D5), so its writes commit or roll back with the
-  change; one that writes through another connection is not atomic with it. An exception from the revocation rolls
-  the whole change back (no row, no new version, no event) and propagates as a server error.
+  with `$policy` the `EnforcementPolicy::required()` of the tenant, the given connections that are enabled and the new
+  version, the contract resolved from the container at that moment. Turning it off revokes nothing. An adapter writes
+  through the same Laravel connection as the package, so its writes commit or roll back with the change; one that writes
+  through another connection is not atomic with it. An exception from the revocation rolls the whole change back (no
+  row, no new version, no event) and propagates as a server error.
 - Each change is reported once, inside its transaction, through `Administration\EnforcementEvents::changed()`
   (`EnforcementChanged`, with the tenant, the acting identity, `enabled`, `connectionIds`, `version` and
   `previousVersion`, `null` for a tenant's first change, made on no row or on an unconfigured one), dispatched after
-  commit and never when it rolls back (SSO-10.5).
-  The event only reports: security never depends on a listener (SSO-9.3).
+  commit and never when it rolls back (SSO-10.5). The event only reports: security never depends on a listener
+  (SSO-9.3).
 - `Enforcement\ExemptionGate::admit($policy, $application, $identity, $client, $sessionId)` (`@api`) is what an adapter
   calls when a session in an enforcing tenant would otherwise be refused (SSO-4.4, SSO-9.3). A policy that requires
   nothing answers `not_exempt` with nothing asked or reported. Otherwise it asks `EnforcementExemption`, resolved from
@@ -159,9 +159,9 @@ transaction; and the gate an adapter calls before refusing a session it could ex
 ## Implementation Anchors
 
 - `src/Enforcement/DatabaseEnforcement.php`, `EnforcementFinder.php`, `EnforcementLock.php`, `LockedEnforcement.php`,
-  `EnforcementService.php`, `EnforcementResult.php`,
-  `EnforcementSummary.php`, `ExemptionGate.php`, `Enums/EnforcementStatus.php`; `EnforcementPolicy.php`,
-  `TenantHash.php`, `OwnTenantInheritance.php`, `NoExemptions.php`, `Enums/ExemptionOutcome.php`.
+  `EnforcementService.php`, `EnforcementResult.php`, `EnforcementSummary.php`, `ExemptionGate.php`,
+  `Enums/EnforcementStatus.php`; `EnforcementPolicy.php`, `TenantHash.php`, `OwnTenantInheritance.php`,
+  `NoExemptions.php`, `Enums/ExemptionOutcome.php`.
 - `src/Contracts/Enforcement.php`, `EnforcementInheritance.php`, `EnforcementExemption.php`, `SessionRevocation.php`;
   `src/Revocation/RevocationScope.php`, `NoSessionRevocation.php`, `Enums/`.
 - `src/Models/TenantEnforcement.php`, `database/migrations/2026_11_02_000001_create_sso_enforcement_table.php`.
@@ -184,6 +184,6 @@ transaction; and the gate an adapter calls before refusing a session it could ex
 - A change to what `policy()` answers, to when it reads, or to the feature switch's effect.
 - A change to the validation, the order of a change, the completed sign-in rule or the freshness operation.
 - A change to the lock order, the unconfigured row and its upsert, who takes the lock, or where the revocation is
-  called; any new caller of `SessionRevocation` (BL-31's link removal, BL-37's connection lifecycle); a change to what
-  a custom enforcement or inheritance contract must guarantee.
+  called; any new caller of `SessionRevocation`; a change to what a custom enforcement or inheritance contract must
+  guarantee.
 - A new outcome or reason of `EnforcementResult`, or a change to the exemption gate.

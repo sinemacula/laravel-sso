@@ -14,13 +14,8 @@ use SineMacula\Laravel\Sso\Logging\LoggingSettings;
 use SineMacula\Laravel\Sso\Logging\RedactedKeys;
 
 /**
- * Unit tests for the diagnostic sanitiser (SSO-5.7, SSO-9.8, SSO-11.9): every
- * control and bidirectional character removed, invalid UTF-8 scrubbed, every
- * kind of secret redacted, the configured keys honoured, the length capped,
- * ordinary text left alone, and sanitising idempotent.
- *
- * The token and key fixtures are built from their parts, so no secret scanner
- * takes them for real credentials.
+ * Unit tests for the diagnostic sanitiser; secret fixtures are assembled from
+ * parts so secret scanners ignore them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -51,8 +46,7 @@ final class DiagnosticSanitizerTest extends TestCase
     private const string PRIVATE_KEY = 'PRIVATE KEY';
 
     /**
-     * Rows of `[text, sanitised]`: tabs and line breaks, which become one
-     * space, and every other control, removed.
+     * Rows of `[text, sanitised]`: tabs and breaks become a space, others go.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -90,9 +84,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * Each control is removed, and tabs, line breaks and separators become a
-     * single space, so a diagnostic cannot forge a log line or reorder what a
-     * reader sees.
+     * Controls are removed and whitespace collapses, so no log line is forged.
      *
      * @param  string  $text
      * @param  string  $sanitized
@@ -136,8 +128,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * Rows of `[text, sanitised]`: each kind of secret and what it is redacted
-     * to.
+     * Rows of `[text, sanitised]`: each kind of secret and its redaction.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -218,9 +209,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * Rows of `[text, sanitised]`: a value under a redacted key that holds
-     * punctuation, is composite or is cut short, or a key that is encoded,
-     * repeated or in mixed case.
+     * Rows of `[text, sanitised]`: awkward values and keys under redaction.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -232,9 +221,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * The whole value under a redacted key is replaced, whatever its type,
-     * punctuation or encoding, and however its key is encoded or cased; the key
-     * and what follows the value are kept.
+     * The whole value under a redacted key is replaced, however it is written.
      *
      * @param  string  $text
      * @param  string  $sanitized
@@ -275,9 +262,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * Text that only looks like a secret is kept: a key is redacted only when
-     * its whole name normalises to a redacted key, and only a run of 40 or more
-     * characters is taken for a secret by its shape.
+     * Text that only looks like a secret is kept.
      *
      * @param  string  $text
      * @return void
@@ -289,8 +274,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * A key added in `sso.logging.redacted_keys` is redacted in every form,
-     * alongside the built-in ones; without it, it is not.
+     * A key in `sso.logging.redacted_keys` is redacted in every form.
      *
      * @return void
      */
@@ -307,8 +291,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * Rows of `[text, sanitised]`: text at, around and past a cap of 64
-     * characters.
+     * Rows of `[text, sanitised]`: text around a cap of 64 characters.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -326,9 +309,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * Text is cut to the configured length in characters, not bytes: text of
-     * exactly the length is untouched, and longer text keeps one character
-     * fewer and ends in `…`, so it is exactly the length.
+     * Text is capped in characters, ending in an ellipsis when cut.
      *
      * @param  string  $text
      * @param  string  $sanitized
@@ -357,8 +338,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * Redaction happens before the cap, so a secret straddling the cut is never
-     * left half there.
+     * Redaction runs before the cap, so no secret is left half there.
      *
      * @return void
      */
@@ -413,8 +393,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * Sanitising sanitised text changes nothing, at the default cap and at the
-     * least one.
+     * Sanitising twice changes nothing, at the default and the least cap.
      *
      * @param  string  $text
      * @return void
@@ -462,9 +441,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * Wherever the least cap cuts a secret's form, before, inside or after its
-     * redacted value, the secret is gone and sanitising the cut text again
-     * changes nothing.
+     * Wherever the cap cuts a secret, it is gone and the result is stable.
      *
      * @param  string  $form
      * @return void
@@ -485,9 +462,7 @@ final class DiagnosticSanitizerTest extends TestCase
     }
 
     /**
-     * A pattern that cannot run over the text (here, a PCRE backtrack limit too
-     * low for any of them) redacts the text whole rather than letting it
-     * through unredacted.
+     * A pattern that cannot run, such as past the backtrack limit, redacts all.
      *
      * @return void
      */

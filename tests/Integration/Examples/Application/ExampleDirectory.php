@@ -15,14 +15,8 @@ use SineMacula\Laravel\Sso\Linking\LinkEmailQuery;
 use SineMacula\Laravel\Sso\Linking\MembershipStanding;
 
 /**
- * The example application's directory of people, as linking by a verified
- * domain asks it (SSO-8.8): whose verified email an address is, exactly as the
- * provider asserted it; whether a person's principals all sit within a tenant;
- * and since when a person has been a member of a tenant.
- *
- * It keeps its people in memory, which is all a test needs. An application's
- * own contracts read its users, principals and memberships, each with the guard
- * `docs/guides/linking-by-domain.md` describes.
+ * The example application's in-memory directory of people for linking by a
+ * verified domain.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,7 +28,7 @@ final class ExampleDirectory implements LinkEmailMatcher, PrincipalScope, Tenant
     /** @var array<string, \SineMacula\Laravel\Sso\Identities\IdentityReference> Each person, by their verified email. */
     private array $emails = [];
 
-    /** @var array<string, \Carbon\CarbonImmutable> When each person accepted each membership, by the person and the tenant. */
+    /** @var array<string, \Carbon\CarbonImmutable> When each membership was accepted, by person and tenant. */
     private array $memberships = [];
 
     /**

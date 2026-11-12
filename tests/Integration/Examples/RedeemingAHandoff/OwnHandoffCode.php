@@ -11,13 +11,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * One of the application's own handoff codes, as its store read it back
- * (SSO-9.2, SSO-12.5): the opaque reference its issuer answered, the verified
- * result it carries, the challenge of the client's verifier, when it expires,
- * and everything else the issuer was given in its `HandoffGrant`, from which
- * the redeemer builds its `HandoffBinding`, the connection's trust version
- * included, and caps the session it writes at the session's latest end. It
- * never holds the code itself.
+ * One of the application's own handoff codes as its store reads it back,
+ * without the code itself.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,7 +22,7 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 final readonly class OwnHandoffCode
 {
     /**
-     * Constructor.
+     * Hold what the issuer was given in its grant.
      *
      * @param  string  $reference
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
@@ -73,13 +68,12 @@ final readonly class OwnHandoffCode
         /** The connection's trust version the code was issued under. */
         public ?int $trustVersion = null,
 
-        /** The latest end of the session the code may establish, if the provider's deadline limits it. */
+        /** The latest end of the session the code may establish, if any. */
         public ?CarbonImmutable $sessionNotAfter = null,
     ) {}
 
     /**
-     * Whether the verifier is the one whose challenge the flow was started
-     * with.
+     * Whether the verifier matches the challenge the flow was started with.
      *
      * @param  string  $verifier
      * @return bool

@@ -28,12 +28,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\IdTokenValidation;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
 
 /**
- * Keeps a broken bench visible, though the benches themselves run only when
- * scheduled or asked for: every bench class runs once here, through its
- * prepared fixtures as PHPBench prepares them, and each subject must complete
- * and answer what its inputs call for, so a valid input validates and a
- * rejected one is rejected for its reason. No time is measured, here or
- * anywhere in CI.
+ * Runs every bench subject once, untimed, so a broken bench fails CI.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,8 +60,7 @@ final class BenchmarksRunTest extends TestCase
     }
 
     /**
-     * Rows of `[bench, answers]`: every bench class, and what each of its
-     * subjects answers.
+     * Rows of `[bench, answers]`: each bench and what its subjects answer.
      *
      * @return iterable<string, array{0: class-string, 1: array<string, bool|\SineMacula\Laravel\Sso\Events\Enums\FailureReason|string|null>}>
      */
@@ -101,9 +95,7 @@ final class BenchmarksRunTest extends TestCase
     }
 
     /**
-     * Each subject of the bench, run once through the fixtures its
-     * `#[BeforeMethods]` prepares, answers what its input calls for, and no
-     * subject goes unasserted.
+     * Each subject completes and answers what its input calls for.
      *
      * @param  class-string  $bench
      * @param  array<string, bool|\SineMacula\Laravel\Sso\Events\Enums\FailureReason|string|null>  $answers
@@ -122,8 +114,7 @@ final class BenchmarksRunTest extends TestCase
     }
 
     /**
-     * The service provider's bench leaves an application with the package
-     * registered, since it answers nothing of its own.
+     * The service provider bench leaves the package registered.
      *
      * @return void
      */
@@ -170,9 +161,7 @@ final class BenchmarksRunTest extends TestCase
     }
 
     /**
-     * PHPBench can read every doc comment of the bench, as it reads them beside
-     * the attributes: a tag it does not know would have it skip the whole file
-     * with only a warning, leaving the run green with no subject measured.
+     * PHPBench parses every doc comment; an unknown tag skips the file quietly.
      *
      * @param  class-string  $bench
      * @param  array<string, bool|\SineMacula\Laravel\Sso\Events\Enums\FailureReason|string|null>  $answers
@@ -205,8 +194,7 @@ final class BenchmarksRunTest extends TestCase
     }
 
     /**
-     * A bench of a protocol records the version of each package its times
-     * depend on, in the one parameter set the report names them by.
+     * A protocol bench records the versions its times depend on.
      *
      * @return void
      */
@@ -232,8 +220,7 @@ final class BenchmarksRunTest extends TestCase
     }
 
     /**
-     * A protocol bench names its provider of the versions, which a parameter
-     * set only is when PHPBench is told of it.
+     * A protocol bench declares the parameter set that provides its versions.
      *
      * @return void
      */
@@ -247,8 +234,7 @@ final class BenchmarksRunTest extends TestCase
     }
 
     /**
-     * The bench, with the methods its `#[BeforeMethods]` names run, as PHPBench
-     * prepares one.
+     * The bench with its `#[BeforeMethods]` run, as PHPBench prepares it.
      *
      * @param  class-string  $bench
      * @return object
@@ -278,8 +264,7 @@ final class BenchmarksRunTest extends TestCase
     }
 
     /**
-     * What a subject answered: a validator's verdict as `valid` or its reason,
-     * and anything else as it is.
+     * A validator's verdict as `valid` or its reason; anything else as is.
      *
      * @param  mixed  $outcome
      * @return bool|\SineMacula\Laravel\Sso\Events\Enums\FailureReason|string|null
@@ -295,8 +280,7 @@ final class BenchmarksRunTest extends TestCase
     }
 
     /**
-     * Every class of a file that names itself a bench, sorted; PHPBench looks
-     * at every file under the path, and runs those with a subject.
+     * Every bench class under the bench path, sorted.
      *
      * @return list<string>
      */

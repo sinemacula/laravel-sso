@@ -9,12 +9,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Links\Enums\LinkResolutionStatus;
 
 /**
- * What a `sign_in` requires of its link at completion (SSO-8.2, SSO-8.8): a
- * suspended link is `link_suspended`, and a subject another flow's live
- * reservation holds is `link_reserved`. Neither is an unlinked subject, so
- * neither reaches a reservation, provisioning or an unlinked handoff.
- *
- * It holds nothing (SSO-11.2).
+ * What a `sign_in` requires of its link at completion.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

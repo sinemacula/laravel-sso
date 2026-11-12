@@ -7,12 +7,9 @@ namespace SineMacula\Laravel\Sso\Protocols\Saml2\Library;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * A SAML document the adapter refused, thrown between the adapter's own classes
- * and never past it: the adapter answers it as a value, with the reason and the
- * rule's name in the package's own words (`schema`, `duplicate_id`,
- * `signature_policy`, say). Its message is that name; it never quotes the
- * document, a value from it or a library's message, and it keeps no previous
- * exception, which might.
+ * A SAML document the adapter refused; never thrown past the adapter. Its
+ * message is the rule's name and it keeps no previous exception, so it never
+ * quotes the document.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

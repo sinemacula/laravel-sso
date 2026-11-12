@@ -41,12 +41,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Feature tests for the link helper (SSO-8.4, SSO-4.5, SSO-1.5, SSO-2.12,
- * SSO-10.3): an identity's links listed by reference or as `me`, oldest first
- * and without the subject; and a removal that finds the identity's own link,
- * asks freshness, deletes it under its connection's lock, revokes the
- * identity's sessions through the connection in the same transaction and
- * reports it, while each refusal deletes, revokes and reports nothing.
+ * Feature tests for the link helper's listing and removal.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -77,8 +72,8 @@ final class LinkServiceTest extends TestCase
     private IdentityReference $identity;
 
     /**
-     * Bind the clock, the freshness contract and the revocation, create the
-     * tables and a connection, and record events.
+     * Bind the clock, freshness and revocation, create a connection, and record
+     * events.
      *
      * @return void
      */
@@ -104,9 +99,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * The identity's links in every tenant's connections are listed, with each
-     * connection's tenant and protocol and no subject; another identity's are
-     * not.
+     * An identity's links across tenants are listed without the subject.
      *
      * @return void
      */
@@ -153,8 +146,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * `me` lists the caller's links, and a reference given with a caller lists
-     * the reference's.
+     * `me` lists the caller's links; a reference lists the reference's.
      *
      * @return void
      */
@@ -171,8 +163,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * Links are listed by creation time, oldest first, and by id among links
-     * created in the same second.
+     * Links are listed oldest first, then by id.
      *
      * @return void
      */
@@ -232,8 +223,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * Removing for an identity that names no one is an invalid argument, with
-     * nothing asked or removed.
+     * Removing for an identity that names no one is an invalid argument.
      *
      * @param  string  $identity
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -259,11 +249,8 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * A removal of another identity's link deletes the link, asks freshness
-     * once, for the caller, revokes the identity's sessions through the
-     * connection inside the transaction, reports it once, naming the same
-     * caller as acting, and answers the link as it was. Removing the last link
-     * is allowed.
+     * A removal deletes the link, asks freshness, revokes sessions in the
+     * transaction and reports once.
      *
      * @return void
      */
@@ -329,8 +316,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * A removal raises the connection's links version by exactly one, so a flow
-     * that read the link before it fails to serialise rather than miss it.
+     * A removal raises the connection's links version by exactly one.
      *
      * @return void
      */
@@ -344,8 +330,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * `me` removes the caller's link, freshness is asked for that caller, and
-     * the event names it as acting.
+     * `me` removes the caller's link and names the caller as acting.
      *
      * @return void
      */
@@ -368,9 +353,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * With no caller, a removal of a named identity's link asks freshness for
-     * none, which the default and any contract that judges callers answer
-     * `stale`, and nothing is removed.
+     * A removal with no caller is stale by default and removes nothing.
      *
      * @return void
      */
@@ -386,8 +369,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * Only the removed link goes: the identity's other links, and another
-     * identity's in the same connection, stay.
+     * Only the removed link goes.
      *
      * @return void
      */
@@ -418,8 +400,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * A link that is another identity's is refused exactly as one that does not
-     * exist, with nothing asked, deleted, revoked or reported.
+     * Another identity's link is refused exactly as a missing one.
      *
      * @param  string  $which
      * @return void
@@ -445,8 +426,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * A caller who is not fresh enough is refused, with nothing deleted,
-     * revoked or reported.
+     * A caller who is not fresh enough is refused and nothing changes.
      *
      * @return void
      */
@@ -465,8 +445,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * A link removed or given to another identity after it was first read is
-     * found gone by the locking read, and nothing is revoked or reported.
+     * A link gone by the locking read is not revoked or reported.
      *
      * @return void
      */
@@ -493,10 +472,8 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * The link is read twice: first plainly, before the freshness contract is
-     * asked; then, inside the removal's transaction, with a locking read, so a
-     * caller's older snapshot never decides the delete, the revocation or the
-     * report.
+     * The link is read plainly before freshness, then locked inside the
+     * transaction.
      *
      * @return void
      */
@@ -513,8 +490,7 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * A link whose connection no longer exists is not found, and is left as it
-     * is.
+     * A link whose connection no longer exists is not found and is left alone.
      *
      * @return void
      */
@@ -549,9 +525,8 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * Record each read of the links table from now on: whether it was made
-     * inside a transaction, and whether it locked the rows for update; on
-     * SQLite, with the lock compiled to a marker comment.
+     * Record each read of the links table, whether in a transaction and whether
+     * locked.
      *
      * @return \ArrayObject<int, array{transaction: bool, locked: bool}>
      */
@@ -597,8 +572,8 @@ final class LinkServiceTest extends TestCase
     }
 
     /**
-     * Assert no revocation was asked for and no event reported, and the links
-     * left number as given.
+     * Assert nothing was revoked or reported and the links left number as
+     * given.
      *
      * @param  int  $links
      * @return void

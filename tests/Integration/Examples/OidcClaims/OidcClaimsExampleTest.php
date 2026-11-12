@@ -26,17 +26,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/oidc-claims.md` (SSO-7.5, SSO-7.7, SSO-2.10,
- * SSO-12.5), on the shared example harness: a connection turns UserInfo on with
- * its endpoint, the asserted email is read from a linked result, and the mapped
- * attributes are read with UserInfo laid over the ID token. Each asserts its
- * outcome and a refusal: UserInfo is not called while it is off, turning it on
- * voids the flow in flight and UserInfo is then called once for each
- * completion, and a connection that turns it on with no endpoint is incomplete
- * and starts nothing; a UserInfo endpoint that does not answer, or answers
- * `401`, refuses the completion; the email and its `email_verified` come from
- * one source, the flag carried only when it is a JSON boolean; and a mapping
- * that reads a protocol value is refused.
+ * Integration tests for the examples of `docs/guides/oidc-claims.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,11 +65,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
     }
 
     /**
-     * While UserInfo is off a completion never calls it. Turning it on with its
-     * endpoint is a trust change, so the flow in flight is refused
-     * `connection_unavailable`, and the next completion calls the endpoint
-     * once. Removing the endpoint while it is on leaves the connection
-     * incomplete, so it starts nothing.
+     * Turning UserInfo on voids the flow in flight, then calls it once each.
      *
      * @return void
      *
@@ -125,10 +111,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
     }
 
     /**
-     * While UserInfo is on it must answer: a timeout refuses the completion
-     * `fetch_failed` and a `401` refuses it `provider_error`, never going on
-     * with the ID token alone, and each request is consumed, so the person
-     * starts again once the endpoint answers.
+     * A UserInfo timeout or `401` refuses the completion.
      *
      * @return void
      *
@@ -157,9 +140,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Rows of `[the ID token's claims, UserInfo's claims or null while it is
-     * off, the email, its flag and its source the result asserts]`: each row
-     * of the guide's table, and a flag that is not a JSON boolean.
+     * The ID token's claims, UserInfo's (`null` when off) and the email pair.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: ?array<string, mixed>, 2: EmailPair}>
      */
@@ -179,10 +160,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The asserted email and its `email_verified` are read from one source, the
-     * ID token first: UserInfo's flag never vouches for the ID token's email, a
-     * flag the source does not state, or states as anything but a JSON boolean,
-     * is unknown, and with no email in either source there is none.
+     * The email and its flag come from one source, the ID token first.
      *
      * @param  array<string, mixed>  $idToken
      * @param  ?array<string, mixed>  $userInfo
@@ -201,9 +179,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The mapping reads the ID token's claims with UserInfo's laid over them:
-     * UserInfo's `name` wins, the ID token's `given_name` stands, and
-     * UserInfo's `family_name` is added.
+     * UserInfo's claims are laid over the ID token's for the mapping.
      *
      * @return void
      *
@@ -228,8 +204,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A mapping that reads a protocol value, here the subject, is refused as
-     * `reserved` and changes nothing.
+     * A mapping that reads a protocol value is refused as `reserved`.
      *
      * @return void
      */
@@ -267,9 +242,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Link the person through a connection whose provider's ID token carries
-     * the claims given and whose UserInfo answers the claims given, or is off
-     * when they are `null`, and answer the verified result the link redeemed.
+     * Link the person with these claims and answer the verified result.
      *
      * @param  array<string, mixed>  $idToken
      * @param  ?array<string, mixed>  $userInfo
@@ -300,8 +273,7 @@ final class OidcClaimsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Start a `link` flow through the connection and complete it at the
-     * provider, answering the redirect the browser is sent back with.
+     * Start a `link` flow and complete it at the provider.
      *
      * @param  string  $connectionId
      * @return \SineMacula\Laravel\Sso\Testing\HandoffRedirect

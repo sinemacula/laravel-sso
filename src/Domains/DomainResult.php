@@ -9,15 +9,8 @@ use SineMacula\Laravel\Sso\Domains\Enums\DomainStatus;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * How a domain operation ended (SSO-3.1, SSO-3.2, SSO-2.11, SSO-11.8): claimed,
- * verified, unchanged or removed, each with the domain's summary (as it now is,
- * or as it was before it was removed); refused, with the reason, and the
- * seconds to wait when it was rate limited; or invalid, with every violation
- * found and the reason `settings_invalid`.
- *
- * A refusal is a value, never thrown, and changed nothing: no row was written
- * and no event dispatched. A violation names the `domain` and a code, never the
- * value given.
+ * How a domain operation ended; a refusal is returned, never thrown, and wrote
+ * nothing.
  *
  * @api
  *
@@ -26,7 +19,7 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
  */
 final readonly class DomainResult implements \JsonSerializable
 {
-    /** @var list<\SineMacula\Laravel\Sso\Events\Enums\FailureReason> The reasons a domain operation is refused for, throttling aside. */
+    /** @var list<\SineMacula\Laravel\Sso\Events\Enums\FailureReason> The refusal reasons, rate limiting aside. */
     private const array REFUSALS = [
         FailureReason::FRESHNESS_REQUIRED,
         FailureReason::CONNECTION_NOT_FOUND,
@@ -60,7 +53,7 @@ final readonly class DomainResult implements \JsonSerializable
         /** Every violation found, for `invalid` only. */
         public array $violations = [],
 
-        /** Seconds, at least 1, until it may be tried again, when it was rate limited only. */
+        /** Seconds until it may be tried again, when rate limited only. */
         public ?int $retryAfter = null,
     ) {}
 
@@ -126,7 +119,7 @@ final readonly class DomainResult implements \JsonSerializable
     }
 
     /**
-     * The connection has used up its domain checks for now (SSO-11.8).
+     * The connection has used up its domain checks for now.
      *
      * @param  int  $retryAfter
      * @return self
@@ -210,8 +203,7 @@ final readonly class DomainResult implements \JsonSerializable
     }
 
     /**
-     * The result, with snake_case keys: the status, the domain (never its
-     * token), the reason, the violations and the seconds to wait.
+     * The result with snake_case keys; never the domain's token.
      *
      * @return array<string, mixed>
      */

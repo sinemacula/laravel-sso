@@ -25,15 +25,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the lock on a tenant's enforcement (SSO-4.5, SSO-4.6): a
- * tenant with no row has one inserted unconfigured (no version, no time of
- * change, off, with no connection) and locked, which every reader answers
- * exactly as no row; an existing row, configured or not, is locked and never
- * changed; no transaction is a `LogicException`. The default contract's
- * `lock()` names the enforcing tenant, locks its row and then the connections
- * the admission goes through and the rule's, in one statement in id order, and
- * answers the policy from the locked rows; while the feature is off it locks,
- * reads and asks nothing.
+ * Feature tests for locking a tenant's enforcement.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -59,7 +51,7 @@ final class EnforcementLockTest extends TestCase
     private FixedClock $clock;
 
     /**
-     * Bind a fixed clock, create the tables and switch the feature on.
+     * Bind a fixed clock and switch the feature on.
      *
      * @return void
      */
@@ -78,10 +70,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * A tenant with no row has one inserted unconfigured, stamped from the
-     * clock, and locked: an upsert, then a locking read. The row reads as no
-     * row everywhere: the finder finds none, the summary is off with no version
-     * or time, and the policy requires nothing, with no version.
+     * A tenant with no row gets an unconfigured row that reads as no row.
      *
      * @return void
      */
@@ -112,7 +101,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * A configured row is locked and left exactly as it is, however late.
+     * A configured row is locked and left as it is.
      *
      * @return void
      */
@@ -133,8 +122,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * An unconfigured row is locked again and left as it is: no second row, no
-     * new stamp.
+     * An unconfigured row is locked again and left as it is.
      *
      * @return void
      */
@@ -154,8 +142,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * Each tenant has a row of its own, a tenant whose id differs only in case
-     * included.
+     * Tenants whose ids differ only in case get rows of their own.
      *
      * @return void
      */
@@ -171,8 +158,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * With no transaction open on the storage connection, acquiring is a
-     * `LogicException`, and nothing is inserted.
+     * Acquiring outside a transaction is a `LogicException`.
      *
      * @return void
      */
@@ -211,8 +197,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * While the feature is off, the default contract's lock answers `null` with
-     * no statement run and the inheritance contract never asked.
+     * While the feature is off, the lock runs no statement and answers `null`.
      *
      * @return void
      */
@@ -233,9 +218,8 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * A tenant with no rule is locked through an unconfigured row: the policy
-     * requires nothing, with no version, and only the connections given are
-     * locked.
+     * A tenant with no rule locks only the connections given and requires
+     * nothing.
      *
      * @return void
      */
@@ -259,8 +243,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * With no connection given and no rule that names one, only the rule's row
-     * is locked: no statement locks connections.
+     * With no connections to lock, only the rule's row is locked.
      *
      * @return void
      */
@@ -273,8 +256,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * A rule that is off is locked and requires nothing, with its version; its
-     * connections are not locked, since none satisfies it.
+     * A rule that is off is locked without its connections.
      *
      * @return void
      */
@@ -297,9 +279,8 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * A rule that is on is locked with the connections given and the rule's,
-     * each once, in one statement in ascending id order; it is satisfied only
-     * by those of the enforcing tenant, byte for byte, that are enabled.
+     * A rule that is on locks its and the given connections once each, in id
+     * order.
      *
      * @return void
      */
@@ -332,9 +313,8 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * An inherited rule is the enforcing tenant's: its row is locked, its
-     * connections satisfy it, and `isCurrent()` asks the inheritance contract
-     * again, true while it still names that tenant and false once it does not.
+     * An inherited rule locks the enforcing tenant's row and rechecks
+     * inheritance.
      *
      * @return void
      */
@@ -362,8 +342,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * An inheritance contract that names no tenant is a `LogicException` before
-     * anything is locked.
+     * An inheritance contract that names no tenant fails before any lock.
      *
      * @return void
      */
@@ -383,7 +362,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * An empty application is the application's mistake, asked nothing.
+     * An empty application is refused.
      *
      * @return void
      */
@@ -443,9 +422,7 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * Lock the default contract's enforcement of the tenant, on the
-     * application, for the connections given, in a transaction on the storage
-     * connection.
+     * Lock the default contract's enforcement in a storage transaction.
      *
      * @param  string  $tenantId
      * @param  list<string>  $connectionIds

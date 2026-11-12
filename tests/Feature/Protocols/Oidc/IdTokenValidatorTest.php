@@ -37,11 +37,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the validation of an ID token (SSO-7.3, SSO-7.4, SSO-5.10),
- * against a stored JWKS with the fake provider serving it: each reason pinned,
- * the fixed order of the checks pinned (a token failing two answers the first),
- * every boundary at, under and over, the refetch on an unknown `kid`, what a
- * validated token holds, and nothing of a token in a dump.
+ * Feature tests for validating an ID token against a stored JWKS, the order of
+ * the checks included.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -374,8 +371,7 @@ final class IdTokenValidatorTest extends TestCase
 
     /**
      * The token must be of the issuer the request pinned as well as the
-     * connection's: a connection's issuer changed since the start, or a request
-     * that pinned none, is `issuer_mismatch`.
+     * connection's.
      *
      * @return void
      */
@@ -451,9 +447,8 @@ final class IdTokenValidatorTest extends TestCase
     }
 
     /**
-     * Rows of `[auth_time offset, started offset, reason]`: `auth_time` around
-     * a reauthentication's `max_age` of 0 and its start, the connection's own
-     * `max_age` of a week left unread.
+     * Rows of `[auth_time offset, started offset, reason]` for a
+     * reauthentication, the connection's `max_age` unread.
      *
      * @return iterable<string, array{0: ?int, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -479,9 +474,8 @@ final class IdTokenValidatorTest extends TestCase
     }
 
     /**
-     * A `reauthenticate` needs `auth_time` and is refused before its own start
-     * less the skew, whatever the connection's `max_age`, and however long ago
-     * that start was: it is never judged against when the callback runs.
+     * A reauthentication is refused before its own start less the skew, however
+     * long ago that start was.
      *
      * @param  ?int  $offset
      * @param  int  $started
@@ -595,9 +589,8 @@ final class IdTokenValidatorTest extends TestCase
     }
 
     /**
-     * A token already disqualified on its unverified claims fetches nothing and
-     * leaves the shared cooldown unclaimed. Its answer is the one any token no
-     * held key verifies gets, so it says nothing of its claims.
+     * A token disqualified on its unverified claims fetches nothing and gets
+     * the answer of any unverifiable token.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): \SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken  $tailor
      * @return void
@@ -616,9 +609,8 @@ final class IdTokenValidatorTest extends TestCase
     }
 
     /**
-     * A token that passes the prechecks on its unverified claims spends the
-     * cooldown, and still has to verify: nothing about its claims stands in for
-     * its signature, whatever key it names.
+     * A token that passes the prechecks spends the cooldown and must still
+     * verify.
      *
      * @return void
      */
@@ -785,9 +777,8 @@ final class IdTokenValidatorTest extends TestCase
     }
 
     /**
-     * A token with no `kid` is checked with the only admissible key, with
-     * nothing fetched; among two it is refused, still with nothing fetched; and
-     * an unknown `kid` never falls back to a key with none.
+     * A token with no `kid` uses the only admissible key, is refused among two,
+     * and an unknown `kid` never falls back.
      *
      * @return void
      */
@@ -813,9 +804,8 @@ final class IdTokenValidatorTest extends TestCase
     }
 
     /**
-     * An allow-list decides per connection, read afresh: a token of an
-     * algorithm the connection has since left off is refused with nothing
-     * fetched.
+     * The allow-list is read afresh per connection, so a dropped algorithm is
+     * refused with nothing fetched.
      *
      * @return void
      */

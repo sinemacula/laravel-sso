@@ -9,10 +9,8 @@ use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\ConfigurationCheck;
 
 /**
- * The example application's own configuration check, added to the package's
- * (SSO-12.3): while the package is in use, every client's host must be set,
- * since the application's redirect URI resolver sends the web application to
- * it.
+ * The example application's configuration check that every client's host is
+ * set.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -5,26 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
 
 /**
- * One public key of an identity provider's JWKS that the package admits for ID
- * token signatures (SSO-7.3), admitted when the JWKS is read and again each
- * time a stored JWKS is read for use:
- *
- * - `kty` `RSA` or `EC`, never `oct` or anything else;
- * - public only: a key with a private member (`d`, `p`, `q`, `dp`, `dq`, `qi`,
- *   `oth`) or a symmetric `k` is not admitted;
- * - `kid`, when present, a non-empty string;
- * - `use`, when present, `sig`; `key_ops`, when present, a list of strings that
- *   includes `verify`;
- * - `alg`, when present, on the connection's allow-list and one the key fits;
- * - an RSA key of at least `MIN_RSA_BITS` with an odd public exponent of at
- *   least 3, or an elliptic curve key on P-256, P-384 or P-521 whose point
- *   OpenSSL accepts, each member canonical unpadded base64url.
- *
- * `fits()` is the check at use: the algorithm is on the allow-list, the key is
- * the type and curve it needs, and the key's own `alg`, when it has one, is
- * that algorithm. Its stored form (`toArray()`) holds the public members alone,
- * in a fixed order, and its RFC 7638 thumbprint tells a key replaced under the
- * same `kid` from the key it replaced. It holds no secret.
+ * An admitted public RSA or EC signing key from a provider's JWKS. It is
+ * admitted on import and again on every read of the stored JWKS.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -39,7 +21,7 @@ final readonly class ProviderKey
     /** @var int The largest RSA modulus admitted, in bits. */
     public const int MAX_RSA_BITS = 16384;
 
-    /** @var list<string> The members a public key never carries. */
+    /** @var list<string> The private or symmetric members a public key never carries. */
     private const array PRIVATE_MEMBERS = ['d', 'p', 'q', 'dp', 'dq', 'qi', 'oth', 'k'];
 
     /** @var array<string, list<string>> The members of each type's stored form, in its order. */
@@ -68,7 +50,7 @@ final readonly class ProviderKey
     ) {}
 
     /**
-     * The key the JWK gives, when the package admits it for the allow-list.
+     * Admit the JWK under the allow-list, or return `null`.
      *
      * @param  array<array-key, mixed>  $jwk
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -110,9 +92,8 @@ final readonly class ProviderKey
     }
 
     /**
-     * Whether the key may verify a signature of the algorithm under the
-     * allow-list: the algorithm is allowed, the key is of the type and on the
-     * curve it needs, and the key's own `alg`, when it has one, is it.
+     * Whether the key may verify the algorithm: allowed, of the right type and
+     * curve, and matching the key's own `alg` if any.
      *
      * @param  string  $algorithm
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -129,8 +110,8 @@ final readonly class ProviderKey
     }
 
     /**
-     * The key's RFC 7638 thumbprint: the unpadded base64url SHA-256 of its
-     * required public members.
+     * The RFC 7638 thumbprint, which tells a key replaced under the same `kid`
+     * from the original.
      *
      * @return string
      */
@@ -155,8 +136,8 @@ final readonly class ProviderKey
     }
 
     /**
-     * Whether the JWK is a public RSA or elliptic curve key whose `kid`, `use`
-     * and `key_ops` the package admits.
+     * Whether the JWK is a public RSA or EC key with admissible `kid`, `use`
+     * and `key_ops`.
      *
      * @param  array<array-key, mixed>  $jwk
      * @return bool
@@ -173,8 +154,7 @@ final readonly class ProviderKey
     }
 
     /**
-     * Whether the JWK's `key_ops`, when it has them, are a list of strings that
-     * includes `verify`.
+     * Whether any `key_ops` is a list of strings including `verify`.
      *
      * @param  array<array-key, mixed>  $jwk
      * @return bool
@@ -191,8 +171,7 @@ final readonly class ProviderKey
     }
 
     /**
-     * Whether the JWK's `alg`, when it has one, is on the allow-list and one
-     * the key's type and curve fit.
+     * Whether any `alg` is allowed and fits the key's type and curve.
      *
      * @param  array<array-key, mixed>  $jwk
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\AlgorithmAllowList  $allowed
@@ -213,8 +192,7 @@ final readonly class ProviderKey
     }
 
     /**
-     * What OpenSSL reads from an RSA JWK of an admissible size and exponent, or
-     * `null`.
+     * What OpenSSL reads from an RSA JWK of admissible size and exponent.
      *
      * @param  array<array-key, mixed>  $jwk
      * @return ?array{bits: int, pem: string}
@@ -235,8 +213,7 @@ final readonly class ProviderKey
     }
 
     /**
-     * What OpenSSL reads from an elliptic curve JWK on a curve the package
-     * reads, or `null`.
+     * What OpenSSL reads from an EC JWK on a supported curve.
      *
      * @param  array<array-key, mixed>  $jwk
      * @return ?array{bits: int, pem: string}
@@ -255,8 +232,8 @@ final readonly class ProviderKey
     }
 
     /**
-     * Whether the big-endian bytes are an odd exponent of at least 3, at most
-     * eight bytes long.
+     * Whether the big-endian bytes are an odd exponent of at least 3, at most 8
+     * bytes long.
      *
      * @param  string  $exponent
      * @return bool
@@ -269,7 +246,7 @@ final readonly class ProviderKey
     }
 
     /**
-     * The bytes a member holds as canonical unpadded base64url, or `null`.
+     * Decode a canonical unpadded base64url member, or return `null`.
      *
      * @param  array<array-key, mixed>  $jwk
      * @param  string  $name
@@ -284,7 +261,7 @@ final readonly class ProviderKey
     }
 
     /**
-     * The stored form of an admitted JWK: its public members, in a fixed order.
+     * The stored form of an admitted JWK.
      *
      * @param  array<array-key, mixed>  $jwk
      * @return array<string, mixed>

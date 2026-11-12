@@ -10,15 +10,8 @@ use SineMacula\Laravel\Sso\Contracts\CompletionStage;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 
 /**
- * The `link_resolution` step (SSO-8.2, SSO-8.6, SSO-8.8): the verified result's
- * link is resolved through the bound `Contracts\Linker`, by its connection,
- * issuer and subject alone, inside the completion's locked transaction, and in
- * its final continuation again. The `Links\LinkResolution` goes on with the
- * state, with the identity it resolves to, for the later steps to decide. It
- * never refuses.
- *
- * It holds the linking contract, which keeps nothing of one completion for the
- * next (SSO-11.2). A database error propagates (SSO-11.4).
+ * The `link_resolution` step: resolves the result's link by connection, issuer
+ * and subject alone; it never refuses.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

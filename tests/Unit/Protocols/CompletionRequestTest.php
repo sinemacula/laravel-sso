@@ -12,9 +12,7 @@ use Symfony\Component\VarDumper\Cloner\VarCloner;
 use Symfony\Component\VarDumper\Dumper\CliDumper;
 
 /**
- * Unit tests for what arrived at a completion endpoint: the method, the raw
- * query string and the posted fields, never shown in a dump and never
- * serialised.
+ * Unit tests for what arrived at a completion endpoint.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -69,9 +67,8 @@ final class CompletionRequestTest extends TestCase
     }
 
     /**
-     * Neither the dumper behind Laravel's `dump()` (which also lists private
-     * properties), an export, an array cast nor JSON encoding shows the query
-     * string or a posted value.
+     * No dump, export, array cast or JSON encoding shows the query string or a
+     * posted value.
      *
      * @return void
      */

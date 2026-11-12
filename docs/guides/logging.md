@@ -78,7 +78,7 @@ Whatever key it is logged under, the sanitiser replaces with `[redacted]`:
 - the whole value after a redacted key in `key=value` (a query string or form), `key="value"` (an XML attribute),
   `key => value` and `[key] => value` (a PHP array dump), `key: value` (YAML, a JavaScript object), `"key": value`
   (JSON, escaped JSON and an object or array included), `<key>value</key>` (an XML element, child elements
-  included) or `<key value="…"/>`, whatever punctuation, quotes or brackets it holds;
+  included) or `<key value="..."/>`, whatever punctuation, quotes or brackets it holds;
 - the whole value of an `Authorization`, `Proxy-Authorization`, `Cookie` or `Set-Cookie` header written as
   `Name: value`, to the end of the text;
 - any run of 40 or more base64 or base64url characters, which is how a SAML response, a code, a verifier or a key
@@ -93,7 +93,7 @@ too little.
 The redacted keys are compared without regard to case, separators or percent-encoding (`Client-Secret`,
 `CLIENT_SECRET`, `clientSecret`, `client.secret` and `client%5Fsecret` are one key), and a key matches when any run
 of its words does: a form's `user[password]`, a dotted `credentials.password`, a path's `user/password` and a
-header's `X-Client-Secret` all match, and so does `private key=…` in text. `error_code` and `token_type` do not.
+header's `X-Client-Secret` all match, and so does `private key=...` in text. `error_code` and `token_type` do not.
 Built in:
 
 `password`, `secret`, `client_secret`, `token`, `access_token`, `refresh_token`, `id_token`, `code`, `handoff_code`,

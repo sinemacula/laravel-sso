@@ -21,11 +21,7 @@ use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * Feature tests for the client the domain helpers are given: each claim,
- * verification and removal reports its event with the IP address and user agent
- * of the client context passed, never of the request being served, with the
- * acting identity when one is given; and a verification is counted against its
- * connection's domain checks, whatever the client.
+ * Feature tests for the client context the domain helpers report.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,8 +38,8 @@ final class DomainServiceTest extends DomainServiceTestCase
     private ClientContext $client;
 
     /**
-     * Take the client, and bind another request as the one being served, which
-     * the helpers must never read.
+     * Take the client, and bind another request as the one served, which the
+     * helpers must not read.
      *
      * @return void
      */
@@ -91,8 +87,8 @@ final class DomainServiceTest extends DomainServiceTestCase
     }
 
     /**
-     * A removal reports `DomainRemoved` carrying the client, and no acting
-     * identity when none is given.
+     * A removal reports `DomainRemoved` with the client and no acting identity
+     * when none is given.
      *
      * @return void
      */
@@ -109,9 +105,7 @@ final class DomainServiceTest extends DomainServiceTestCase
     }
 
     /**
-     * Each change asks freshness for the caller it is given, its session
-     * included, and the one its event names as acting: a claim, a verification
-     * and a removal, each with its own operation.
+     * Each change asks freshness for its own caller and operation.
      *
      * @return void
      */
@@ -130,8 +124,7 @@ final class DomainServiceTest extends DomainServiceTestCase
     }
 
     /**
-     * A stale caller is refused each change with `freshness_required`, and
-     * nothing is claimed, verified or removed.
+     * A stale caller is refused each change with `freshness_required`.
      *
      * @return void
      */
@@ -155,8 +148,8 @@ final class DomainServiceTest extends DomainServiceTestCase
     }
 
     /**
-     * A change made for no client, as a console command makes one, reports
-     * neither an IP address nor a user agent.
+     * A change for no client, as from the console, reports no IP address or
+     * user agent.
      *
      * @return void
      */
@@ -170,9 +163,8 @@ final class DomainServiceTest extends DomainServiceTestCase
     }
 
     /**
-     * A verification is counted against its connection's domain checks, not
-     * against the client: another client's verification is refused once the
-     * connection's checks are used up.
+     * Verifications count against the connection's domain checks, not the
+     * client.
      *
      * @return void
      */
@@ -192,8 +184,8 @@ final class DomainServiceTest extends DomainServiceTestCase
     }
 
     /**
-     * Assert the event carries the client's IP address and user agent, never
-     * the served request's, and the acting identity's id given.
+     * Assert the event carries the client's address and agent, not the served
+     * request's.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @param  ?string  $actingIdentityId

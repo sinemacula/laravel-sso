@@ -16,24 +16,9 @@ use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Reports a refresh of a connection's metadata (SSO-2.8, SSO-10.3): each method
- * builds the event's context through the one projection
- * (`Events\EventContexts`), from the connection's id, tenant and protocol and
- * the identity of the caller who asked for the refresh, as the acting identity,
- * `null` for a scheduled one (SSO-10.4), and hands the event to
- * `Events\AfterCommitDispatcher`, so it reaches listeners once the refresh's
- * transaction commits and never when it rolls back (SSO-10.5).
+ * Dispatches the events for a connection's metadata refresh.
  *
- * The refresh calls it inside the transaction that wrote the refresh or its
- * failure, after the write. No event it builds holds a certificate, a URL or
- * any other value of the metadata: a refresh names the settings it changed,
- * never their values.
- *
- * Every method takes the client the action is taken for (`Http\ClientContext`),
- * whose IP address and user agent the event's context carries; nothing reads
- * the request being served. It holds the projection and the dispatcher, which
- * read the clock and the transaction from the container on each call, so
- * nothing of one refresh is kept for the next (SSO-11.2).
+ * Call inside the refresh's transaction, after the write.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -58,8 +43,7 @@ final readonly class MetadataEvents
     ) {}
 
     /**
-     * Report the connection's metadata refreshed: the names of the settings it
-     * changed, its metadata version after, and whether its trust changed.
+     * Report the connection's metadata refreshed, naming changed settings only.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  list<string>  $changedSettings
@@ -79,8 +63,7 @@ final readonly class MetadataEvents
     }
 
     /**
-     * Report a refresh of the connection's metadata failed: why, how many have
-     * failed in a row, and when the next is due.
+     * Report a failed metadata refresh.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -98,8 +81,7 @@ final readonly class MetadataEvents
     }
 
     /**
-     * The context of a refresh of the connection, asked for by the acting
-     * identity or by none.
+     * The context of a refresh; no caller for a scheduled one.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller

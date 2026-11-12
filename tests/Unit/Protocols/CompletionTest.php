@@ -12,8 +12,7 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 
 /**
- * Unit tests for how a driver judged a response: verified with its claims, or
- * refused with its reason, each with only its own payload.
+ * Unit tests for how a driver judged a response.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

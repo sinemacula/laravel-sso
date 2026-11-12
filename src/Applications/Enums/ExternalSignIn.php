@@ -5,11 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Applications\Enums;
 
 /**
- * What the application policy answered for an application (SSO-5.1, SSO-9.2):
- * whether it allows sign-in through an external provider.
- *
- * Only `allowed` lets a flow start for the application or a handoff code be
- * issued for it; every other answer refuses with `application_not_allowed`.
+ * Whether the application policy allows an application external sign-in.
  *
  * @api
  *
@@ -21,7 +17,7 @@ enum ExternalSignIn: string
     // The application allows sign-in through an external provider
     case ALLOWED = 'allowed';
 
-    // It does not; the default answer for an application that does not say so
+    // It does not; the default
     case NOT_ALLOWED = 'not_allowed';
 
     /**

@@ -22,10 +22,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the default single-use store on the shipped table: a key is
- * recorded once in its namespace until its expiry, then may be recorded
- * again; only its digest is stored; a database error is thrown, never answered;
- * and the rows live on the storage connection.
+ * Feature tests for the default single-use store on the shipped table.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -73,8 +70,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * The first record of a key is `recorded`; every later one, whatever its
-     * expiry, is `seen`, and the table holds the key once.
+     * The first record of a key is `recorded` and every later one `seen`.
      *
      * @return void
      */
@@ -89,9 +85,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * The container's single-use store is this one, on the bound clock: an
-     * expiry a second after the fixed clock's now is accepted, though it is
-     * long past by the system clock.
+     * The container's store uses the bound clock, not the system clock.
      *
      * @return void
      */
@@ -104,8 +98,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * The same key is recorded once in each namespace: the namespace is part of
-     * what is held.
+     * The same key is recorded once in each namespace.
      *
      * @return void
      */
@@ -122,8 +115,8 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * A key is held until its expiry and released from the second it names:
-     * recorded again then, its old row replaced by the new one.
+     * A key is released from the second its expiry names and may be recorded
+     * again.
      *
      * @return void
      */
@@ -153,8 +146,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * An expiry with a fraction of a second is kept to the whole second after
-     * it, so the key is never released before its expiry.
+     * A sub-second expiry is rounded up to the next whole second.
      *
      * @return void
      */
@@ -172,9 +164,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * The expiry is stored in UTC, whatever timezone it is given in and
-     * whatever the application timezone, so it compares with the clock as the
-     * instant it is.
+     * The expiry is stored in UTC whatever timezone it is given in.
      *
      * @return void
      */
@@ -190,10 +180,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * In the hour a daylight-saving fall-back repeats, a key held past the
-     * clock's now is still held: at 00:40 UTC (01:40 BST) a key held until
-     * 01:30 UTC (01:30 GMT) is `seen`, and pruning keeps it, though in London's
-     * wall-clock time its expiry reads as earlier than now.
+     * A key held past now stays held through a daylight-saving fall-back.
      *
      * @return void
      */
@@ -219,8 +206,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * A record never deletes a row still held, its own or another key's, and
-     * leaves another key's expired row to pruning.
+     * A record never deletes a row still held.
      *
      * @return void
      */
@@ -253,8 +239,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * Only the key's lower-case hex SHA-256 digest is stored: the key itself
-     * appears nowhere in the table.
+     * Only the key's lower-case hex SHA-256 digest is stored.
      *
      * @return void
      */
@@ -290,9 +275,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * A key recorded by another server between the release of its expired row
-     * and the second insert is `seen`: the second insert is refused by the
-     * index like the first, and the other server's row is kept.
+     * A key another server records between the release and the retry is `seen`.
      *
      * @return void
      */
@@ -320,9 +303,8 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * An insert the database rolls back as a deadlock wrote nothing, so the
-     * store tries it again in the transaction it opened, and records the key
-     * once.
+     * An insert rolled back as a deadlock is tried again in the store's own
+     * transaction.
      *
      * @return void
      */
@@ -359,9 +341,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * Inside the caller's transaction a deadlock is thrown at once: the
-     * database has rolled the caller's transaction back too, so there is
-     * nothing to try again in.
+     * Inside the caller's transaction a deadlock is thrown at once.
      *
      * @return void
      *
@@ -385,8 +365,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * A table that is not there is a database error, thrown as it is, never
-     * answered `seen` (nor `recorded`).
+     * A missing table throws a database error rather than answering.
      *
      * @return void
      *
@@ -407,8 +386,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * With the storage on a second connection, the keys are recorded and seen
-     * there, and the default connection's table is never written.
+     * Keys are recorded on the storage connection, never the default.
      *
      * @return void
      */
@@ -427,8 +405,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * The store holds nothing but its clock, so nothing of one call reaches the
-     * next.
+     * The store holds nothing between calls but its clock.
      *
      * @return void
      */
@@ -456,9 +433,8 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * Have the database report the next inserts as deadlocks, as MySQL does
-     * when it rolls an insert back: each runs, then fails, so the transaction
-     * around it undoes it. Returns the count of deadlocks reported so far.
+     * Have the next inserts run and then fail as deadlocks, returning the count
+     * so far.
      *
      * @param  int  $times
      * @return \stdClass

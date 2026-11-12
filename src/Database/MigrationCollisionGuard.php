@@ -7,11 +7,7 @@ namespace SineMacula\Laravel\Sso\Database;
 use Illuminate\Database\Schema\Builder;
 
 /**
- * Migration collision guard.
- *
- * Helper for the shipped migrations. Surfaces a clear error before any schema
- * mutation if the table a migration creates already exists, naming the
- * configuration key that renames it.
+ * Stops a shipped migration before it touches a table name already in use.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,13 +21,12 @@ final readonly class MigrationCollisionGuard
      */
     public function __construct(
 
-        /** Schema builder */
+        /** The schema builder. */
         private Builder $schema,
     ) {}
 
     /**
-     * Throw if the table already exists. The configuration key is the one,
-     * under `sso`, that names the table.
+     * Throw, naming the setting that renames it, if the table already exists.
      *
      * @param  string  $table
      * @param  string  $configKey

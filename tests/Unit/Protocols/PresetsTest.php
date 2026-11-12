@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Protocols\Presets;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
 
 /**
- * Unit tests for the presets the package ships: which there are, that each is
- * keyed by its name, fills in only settings its protocol has and never a
- * secret, always requests `openid`, and names the organisation claim of a
- * shared issuer.
+ * Unit tests for the presets the package ships.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

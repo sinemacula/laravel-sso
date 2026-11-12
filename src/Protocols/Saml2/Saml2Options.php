@@ -8,16 +8,8 @@ use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
 
 /**
- * A SAML connection's settings, typed, for the driver and its collaborators to
- * read (SSO-2.3): every setting of `Saml2Settings`, defaults applied, under a
- * property of its own. It is read from what the connection holds at the moment
- * it is built, which the driver does once per call, so nothing is kept between
- * calls (SSO-11.2).
- *
- * Only a complete connection is ever used (`Saml2Driver::isComplete()`), so a
- * flow reads a valid entity id and single sign-on URL; a setting the connection
- * does not hold is `null` (or its default). It holds no secret: a SAML
- * connection's keys and trusted certificates are kept with its keys.
+ * A SAML connection's settings, typed and with defaults applied. Built once per
+ * driver call; it holds no secret.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,7 +26,7 @@ final readonly class Saml2Options
     /** @var string The NameID format a subject never has. */
     public const string TRANSIENT = 'urn:oasis:names:tc:SAML:2.0:nameid-format:transient';
 
-    /** @var array<string, string> The binding URI of each binding an `AuthnRequest` may be sent by. */
+    /** @var array<string, string> The URI of each `AuthnRequest` binding. */
     public const array BINDINGS = [
         'http_redirect' => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect',
         'http_post'     => 'urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST',
@@ -67,34 +59,34 @@ final readonly class Saml2Options
      */
     public function __construct(
 
-        /** The identity provider's entity id, the `Issuer` every response and assertion must carry. */
+        /** The `Issuer` every response and assertion must carry. */
         public ?string $idpEntityId,
 
-        /** Its single sign-on URL. */
+        /** The identity provider's single sign-on URL. */
         public ?string $ssoUrl,
 
-        /** The binding the `AuthnRequest` is sent by: `http_redirect` or `http_post`. */
+        /** `http_redirect` or `http_post`. */
         public string $ssoBinding,
 
-        /** Where the subject comes from: `name_id` or `attribute`. */
+        /** `name_id` or `attribute`. */
         public string $subjectSource,
 
         /** The attribute holding a stable identifier, for an attribute subject. */
         public ?string $subjectAttribute,
 
-        /** The NameID format requested and accepted: `persistent`, `email` or `unspecified`. */
+        /** `persistent`, `email` or `unspecified`. */
         public string $nameIdFormat,
 
-        /** Each switch by its setting's name: `sign_authn_requests`, `want_assertions_signed`, `require_encrypted_assertions`, `force_authn`, `idp_initiated` and `metadata_refresh`. */
+        /** Each switch by its setting's name. */
         private array $switches,
 
-        /** Each list by its setting's name: `signature_algorithms`, `encryption_algorithms` and `requested_authn_context`. */
+        /** Each list by its setting's name. */
         private array $lists,
 
-        /** The oldest the provider's `AuthnInstant` may be, in seconds, or `null` for no limit. */
+        /** The oldest the `AuthnInstant` may be, in seconds; `null` for no limit. */
         public ?int $maxAuthenticationAgeSeconds,
 
-        /** The application start URL an unsolicited response is sent to. */
+        /** The start URL an unsolicited response is re-initiated through. */
         public ?string $idpInitiatedStartUrl,
 
         /** The URL the provider's metadata is refreshed from. */
@@ -181,8 +173,8 @@ final readonly class Saml2Options
     }
 
     /**
-     * The data encryption algorithms the connection allows, AES-CBC among them
-     * only when it lists one.
+     * The data encryption algorithms the connection allows, AES-CBC only when
+     * listed.
      *
      * @return list<string>
      */
@@ -209,7 +201,7 @@ final readonly class Saml2Options
     }
 
     /**
-     * Each list the settings hold, by name, with only its strings.
+     * Each list the settings hold, by name, keeping only strings.
      *
      * @param  array<string, mixed>  $values
      * @return array<string, list<string>>

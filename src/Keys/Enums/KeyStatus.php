@@ -5,11 +5,9 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Keys\Enums;
 
 /**
- * How a key operation ended (SSO-2.6, SSO-2.7, SSO-2.11): the status of a
- * `Keys\KeyResult`. Five name a change made, one per operation; `refused` and
- * `invalid` name a change not made, with nothing written and nothing reported.
+ * How a key operation ended: the status of a `Keys\KeyResult`.
  *
- * Backed, and stable once released: a value is never renamed or reused.
+ * Stable once released: a value is never renamed or reused.
  *
  * @api
  *
@@ -18,8 +16,7 @@ namespace SineMacula\Laravel\Sso\Keys\Enums;
  */
 enum KeyStatus: string
 {
-    // A key pair of the service provider's own was generated and added, as
-    // `next`, or as `current` when the connection had no key of its use
+    // A key pair was added as `next`, or `current` when its use had none
     case ADDED = 'added';
 
     // A `next` key was made current; the key it replaced is now `retiring`
@@ -34,9 +31,7 @@ enum KeyStatus: string
     // A trusted certificate was removed
     case DISTRUSTED = 'distrusted';
 
-    // The change was refused: the connection or the key was not found, the key
-    // was not in a state the operation moves it from, or the caller's
-    // authentication was not fresh enough
+    // Not found, not in a state the operation moves from, or not fresh enough
     case REFUSED = 'refused';
 
     // What was given was refused; the result carries the violations

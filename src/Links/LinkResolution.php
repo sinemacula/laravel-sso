@@ -9,32 +9,11 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkResolutionStatus;
 
 /**
- * What a verified result's link resolved to (SSO-8.2, SSO-8.3, SSO-8.8), as
- * `Contracts\Linker::resolve()` answers it, in place of an identity or none, so
- * a suspended or reserved subject can never pass for an unlinked one:
+ * What `Contracts\Linker::resolve()` answers, so a suspended or reserved
+ * subject never passes for an unlinked one.
  *
- * - `linked`: `$identity` is the identity it resolves to and `$linkId` the link
- *   that resolved it, whatever identifies a link in the linker's store. A link
- *   removed and made again has another id, so continuity is compared by it and
- *   never by the identity alone. `$origin` is the link's provenance
- *   (`Links\Enums\LinkOrigin`) as the store holds it at this resolution, which
- *   the package's store always states; a linker that cannot state it leaves it
- *   `null`, and a sign-in's captured provenance then names none (SSO-9.10).
- * - `absent`: no link holds the subject. Only this lets a result be offered for
- *   provisioning, reserve a link or take an unlinked handoff.
- * - `reserved`: a live reservation holds the subject. It names nothing: a
- *   reservation never resolves a sign-in, and a result is refused rather than
- *   told whose it is.
- * - `suspended`: `$identity` is `null`, since it resolves nothing; `$holder`
- *   and `$linkId` say whose link it is, read only by a confirming `link`
- *   (SSO-8.8), never by a sign-in.
- * - `scope_unknown`: `$identity` is `null`, since it resolves nothing;
- *   `$holder` and `$linkId` say whose link it is. The link's verified domain
- *   provenance needs `Contracts\PrincipalScope`, which answered `unknown`: this
- *   attempt is refused, and nothing is suspended or revoked, so the link's next
- *   resolution judges it again.
- *
- * It holds opaque references, never a subject or a secret.
+ * Compare continuity by `$linkId`, never by identity alone: a link made again
+ * has another id.
  *
  * @api
  *
@@ -71,8 +50,7 @@ final readonly class LinkResolution
     ) {}
 
     /**
-     * An active link resolves the subject to the identity, with the link's
-     * provenance when the linker states it.
+     * An active link resolves the subject to the identity.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $linkId
@@ -121,8 +99,8 @@ final readonly class LinkResolution
     }
 
     /**
-     * The holder's link holds the subject, and its scope could not be judged:
-     * it resolves nothing, for this attempt.
+     * The holder's link could not be judged, so it resolves nothing this
+     * attempt.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $holder
      * @param  string  $linkId
@@ -186,8 +164,7 @@ final readonly class LinkResolution
     }
 
     /**
-     * Whether the link holding the subject is the identity's, active or
-     * suspended, compared byte for byte.
+     * Whether the link holding the subject is the identity's, byte for byte.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return bool

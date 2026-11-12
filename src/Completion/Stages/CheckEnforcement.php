@@ -11,26 +11,8 @@ use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * The `enforcement` step (SSO-4.1, SSO-4.6, SSO-9.10): the policy of the
- * connection's tenant on the request's application. Under the package's default
- * contract with the feature on, it is the one the pipeline judged from the rows
- * it locked at the start of the locked steps (the enforcing tenant's rule, then
- * the connections, `CompletionPipeline`), carried on the state, so a change to
- * the rule waits for the completion's transaction; otherwise the bound
- * `Contracts\Enforcement` is asked now. A policy that requires sign-in through
- * a satisfying connection, and that this connection does not satisfy, refuses
- * with `enforcement_unsatisfied`; a policy that requires nothing is satisfied
- * by every connection.
- *
- * The state goes on unchanged otherwise: the session keeps the version its
- * redemption judges under its own locks, not the one checked here. No exemption
- * is consulted here, nor at redemption: only an adapter's
- * `Enforcement\ExemptionGate` asks the exemption contract, for a session it
- * establishes, and redeeming the handoff rechecks enforcement against the state
- * at redemption.
- *
- * It holds the enforcement contract, which keeps nothing of one completion for
- * the next (SSO-11.2). A database error propagates (SSO-11.4).
+ * The `enforcement` step: the connection must satisfy its tenant's policy,
+ * judged from the locked rule when there is one.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

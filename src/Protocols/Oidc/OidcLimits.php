@@ -8,38 +8,8 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The caps, windows and timeouts every OpenID Connect connection is held to
- * (SSO-2.9, SSO-7.1 to SSO-7.5), read from `sso.oidc` on each call, so nothing
- * is kept across requests (SSO-11.2), each failing closed with an
- * `InvalidArgumentException` naming its key when it is malformed; `[oidc]`
- * reports the same at boot. A cap can be lowered, never raised past its
- * ceiling.
- *
- * - `max_id_token_bytes`: the longest ID token, 2 KiB to 16 KiB (default 16
- *   KiB), checked before it is read.
- * - `max_jwks_bytes` and `max_jwks_keys`: the largest JWKS, 4 KiB to 64 KiB
- *   (default 64 KiB), and the most keys it holds, 1 to 50 (default 50).
- * - `max_discovery_bytes`, `max_token_response_bytes` and `max_userinfo_bytes`:
- *   the largest discovery document, token response and UserInfo response, 4 KiB
- *   to 1 MiB (default 64 KiB each), held as the request's own cap so the
- *   fetcher stops reading past it.
- * - `max_callback_parameter_bytes`, `max_callback_query_bytes` and
- *   `max_callback_parameters`: the longest callback parameter, name or value,
- *   256 bytes to 2 KiB (default 2 KiB); the longest raw callback query, 1 KiB
- *   to 16 KiB (default 8 KiB); and the most parameters in it, 4 to 32 (default
- *   16) (SSO-7.1).
- * - `jwks_refetch_cooldown_seconds`: the least time between two refetches of a
- *   connection's JWKS on an unknown `kid`, a minute to an hour (default 300),
- *   claimed before the fetch and counted whether it succeeds or not (SSO-7.3).
- * - `id_token_max_age_seconds`: how old an ID token's `iat` may be, 30 seconds
- *   to an hour (default 300), the clock skew allowed on top (SSO-7.4).
- * - `token_timeout_seconds` and `userinfo_timeout_seconds`: the whole time a
- *   token request and a UserInfo request may take, 1 to 60 seconds (default
- *   10), in place of `sso.fetcher.timeout_seconds`; neither is ever retried.
- *
- * The clock skew is `sso.clock.skew_seconds` (`Clock\ClockSkew`). The refresh
- * of the discovery document and the JWKS keeps `sso.metadata`'s cadence,
- * backoff, claim, queue and 30-day stale limit (`Metadata\MetadataSettings`).
+ * The `sso.oidc` caps, windows and timeouts, read on each call. A malformed
+ * value throws, and a cap can be lowered but never raised past its ceiling.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -55,7 +25,7 @@ final readonly class OidcLimits
     /** @var int The most keys in a JWKS when none is configured, and the ceiling. */
     public const int MAX_JWKS_KEYS = 50;
 
-    /** @var int The largest discovery document, token or UserInfo response when none is configured, in bytes. */
+    /** @var int The default discovery, token and UserInfo response cap, in bytes. */
     public const int DEFAULT_RESPONSE_BYTES = 65536;
 
     /** @var int The ceiling of a discovery document, token or UserInfo response cap, in bytes. */
@@ -202,8 +172,8 @@ final readonly class OidcLimits
     }
 
     /**
-     * The least time between two refetches of a connection's JWKS on an unknown
-     * `kid`, in seconds.
+     * The least time between two JWKS refetches on an unknown `kid`, in
+     * seconds.
      *
      * @return int
      *
@@ -251,7 +221,7 @@ final readonly class OidcLimits
     }
 
     /**
-     * The limit under `sso.oidc.` the name gives, within its bounds.
+     * Read the named `sso.oidc.` limit within its bounds.
      *
      * @param  string  $name
      * @param  int  $default

@@ -5,17 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Config;
 
 /**
- * Reads a URL setting the one way every settings class reads one, failing
- * closed with an `InvalidArgumentException` that names the key and what it must
- * be, never the configured value.
- *
- * A web URL is an absolute `https` URL with a host, or an `http` one whose host
- * is a loopback address literal (`127.0.0.1`, `[::1]`), for development. A
- * redirect URI (SSO-5.5) is a web URL, or a private-use scheme a native
- * application registers (RFC 8252 §7.1: a lower-case scheme with a dot, such as
- * `com.example.app:/callback`). Neither may carry user information, a fragment,
- * a wildcard, whitespace or a control character; each is used exactly as
- * configured, never altered.
+ * Reads a URL setting, failing closed with a message that never quotes the
+ * configured value.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -30,7 +21,7 @@ final class UrlSetting
     /** @var list<string> The loopback hosts an `http` URL may name, as `parse_url()` gives them. */
     private const array LOOPBACK_HOSTS = ['127.0.0.1', '[::1]'];
 
-    /** @var string A private-use scheme: lower case, starting with a letter, with a dot (RFC 8252 §7.1). */
+    /** @var string A private-use scheme: lower case with a dot (RFC 8252 section 7.1). */
     private const string PRIVATE_USE_SCHEME = '/^[a-z][a-z0-9+\-]*(?:\.[a-z0-9+\-]+)+$/';
 
     /**
@@ -62,8 +53,8 @@ final class UrlSetting
     }
 
     /**
-     * The value as an application's redirect URI: a web URL, or a private-use
-     * scheme a native application registers.
+     * The value as a redirect URI: a web URL or a native app's private-use
+     * scheme.
      *
      * @param  string  $key
      * @param  mixed  $value
@@ -86,8 +77,8 @@ final class UrlSetting
     }
 
     /**
-     * The parts of the URL, once it is a string with no character a URL may not
-     * hold here.
+     * The parts of the URL, refusing whitespace, controls, wildcards, fragments
+     * and user information.
      *
      * @param  string  $key
      * @param  mixed  $value
@@ -129,8 +120,7 @@ final class UrlSetting
     }
 
     /**
-     * Whether the parts are a private-use scheme's: a lower-case scheme with a
-     * dot.
+     * Whether the parts are a private-use scheme's.
      *
      * @param  array{scheme?: string, host?: string, port?: int, user?: string, pass?: string, path?: string, query?: string, fragment?: string}  $parts
      * @return bool

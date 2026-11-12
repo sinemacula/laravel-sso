@@ -5,10 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Pruning;
 
 /**
- * One row a scan selected: its primary key and its time as stored, which the
- * scan's next page continues after, and the connection a reservation belongs
- * to. Being selected makes it no more than a candidate: the delete repeats the
- * eligibility, since another server may have changed or deleted it since.
+ * One row a prune scan selected, and the keyset its next page continues after.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

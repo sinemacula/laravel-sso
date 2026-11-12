@@ -9,26 +9,11 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 
 /**
- * Finds domains for the domain helpers (SSO-3.1, SSO-3.2), always on the write
- * connection (SSO-11.3), so a claim or a verification is never judged against a
- * lagging replica.
+ * Finds domains on the write connection, so nothing is judged against a lagging
+ * replica.
  *
- * A connection's own claims are found through the connection, which the caller
- * found scoped to its tenant (`Connections\ConnectionFinder`), so a domain of
- * another tenant's connection is never returned. Every claim of a domain,
- * whatever its connection, is read only to decide whether another connection
- * holds it verified, and never leaves the helper. A row that does not hold
- * exactly the name and connection asked for is treated as absent, whatever the
- * column's collation.
- *
- * Under a lock, every read that decides a write is itself a locking read: a
- * plain read would answer from the snapshot of a transaction the caller opened
- * (MySQL's `REPEATABLE READ`), which may predate a change committed before the
- * lock was taken. The locks are taken in one order: the connection's row, then
- * the claims of one domain in id order. Nothing locks by `verified_domain`,
- * whose gap locks would deadlock with a verification's update on MySQL; its
- * unique index is the last guard instead. A database error propagates
- * (SSO-11.4).
+ * Lock the connection's row first, then one domain's claims in id order; never
+ * lock by `verified_domain`, whose MySQL gap locks would deadlock.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -82,7 +67,8 @@ final readonly class DomainFinder
     }
 
     /**
-     * Whether the row is the connection's claim of exactly the domain.
+     * Whether the row is the connection's claim of exactly the domain, whatever
+     * the column's collation.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Domain  $found
      * @param  string  $connectionId
@@ -99,8 +85,7 @@ final readonly class DomainFinder
     }
 
     /**
-     * A query of the domains, on the write connection, locking what it reads
-     * when asked.
+     * A query of the domains on the write connection, locking when asked.
      *
      * @param  bool  $lock
      * @return \Illuminate\Database\Eloquent\Builder<\SineMacula\Laravel\Sso\Models\Domain>

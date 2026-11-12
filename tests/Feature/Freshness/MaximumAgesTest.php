@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Freshness\MaximumAges;
 use Tests\TestCase;
 
 /**
- * Feature tests for the maximum ages: 300 seconds for each operation by default
- * and as shipped, each operation read from its own key on each call, from 1 to
- * 3600 seconds or the digit string `env()` gives for one, and anything else
- * refused with a message naming the key rather than loosening the requirement.
+ * Feature tests for the freshness maximum ages.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -25,8 +22,7 @@ use Tests\TestCase;
 final class MaximumAgesTest extends TestCase
 {
     /**
-     * The block, the default and the range are the ones SSO-2.12's maximum ages
-     * are documented with.
+     * The block, the default and the range are the documented ones.
      *
      * @return void
      */
@@ -51,8 +47,7 @@ final class MaximumAgesTest extends TestCase
     }
 
     /**
-     * An operation whose age is not configured, a block left empty, a block
-     * missing, or a whole `freshness` section missing, requires 300 seconds.
+     * An unconfigured age, block or section requires 300 seconds.
      *
      * @return void
      */
@@ -73,8 +68,7 @@ final class MaximumAgesTest extends TestCase
     }
 
     /**
-     * Each operation is read from its own key, so each requires the age
-     * configured for it and no other.
+     * Each operation is read from its own key.
      *
      * @return void
      */
@@ -92,8 +86,7 @@ final class MaximumAgesTest extends TestCase
     }
 
     /**
-     * The age is read on each call, so a change between calls is the next
-     * call's answer and nothing of one is kept for the next.
+     * The age is read on each call.
      *
      * @return void
      */
@@ -177,8 +170,8 @@ final class MaximumAgesTest extends TestCase
     }
 
     /**
-     * Each malformed age fails closed with the message naming the operation's
-     * key and the range, never the value, for every operation.
+     * Each malformed age fails closed, naming the operation's key and never the
+     * value.
      *
      * @param  mixed  $value
      * @return void
@@ -201,8 +194,7 @@ final class MaximumAgesTest extends TestCase
     }
 
     /**
-     * A malformed age fails only its own operation: the others still read
-     * theirs.
+     * A malformed age fails only its own operation.
      *
      * @return void
      */

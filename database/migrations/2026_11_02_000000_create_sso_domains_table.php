@@ -9,8 +9,7 @@ use SineMacula\Laravel\Sso\Database\MigrationCollisionGuard;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 
 /**
- * Create the domains table: the email domains each connection has claimed, and
- * whether and since when each is verified.
+ * Create the claimed email domains table.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,39 +35,28 @@ return new class extends Migration {
         $schema->create($table, static function (Blueprint $blueprint) use ($table): void {
             $blueprint->char('id', 26)->primary();
 
-            // The connection that claimed the domain. No foreign key: deleting
-            // a connection deletes its domains in the same transaction,
-            // whatever the engine.
+            // No foreign key: deleting a connection deletes its domains in the
+            // same transaction, whatever the engine.
             $blueprint->char('connection_id', 26);
 
-            // The normalised domain: lower-case ASCII (IDNA), no trailing dot.
+            // Lower-case ASCII (IDNA), no trailing dot.
             $blueprint->string('domain', 253);
 
-            // The domain again while it is verified, and null otherwise, so the
-            // unique index lets a domain be verified for one connection at a
-            // time, across every tenant, however the claims race.
+            // Set only while verified, so the unique index allows one verified
+            // connection per domain across every tenant.
             $blueprint->string('verified_domain', 253)->nullable();
 
-            // The claim's state: pending, verified or lapsed.
             $blueprint->string('state', 16);
 
-            // The TXT record's name under the domain as it was claimed, and the
-            // random token the record must carry, which is published in DNS and
-            // so not a secret, but never put in an event.
+            // The token is published in DNS, so not a secret, but never put in
+            // an event.
             $blueprint->string('record_name', 63);
             $blueprint->char('verification_token', 64);
 
-            // Raised each time the domain becomes verified, and never lowered:
-            // a reservation binds it, so one made under an earlier verification
-            // never activates under a later one.
+            // Never lowered, so a reservation made under an earlier
+            // verification never activates under a later one.
             $blueprint->unsignedBigInteger('verification_generation')->default(0);
 
-            // Whole seconds in UTC, from the package's clock. A pending claim
-            // expires; a verified domain keeps the time it became verified
-            // until it lapses, and records each successful check. A domain
-            // whose record has gone has linking suspended at once and lapses at
-            // the end of the grace period. The lease keeps one server's recheck
-            // of the domain from overlapping another's.
             $blueprint->dateTime('claimed_at', 0);
             $blueprint->dateTime('pending_expires_at', 0)->nullable();
             $blueprint->dateTime('verified_at', 0)->nullable();
@@ -80,11 +68,6 @@ return new class extends Migration {
             $blueprint->dateTime('created_at', 0);
             $blueprint->dateTime('updated_at', 0);
 
-            // One claim of a domain per connection; one verified connection per
-            // domain; a claim or a verification locks every claim of its
-            // domain; the recheck reads verified domains by their last
-            // successful check, and pruning pages pending claims by expiry, by
-            // keyset.
             $blueprint->unique(['connection_id', 'domain'], self::indexName($table, 'connection_domain_unique'));
             $blueprint->unique(['verified_domain'], self::indexName($table, 'verified_unique'));
             $blueprint->index(['domain'], self::indexName($table, 'domain_index'));
@@ -107,8 +90,7 @@ return new class extends Migration {
     }
 
     /**
-     * The connection the table lives on, the one the model reads and writes it
-     * on: the storage connection (see `StorageConnection::connectionFor()`).
+     * The storage connection, which the model uses too.
      *
      * @return ?string
      *
@@ -135,8 +117,7 @@ return new class extends Migration {
     }
 
     /**
-     * An index name built from the table's, as Laravel builds one: lower case,
-     * with a schema's dot as an underscore.
+     * An index name built from the table's the way Laravel builds one.
      *
      * @param  string  $table
      * @param  string  $suffix

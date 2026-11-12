@@ -9,12 +9,8 @@ use SineMacula\Laravel\Sso\Events\ConnectionCreated;
 use SineMacula\Laravel\Sso\Events\ConnectionDeleted;
 
 /**
- * The example application's own record of which tenant each connection belongs
- * to (SSO-12.5), kept from the package's events, for the routes an identity
- * provider calls with a connection id and no tenant: the service provider
- * metadata.
- *
- * It writes the application's own table, never one of the package's.
+ * The application's own record of each connection's tenant, kept from events.
+ * The metadata route needs it: an identity provider names no tenant.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,8 +48,7 @@ final class ConnectionTenants
     }
 
     /**
-     * The tenant of the connection, or `null` when the application has no
-     * record of it.
+     * The tenant of the connection, or `null` when it is unknown.
      *
      * @param  string  $connectionId
      * @return ?string

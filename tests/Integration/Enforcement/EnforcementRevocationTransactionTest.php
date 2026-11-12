@@ -28,13 +28,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests, on a real database, that an enforcement change and the
- * session revocation it needs commit or roll back together (SSO-4.5, SSO-10.5,
- * decision D5): a revocation that writes through the storage connection and
- * succeeds commits with the change; one that writes and then throws leaves
- * neither its write nor the change, and nothing is reported; and inside a
- * transaction the application opened, a rollback undoes both though the helper
- * succeeded.
+ * Integration tests that an enforcement change and its revocation commit or
+ * roll back together.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,8 +52,8 @@ final class EnforcementRevocationTransactionTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock and a fresh caller, create the tables, a connection
-     * and the revocation's table, switch the feature on and record events.
+     * Bind a fixed clock and a fresh caller, create a connection and the
+     * revocation's table, and record events.
      *
      * @return void
      */
@@ -99,8 +94,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
     }
 
     /**
-     * A revocation that writes and succeeds commits with the change, which is
-     * then reported once.
+     * A revocation that succeeds commits with the change.
      *
      * @return void
      */
@@ -122,8 +116,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
     }
 
     /**
-     * A revocation that writes and then throws leaves neither its write nor the
-     * change, and nothing is reported; the exception propagates.
+     * A revocation that throws rolls back its write and the change.
      *
      * @return void
      */
@@ -145,8 +138,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
     }
 
     /**
-     * A revocation that fails a later change, called once for the connections
-     * that change names, leaves the rule as it was.
+     * A revocation that fails a later change leaves the rule as it was.
      *
      * @return void
      *
@@ -181,9 +173,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
     }
 
     /**
-     * Inside a transaction the application opened, the change and the
-     * revocation's write are undone by its rollback, though the helper
-     * succeeded, and nothing is reported.
+     * In an open transaction, a rollback undoes the change and the revocation.
      *
      * @return void
      */
@@ -209,8 +199,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
     }
 
     /**
-     * Inside a transaction the application opened, the change is reported only
-     * once it commits.
+     * In an open transaction, the change is reported only once it commits.
      *
      * @return void
      */
@@ -231,9 +220,8 @@ final class EnforcementRevocationTransactionTest extends TestCase
     }
 
     /**
-     * Bind a revocation that records the scope in the revocation's table,
-     * through the storage connection, and then throws when asked to. Answers
-     * every scope it was called with, kept in memory so a rollback leaves it.
+     * Bind a revocation that writes through the storage connection and can be
+     * told to throw.
      *
      * @param  bool  $fails
      * @return \ArrayObject<int, \SineMacula\Laravel\Sso\Revocation\RevocationScope>
@@ -264,8 +252,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
             ) {}
 
             /**
-             * Write the tenant and the version revoked for, then fail when told
-             * to.
+             * Write the tenant and version revoked for, then fail when told to.
              *
              * @param  \SineMacula\Laravel\Sso\Revocation\RevocationScope  $scope
              * @return void

@@ -28,12 +28,7 @@ use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
 
 /**
- * How a start meets transactions (SSO-10.5, SSO-11.5), on every database the
- * suite runs on: `AuthorizationRequestStarted` reaches its listeners only once
- * the transaction that stored the request commits; and a start called inside
- * the caller's transaction on the storage connection, which would keep the
- * connection's lock while the driver may reach the identity provider, is a
- * `LogicException` before it counts, asks, stores or reports anything.
+ * Integration tests for how a start meets storage transactions.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,8 +48,8 @@ final class StartAfterCommitTest extends TestCase
     private StartingDriver $driver;
 
     /**
-     * Bind a fixed clock, register the application and the driver, create the
-     * tables and a usable connection, and record events.
+     * Bind a fixed clock, register the application and driver, seed a usable
+     * connection, and record events.
      *
      * @return void
      */
@@ -87,9 +82,8 @@ final class StartAfterCommitTest extends TestCase
     }
 
     /**
-     * A start reports `AuthorizationRequestStarted` only once the transaction
-     * that stored its request commits, and a refusal reports its failure
-     * outside any transaction.
+     * A start reports only after its request commits; a refusal reports outside
+     * any transaction.
      *
      * @return void
      */
@@ -111,7 +105,7 @@ final class StartAfterCommitTest extends TestCase
 
     /**
      * Each application a start inside a transaction names: one that would
-     * start, and one that would be refused.
+     * start, one refused.
      *
      * @return iterable<string, array{0: string}>
      */
@@ -122,10 +116,8 @@ final class StartAfterCommitTest extends TestCase
     }
 
     /**
-     * A start called inside the caller's transaction on the storage connection
-     * is refused before anything else, whether it would start or be refused: no
-     * attempt counted, no driver asked, no request stored and nothing reported.
-     * Once the caller's transaction is over, it starts.
+     * A start inside the caller's transaction is refused before anything else,
+     * and starts once it ends.
      *
      * @param  string  $application
      * @return void

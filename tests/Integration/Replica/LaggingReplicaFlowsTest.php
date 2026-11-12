@@ -46,21 +46,11 @@ use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
- * A read replica that contradicts the primary, in both directions, for
- * everything that decides admission (SSO-11.3): a valid completion never fails
- * and a replay never passes because of what the replica says. Sticky reads are
- * off, so nothing but reading the write connection can reach the primary.
+ * Integration tests that a read replica contradicting the primary never decides
+ * admission.
  *
- * Each pair of tests sets one fact against itself: connection trust and its
- * version, a row missing from the replica and a row only it still has, a code
- * unredeemed there and redeemed on the primary, and the reverse, a request
- * likewise, keys and JWKS, a verified domain and a lapsed one, enforcement and
- * its version, a link's state and a reservation, and single-use keys. Every
- * flow runs through the HTTP kernel and the real protocols.
- *
- * A flow never needs the replica: with its tables gone every flow still runs.
- * The primary and the replica are SQLite files, by design, whatever engine the
- * suite runs on.
+ * Sticky reads are off. The primary and replica are SQLite files whatever
+ * engine the suite runs on.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -89,7 +79,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     private const string PERSON = 'person-replica';
 
     /**
-     * Create the tables on the primary and the replica, and the routes.
+     * Create the tables on the primary and the replica.
      *
      * @return void
      */
@@ -136,8 +126,8 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A connection enabled on the primary starts, completes and redeems, though
-     * the replica says it is disabled.
+     * A connection enabled on the primary works though the replica says
+     * disabled.
      *
      * @return void
      */
@@ -151,8 +141,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A connection disabled on the primary after the start refuses the
-     * completion, though the replica says it is still enabled.
+     * A connection disabled after the start refuses the completion.
      *
      * @return void
      */
@@ -168,9 +157,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A trust version raised on the primary overtakes a request started under
-     * the last one, though the replica still holds the version it started
-     * under.
+     * A trust version raised on the primary overtakes the started request.
      *
      * @return void
      */
@@ -185,8 +172,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A trust version raised on the replica alone overtakes nothing: the valid
-     * completion goes on.
+     * A trust version raised on the replica alone overtakes nothing.
      *
      * @return void
      */
@@ -201,9 +187,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * Every row a flow writes is missing from the replica, as newly created
-     * rows are, and the flow serves: a connection, a request, a code and a
-     * link, through a `link`, a `sign_in` and a `reauthenticate`.
+     * Every flow works with its rows missing from the replica.
      *
      * @return void
      */
@@ -241,8 +225,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A request only the replica still has answers nothing: the completion is
-     * rejected, with no redirect target.
+     * A request only the replica has is rejected with no redirect.
      *
      * @return void
      */
@@ -277,8 +260,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A link only the replica still has resolves nothing: the person is handed
-     * off unlinked, not as the identity the replica names.
+     * A link only the replica has resolves nothing; the person is unlinked.
      *
      * @return void
      */
@@ -293,8 +275,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A replay of a redeemed code is refused, though the replica says it is
-     * unredeemed.
+     * A replayed code is refused though the replica says unredeemed.
      *
      * @return void
      */
@@ -334,8 +315,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A second answer for a consumed request is rejected, though the replica
-     * says it is unconsumed.
+     * A second answer is rejected though the replica says unconsumed.
      *
      * @return void
      *
@@ -359,8 +339,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * An unconsumed request completes, though the replica says it was consumed
-     * and completed.
+     * An unconsumed request completes though the replica says completed.
      *
      * @return void
      */
@@ -377,8 +356,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A token signed with the key the primary holds verifies, with nothing
-     * fetched, though the replica still holds the old one.
+     * A token signed with the primary's key verifies with nothing fetched.
      *
      * @return void
      */
@@ -401,8 +379,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A token signed with a key only the replica holds is refused: the primary
-     * has no such key and its provider publishes none.
+     * A token signed with a replica-only key is refused.
      *
      * @return void
      */
@@ -420,8 +397,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A certificate only the replica trusts verifies nothing, and the one the
-     * primary trusts still does, though the replica has no row of it.
+     * Only the primary's certificates verify.
      *
      * @return void
      */
@@ -441,8 +417,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A connection that starts while the primary holds its certificate is
-     * unusable once it is gone from there, though the replica still trusts it.
+     * A certificate removed on the primary makes the connection unusable.
      *
      * @return void
      */
@@ -463,8 +438,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * The public keys served are the primary's: a key missing from the replica
-     * is served, and one only the replica has is not.
+     * The public keys served are the primary's.
      *
      * @return void
      */
@@ -482,8 +456,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * Metadata is described from the primary: a connection missing from the
-     * replica is served, and one only the replica has is not.
+     * Metadata is described from the primary.
      *
      * @return void
      */
@@ -527,8 +500,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A domain lapsed on the primary routes nowhere, though the replica says it
-     * is verified.
+     * A domain lapsed on the primary routes nowhere.
      *
      * @return void
      */
@@ -542,8 +514,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A domain verified on the primary routes, though the replica says it has
-     * lapsed.
+     * A domain verified on the primary routes.
      *
      * @return void
      */
@@ -557,8 +528,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A rule on the primary that names another connection refuses the sign-in,
-     * though the replica says the rule is off.
+     * A rule on the primary refuses the sign-in though the replica's is off.
      *
      * @return void
      */
@@ -576,8 +546,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * With the rule off on the primary a sign-in goes on, though the replica
-     * says a rule names another connection.
+     * With the rule off on the primary the sign-in goes on.
      *
      * @return void
      */
@@ -597,8 +566,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * The enforcement version a code is issued under is the primary's, though
-     * the replica holds another.
+     * A code is issued under the primary's enforcement version.
      *
      * @return void
      */
@@ -616,8 +584,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A link suspended on the primary refuses the sign-in, though the replica
-     * says it is active.
+     * A link suspended on the primary refuses the sign-in.
      *
      * @return void
      */
@@ -632,8 +599,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A link active on the primary signs in, though the replica says it is
-     * suspended.
+     * A link active on the primary signs in.
      *
      * @return void
      */
@@ -649,8 +615,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A live reservation on the primary holds the subject, though the replica
-     * knows nothing of it.
+     * A reservation on the primary holds the subject.
      *
      * @return void
      */
@@ -664,7 +629,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A reservation only the replica has holds nothing: the sign-in goes on.
+     * A reservation only the replica has holds nothing.
      *
      * @return void
      */
@@ -678,8 +643,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * An assertion recorded on the primary is a replay in another flow, though
-     * the replica has no row of it.
+     * An assertion recorded on the primary is a replay.
      *
      * @return void
      */
@@ -694,8 +658,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * An assertion only the replica has recorded is no replay: the valid
-     * response completes.
+     * An assertion recorded only on the replica is no replay.
      *
      * @return void
      */
@@ -734,8 +697,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * A flow never needs the replica: with its tables gone, every flow runs on
-     * the primary alone.
+     * Every flow runs with the replica's tables gone.
      *
      * @return void
      */
@@ -780,9 +742,8 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * Copy the row as it stands to the replica, then set one side against the
-     * other: the replica's copy changed, or, with `onPrimary`, the primary's
-     * row, leaving the copy stale.
+     * Copy the row to the replica, then change the copy, or with `onPrimary`
+     * the original.
      *
      * @param  string  $table
      * @param  string  $id
@@ -813,8 +774,7 @@ final class LaggingReplicaFlowsTest extends TestCase
     }
 
     /**
-     * Copy the row to the replica and delete it from the primary, so the
-     * replica alone still holds it.
+     * Move the row from the primary to the replica.
      *
      * @param  string  $table
      * @param  int|string  $id

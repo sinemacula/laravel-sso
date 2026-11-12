@@ -43,23 +43,7 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * Races the replay of one SAML assertion across processes, each with its own
- * database connection, on PostgreSQL and MySQL (SSO-6.6, SSO-11.5): two
- * requests whose responses carry the same assertion id, completed at once, give
- * exactly one handoff and one `replayed`, and exactly one record of the
- * assertion. Each completer validates its response, signals that it has, and
- * waits for the other's signal before it takes the completion's locks, so both
- * reach the locked recording together however loaded the machine. A completion
- * runs outside any transaction on the storage connection, so each completer
- * runs plainly. On PostgreSQL alone a completer may instead fail to serialise
- * (SQLSTATE `40001`), which is a safe outcome: it issued nothing.
- *
- * Sequentially, on every database, an assertion that fails validation is never
- * recorded, and the same assertion id under another connection or issuer is
- * recorded apart.
- *
- * The race is skipped on SQLite, whose in-memory database each process would
- * have to itself, and where `pcntl` is not available.
+ * Integration tests racing the replay of one SAML assertion across processes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -90,10 +74,7 @@ final class ConcurrentSamlReplayTest extends TestCase
     private string $outcomes;
 
     /**
-     * Bind a fixed clock, a limiter that allows every attempt and the recording
-     * issuer, configure SAML, the endpoints and the application, create the
-     * tables and a connection that trusts the identity provider, and make the
-     * directory the processes report in.
+     * Configure SAML and create a connection that trusts the identity provider.
      *
      * @return void
      *
@@ -155,10 +136,7 @@ final class ConcurrentSamlReplayTest extends TestCase
     }
 
     /**
-     * Two requests whose responses carry the same assertion id, completed at
-     * once: exactly one completes with a code, the other is refused with
-     * `replayed` (or, on PostgreSQL only, fails to serialise), and the
-     * assertion is recorded once.
+     * Of two responses carrying one assertion id, exactly one completes.
      *
      * @return void
      */
@@ -179,9 +157,8 @@ final class ConcurrentSamlReplayTest extends TestCase
     }
 
     /**
-     * Sequentially, an assertion that fails validation records nothing, so the
-     * same assertion, valid, still completes once; and its id under another
-     * connection is recorded apart.
+     * An invalid assertion is never recorded, and another connection's is
+     * recorded apart.
      *
      * @return void
      */
@@ -217,9 +194,8 @@ final class ConcurrentSamlReplayTest extends TestCase
     }
 
     /**
-     * Store a request through the connection and answer what the browser posts
-     * for it: a valid response carrying the shared assertion id, with the
-     * changes given, and the request's `RelayState`.
+     * Store a request and answer the post for it, carrying the shared assertion
+     * id.
      *
      * @param  string  $requestId
      * @param  string  $relayState
@@ -252,8 +228,8 @@ final class ConcurrentSamlReplayTest extends TestCase
     }
 
     /**
-     * Fork a completer for each post, have each start at the same moment on a
-     * connection of its own, and collect what each reported, in order.
+     * Fork a completer per post, start them together and collect their reports
+     * in order.
      *
      * @param  list<\SineMacula\Laravel\Sso\Protocols\CompletionRequest>  $posts
      * @return list<string>
@@ -290,10 +266,8 @@ final class ConcurrentSamlReplayTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, hold the completion
-     * once it has validated until every racer has, complete, report how it
-     * ended and how many codes it issued, and end without running the parent's
-     * shutdown.
+     * Complete on its own connection once every racer has validated, and exit
+     * without the parent's shutdown.
      *
      * @param  int  $process
      * @param  int  $racers
@@ -334,9 +308,7 @@ final class ConcurrentSamlReplayTest extends TestCase
     }
 
     /**
-     * Bind the validation step to one that, once the response is validated,
-     * signals it and waits for every racer's signal before the completion takes
-     * its locks.
+     * Hold each completion after validation until every racer has validated.
      *
      * @param  int  $process
      * @param  int  $racers
@@ -391,9 +363,8 @@ final class ConcurrentSamlReplayTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error, so a race whose
-     * racers ran one after the other never passes as one that overlapped.
+     * Wait up to `SIGNAL_SECONDS` for the signal file, and fail when it never
+     * appears.
      *
      * @param  string  $signal
      * @return void
@@ -408,8 +379,7 @@ final class ConcurrentSamlReplayTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`; whether it
-     * appeared.
+     * Wait up to `SIGNAL_SECONDS` for the signal file; whether it appeared.
      *
      * @param  string  $signal
      * @return bool
@@ -432,9 +402,8 @@ final class ConcurrentSamlReplayTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure (SQLSTATE 40001), which a completion may meet only
-     * there.
+     * Whether the error, or its cause, is a PostgreSQL serialisation failure
+     * (SQLSTATE 40001).
      *
      * @param  \Throwable  $exception
      * @return bool

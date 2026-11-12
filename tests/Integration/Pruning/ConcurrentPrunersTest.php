@@ -20,15 +20,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races runs of the clean-up across processes, each with its own database
- * connection, on PostgreSQL and MySQL (SSO-11.11): however they interleave,
- * every eligible row goes exactly once, the counts of all the runs adding up to
- * the rows there were, nothing else goes, nobody fails, and the links version
- * rises for each connection reservations went from.
- *
- * A run refuses a caller's transaction, so each racer runs plainly; the refusal
- * has its test in `PrunerTest`. Skipped on SQLite, whose in-memory database
- * each process would have to itself, and where `pcntl` is not available.
+ * Races pruner runs across processes on PostgreSQL and MySQL.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -54,8 +46,8 @@ final class ConcurrentPrunersTest extends TestCase
     private array $connections = [];
 
     /**
-     * Skip where processes cannot share the database; bind a fixed clock, and
-     * create the tables and the connections.
+     * Skip where processes cannot share the database; bind a fixed clock and
+     * create the tables and connections.
      *
      * @return void
      *
@@ -89,8 +81,7 @@ final class ConcurrentPrunersTest extends TestCase
     }
 
     /**
-     * Runs racing over the same rows delete each exactly once between them, and
-     * leave standing what was never eligible.
+     * Racing runs delete each eligible row exactly once between them.
      *
      * @return void
      */

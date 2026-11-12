@@ -9,8 +9,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\ElementRegistries;
 
 /**
- * Unit tests for where the XML library loads its element registries from: the
- * installer plugin's `classes` directory under this project's vendor directory.
+ * Unit tests for where the XML library loads its element registries from.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -28,20 +28,7 @@ use Tests\Concerns\UsesDomains;
 use Tests\Concerns\UsesFlowTables;
 
 /**
- * Query budgets for `Pruning\Pruner` (SSO-11.11), with the counters on a
- * connection of their own, so each budget says which statement went where:
- *
- * - each kind costs at least one candidate select, so a run with nothing
- *   eligible is six selects, five on the storage connection and one on the
- *   counters', and deletes nothing;
- * - a page is one select and a batch one delete: a full batch is followed by
- *   the next page's select, whether that finds a final partial batch or nothing;
- * - a kind stopped at its work cap by a full batch costs one probe select more,
- *   and a kind stopped by a partial batch, or a drain, none: only that probe
- *   says whether a run is incomplete;
- * - a batch of reservations costs, for each of its connections, the
- *   connection's locking read, one delete, and one update of its links version
- *   when the delete took a row; nothing else on the batch is locked.
+ * Query budgets for the pruner, with the counters on their own connection.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,8 +52,7 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     private CarbonImmutable $past;
 
     /**
-     * Move the counters to their own connection, send the run's log line
-     * nowhere, and make a connection.
+     * Move the counters apart, silence the run's log and make a connection.
      *
      * @return void
      */
@@ -84,8 +70,7 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A run with nothing eligible is one candidate select of each kind, each on
-     * its own connection, and no delete.
+     * One candidate select of each kind on its own connection, and no delete.
      *
      * @return void
      */
@@ -100,8 +85,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Rows of `[kind]`: each kind pruned one statement at a time, on the
-     * storage connection.
+     * Rows of `[kind]`: each kind pruned one statement at a time on the storage
+     * connection.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind}>
      */
@@ -114,9 +99,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A full batch and a final partial batch are the select of each page and
-     * one delete of each batch, in that order; the other kinds cost a select
-     * each.
+     * The select of each page and one delete per batch, in order; the other
+     * kinds a select each.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @return void
@@ -137,7 +121,7 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Full batches alone end with one more select, which finds nothing.
+     * Full batches alone end with one more select that finds nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @return void
@@ -156,8 +140,7 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Counters are selected and deleted on their own connection, and nothing of
-     * theirs reaches the storage connection.
+     * Counters are selected and deleted on their own connection alone.
      *
      * @return void
      */
@@ -175,10 +158,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Rows of `[cap, batch, rows, selects, deletes, deleted, status, drain]`:
-     * how a kind's turn ends at its work cap, and what it costs. The probe is
-     * the select that follows the last delete of a turn the cap ended on a full
-     * batch: its `limit` is 1.
+     * Rows of `[cap, batch, rows, selects, deletes, deleted, status, drain]`;
+     * the probe is the `limit 1` select after a cap ends a full batch.
      *
      * @return iterable<string, array{0: int, 1: int, 2: int, 3: int, 4: int, 5: int, 6: \SineMacula\Laravel\Sso\Pruning\Enums\PruneStatus, 7: bool}>
      */
@@ -200,9 +181,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Each way a storage kind's turn ends at its work cap is the select and the
-     * delete of each batch, and the probe only when the cap ended it on a full
-     * batch.
+     * The select and delete of each batch, and the probe only when the cap
+     * ended the turn on a full batch; only the probe says a run is incomplete.
      *
      * @param  int  $cap
      * @param  int  $batch
@@ -278,8 +258,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A batch of reservations of one connection is the page's select, the
-     * connection's lock, one delete and one update, batch after batch.
+     * The page's select, then per batch the connection's lock, one delete and
+     * the links version; nothing else is locked.
      *
      * @return void
      */
@@ -300,8 +280,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A batch of reservations of two connections is one select, then a lock, a
-     * delete and an update for each.
+     * Reservations of two connections are one select, then a lock, a delete and
+     * an update for each.
      *
      * @return void
      */
@@ -320,8 +300,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * With nothing of those named still eligible, a withdrawal is the lock and
-     * the delete, and raises no version.
+     * With nothing named still eligible, a withdrawal is the lock and the
+     * delete, and raises no version.
      *
      * @return void
      */
@@ -338,8 +318,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A reservation whose connection is gone is the lock that finds nothing,
-     * the delete, and the update that touches no row.
+     * A gone connection is the lock that finds nothing, the delete and an
+     * update that touches no row.
      *
      * @return void
      */
@@ -358,9 +338,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * One row of every kind is a select and a delete of each, a lock and an
-     * update beside the reservation's, and the counter's two statements on its
-     * own connection alone.
+     * One row of every kind is a select and delete each, plus the reservation's
+     * lock and update, with the counter's two on its own connection.
      *
      * @return void
      */
@@ -406,8 +385,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Assert the storage statements of the last budget went to the models'
-     * tables, one each, in the order given.
+     * Assert the last budget's storage statements hit the models' tables, one
+     * each, in order.
      *
      * @param  list<\SineMacula\Laravel\Sso\Models\SsoModel>  $models
      * @return void
@@ -425,8 +404,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Assert every statement of the counters' connection in the last budget
-     * named the counters' table, and none of the storage connection's did.
+     * Assert the last budget sent counter statements only on the counters'
+     * connection.
      *
      * @return void
      */
@@ -457,8 +436,8 @@ final class OperationsQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * What a run sends on the storage connection when the kind's turn sends the
-     * statements given and every other storage kind's the one select.
+     * The storage verbs of a run where the kind's turn sends these and every
+     * other kind one select.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @param  list<string>  $turn

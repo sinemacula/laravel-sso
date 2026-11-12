@@ -10,8 +10,7 @@ use SineMacula\Laravel\Sso\Applications\Enums\ExternalSignIn;
 use SineMacula\Laravel\Sso\Applications\Enums\HandoffDelivery;
 
 /**
- * Unit tests for the applications' enums: where a handoff code is delivered,
- * and whether an application allows external sign-in, each value stable.
+ * Unit tests for the application enums' stable values.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

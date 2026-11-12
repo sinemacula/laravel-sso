@@ -8,19 +8,8 @@ use SineMacula\Laravel\Sso\Protocols\Enums\CorrelationKind;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * What a protocol driver read from a response to find its authorisation request
- * (SSO-5.1, SSO-5.3, SSO-7.1), before anything in it is validated: the
- * completion pipeline looks the request up and consumes it, the only place a
- * request is consumed, and only then asks the driver to validate the response
- * against it.
- *
- * A solicited response carries the random protocol state (the OIDC `state`, the
- * SAML `RelayState`) and, over SAML, the `InResponseTo` naming the
- * `AuthnRequest` id; at least one of the two is given, and when both are they
- * must name the same request. The state is protocol state, so it is held as a
- * `Secrets\Secret` and only its digest is ever looked up or stored (SSO-9.8).
- * An unsolicited SAML response (SSO-5.8) and an uncorrelated response carry
- * neither.
+ * What a driver read from a response to find its authorisation request, before
+ * validation. The state is a secret; only its digest is looked up or stored.
  *
  * @api
  *
@@ -44,7 +33,7 @@ final readonly class Correlation
         /** What the response was correlated with. */
         public CorrelationKind $kind,
 
-        /** The protocol state the response carried, for a solicited one that carried it. */
+        /** The OIDC `state` or SAML `RelayState`, if carried. */
         public ?Secret $state,
 
         /** The `InResponseTo` a solicited SAML response carried. */
@@ -97,9 +86,7 @@ final readonly class Correlation
     }
 
     /**
-     * The lower-case hex SHA-256 digest of the state, the only form an
-     * authorisation request keeps it in, or `null` when the response carried
-     * none.
+     * The lower-case hex SHA-256 digest of the state, or `null` without one.
      *
      * @return ?string
      */

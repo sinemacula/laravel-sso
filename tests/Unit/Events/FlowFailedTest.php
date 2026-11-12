@@ -14,8 +14,7 @@ use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 
 /**
- * Unit tests for the failure event: a package event carrying its context, its
- * flow and its reason and nothing else, which survives a queue unchanged.
+ * Unit tests for the flow failure event.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -43,8 +42,7 @@ final class FlowFailedTest extends TestCase
     }
 
     /**
-     * A serialise and unserialise round trip, as a queue makes, keeps the flow,
-     * the reason and the context.
+     * A serialise round trip keeps the flow, the reason and the context.
      *
      * @return void
      */
@@ -62,8 +60,7 @@ final class FlowFailedTest extends TestCase
     }
 
     /**
-     * The event holds its context, its flow and its reason, and no other
-     * property: no free-text message, no payload.
+     * The event holds only its context, flow and reason.
      *
      * @return void
      */

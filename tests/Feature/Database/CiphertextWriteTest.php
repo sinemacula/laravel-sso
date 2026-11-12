@@ -12,14 +12,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the save of a model whose write carries a ciphertext
- * (SSO-2.5, SSO-11.9): a failed write that binds the ciphertext is a
- * `RuntimeException` that names only the SQLSTATE and chains nothing, while a
- * write that binds none is left to Laravel's own `QueryException`.
- *
- * Each test starts without the package's tables, those an earlier test kept
- * dropped, and only a test that needs them has them, so a write fails on every
- * engine otherwise.
+ * Feature tests for a failed save of a model whose write carries a ciphertext.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,9 +42,8 @@ final class CiphertextWriteTest extends TestCase
     }
 
     /**
-     * A failed write that binds the ciphertext is a `RuntimeException` with the
-     * failure and the driver's SQLSTATE, which quotes no ciphertext and chains
-     * nothing that does.
+     * A failed ciphertext write throws naming only the SQLSTATE and chains
+     * nothing.
      *
      * @return void
      */
@@ -73,8 +65,7 @@ final class CiphertextWriteTest extends TestCase
     }
 
     /**
-     * A failure that gives no SQLSTATE is named `unknown`, never by what it
-     * says.
+     * A failure with no SQLSTATE is named `unknown`.
      *
      * @return void
      */
@@ -90,8 +81,8 @@ final class CiphertextWriteTest extends TestCase
     }
 
     /**
-     * A write that binds no ciphertext, the column being `null`, is left to
-     * Laravel's own `QueryException`.
+     * A write that binds a `null` ciphertext is left to Laravel's
+     * `QueryException`.
      *
      * @return void
      */
@@ -103,8 +94,8 @@ final class CiphertextWriteTest extends TestCase
     }
 
     /**
-     * A write that does not change the ciphertext column binds none, and is
-     * left to Laravel's own `QueryException`.
+     * A write that leaves the ciphertext unchanged is left to Laravel's
+     * `QueryException`.
      *
      * @return void
      */

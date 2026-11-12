@@ -22,11 +22,8 @@ use Tests\Fixtures\Fetching\StubHostResolver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the default fetcher's redirects: a request without a
- * credential follows each redirect checked, resolved and pinned again, with
- * `GET` and nothing of the original request, up to the limit; a redirect to a
- * scheme, host or address the fetcher refuses is refused; and a request that
- * carries a credential follows none (SSO-2.9). Nothing touches the network.
+ * Feature tests for the default fetcher's redirect handling. Nothing touches
+ * the network.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -87,8 +84,8 @@ final class GuzzleFetcherRedirectsTest extends TestCase
     }
 
     /**
-     * Metadata follows a redirect to another public `https` host: the new host
-     * is resolved, checked and pinned on its own, and asked with `GET`.
+     * A redirect to another public `https` host is resolved, checked and pinned
+     * again, and asked with `GET`.
      *
      * @param  int  $status
      * @return void
@@ -115,7 +112,7 @@ final class GuzzleFetcherRedirectsTest extends TestCase
     }
 
     /**
-     * A followed redirect carries the purpose's headers and the fixed options
+     * A followed redirect carries the purpose's headers and fixed options
      * again, and no body.
      *
      * @return void
@@ -142,7 +139,7 @@ final class GuzzleFetcherRedirectsTest extends TestCase
 
     /**
      * Rows of `[location, resolved]`: relative locations and what they resolve
-     * to against the URL that answered them.
+     * to.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -158,8 +155,8 @@ final class GuzzleFetcherRedirectsTest extends TestCase
     }
 
     /**
-     * A relative `Location` is resolved against the URL that answered it, and
-     * the result is checked like any other.
+     * A relative `Location` resolves against the URL that answered and is
+     * checked as usual.
      *
      * @param  string  $location
      * @param  string  $resolved
@@ -200,8 +197,8 @@ final class GuzzleFetcherRedirectsTest extends TestCase
     }
 
     /**
-     * A redirect to a scheme, host or address the fetcher refuses is refused,
-     * and the target is never asked.
+     * A redirect to anything the fetcher refuses is refused, and the target is
+     * never asked.
      *
      * @param  string  $location
      * @param  string  $cause
@@ -292,9 +289,8 @@ final class GuzzleFetcherRedirectsTest extends TestCase
     }
 
     /**
-     * A request that carries a credential is refused when answered with a
-     * redirect, even to a public `https` host, and the `Location` is never
-     * resolved or asked, so the credential cannot be sent on.
+     * A credentialed request answered with a redirect is refused, so the
+     * credential is never sent on.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
      * @return void
@@ -312,8 +308,8 @@ final class GuzzleFetcherRedirectsTest extends TestCase
     }
 
     /**
-     * A `3xx` without a `Location`, or a `Location` on a status that is not a
-     * `3xx`, is a response like any other, fetched and not followed.
+     * A `3xx` without `Location`, or `Location` on another status, is fetched
+     * and not followed.
      *
      * @return void
      */
@@ -349,8 +345,8 @@ final class GuzzleFetcherRedirectsTest extends TestCase
     }
 
     /**
-     * A credentialed request answered with a `3xx` without a `Location` is a
-     * response like any other.
+     * A credentialed request answered with a `3xx` without `Location` is
+     * fetched.
      *
      * @return void
      */
@@ -364,8 +360,8 @@ final class GuzzleFetcherRedirectsTest extends TestCase
     }
 
     /**
-     * Build a fetcher over a mock handler answering with the responses in turn,
-     * the stub resolver of the known hosts and a capturing logger.
+     * A fetcher over a mock handler, the stub resolver of the known hosts and a
+     * capturing logger.
      *
      * @param  list<\Psr\Http\Message\ResponseInterface|\Throwable>  $responses
      * @return \SineMacula\Laravel\Sso\Fetching\GuzzleFetcher

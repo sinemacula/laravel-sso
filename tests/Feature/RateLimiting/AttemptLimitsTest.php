@@ -12,9 +12,7 @@ use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
 use Tests\TestCase;
 
 /**
- * Feature tests for the limits on each flow: the shipped defaults, read on
- * every call, always on, and a missing or malformed limit refused with a
- * message naming its key.
+ * Feature tests for each flow's attempt limits.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,8 +26,8 @@ final class AttemptLimitsTest extends TestCase
     private const string MALFORMED = '`sso.rate_limits.completion.per_ip` must be an array of `max` (1 to 1000000) and `decay_seconds` (1 to 86400).';
 
     /**
-     * Rows of `[flow, limits]`: each flow's shipped limits, by scope, as
-     * `[max, decay seconds]`.
+     * Rows of `[flow, limits]`: shipped limits by scope as `[max, decay
+     * seconds]`.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow, 1: array<string, array{0: int, 1: int}>}>
      */
@@ -45,8 +43,7 @@ final class AttemptLimitsTest extends TestCase
     }
 
     /**
-     * Each flow has a limit for each scope it is counted in, in the order of
-     * its scopes, from the shipped configuration.
+     * Each flow ships a limit for each of its scopes, in scope order.
      *
      * @param  \SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow  $flow
      * @param  array<string, array{0: int, 1: int}>  $expected
@@ -75,8 +72,7 @@ final class AttemptLimitsTest extends TestCase
     }
 
     /**
-     * The canonical decimal strings `env()` returns are read as the integers
-     * they name, at each bound.
+     * Decimal strings from `env()` are read as integers at each bound.
      *
      * @return void
      */
@@ -136,8 +132,7 @@ final class AttemptLimitsTest extends TestCase
     }
 
     /**
-     * A malformed limit fails closed, naming its key, rather than turning the
-     * limit off or falling back to a default.
+     * A malformed limit fails closed, naming its key.
      *
      * @param  mixed  $value
      * @return void
@@ -169,8 +164,7 @@ final class AttemptLimitsTest extends TestCase
     }
 
     /**
-     * Rows of `[setting, value]`: blocks that leave every limit of the
-     * completion flow out.
+     * Rows of `[setting, value]`: blocks that leave out every completion limit.
      *
      * @return iterable<string, array{0: string, 1: mixed}>
      */
@@ -185,8 +179,7 @@ final class AttemptLimitsTest extends TestCase
     }
 
     /**
-     * A flow block or a limits block that is missing or not a block never turns
-     * the limits off: the first limit fails closed, naming its key.
+     * A missing or malformed block fails closed at the first limit.
      *
      * @param  string  $setting
      * @param  mixed  $value
@@ -219,8 +212,7 @@ final class AttemptLimitsTest extends TestCase
     }
 
     /**
-     * Validating with the shipped limits passes, and leaves a limit for every
-     * scope of every flow.
+     * The shipped limits validate.
      *
      * @return void
      */

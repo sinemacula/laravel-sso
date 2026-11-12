@@ -7,24 +7,8 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * One of a connection's own `private_key_jwt` keys (SSO-2.4, SSO-2.7, RFC
- * 7523) as a JWK: the algorithm the package signs client assertions with, its
- * `kid`, which is the RFC 7638 thumbprint of its public half and so stays the
- * same for as long as the key does, and its public JWK, which the identity
- * provider registers (SSO-5.9).
- *
- * The algorithm is the connection's pinned one, given by the caller, or the
- * key's default: an RSA key of at least 2048 bits signs with `PS256`, or
- * `RS256` when pinned to it, and an elliptic curve key on P-256 signs with
- * `ES256` alone. The assertion's header and the published JWK's `alg` are both
- * that algorithm, and the `kid` does not depend on it.
- *
- * `fromPrivateKey()` reads the private half, for the call that signs, and holds
- * it in a `\SensitiveParameterValue` that no dump shows; the object refuses to
- * be serialised. `publicJwk()` reads a public key alone, and its `kid` is the
- * one the private half signs under. Any other key, or a pinned algorithm the
- * key cannot sign with, is a misconfiguration (an `InvalidArgumentException`):
- * the package generates only these keys and refuses such a setting.
+ * A connection's own `private_key_jwt` key as a JWK. Its `kid` is the RFC 7638
+ * thumbprint, so it stays stable whatever the algorithm.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -33,7 +17,7 @@ use SineMacula\Laravel\Sso\Secrets\Secret;
  */
 final readonly class ClientKey
 {
-    /** @var string The algorithm an RSA key signs with unless it is pinned to another. */
+    /** @var string The RSA default algorithm. */
     public const string RSA_ALGORITHM = 'PS256';
 
     /** @var string The other algorithm an RSA key may be pinned to. */
@@ -42,16 +26,16 @@ final readonly class ClientKey
     /** @var string The algorithm a P-256 key signs with. */
     public const string EC_ALGORITHM = 'ES256';
 
-    /** @var string The refusal of any other key. */
+    /** @var string The message for any other key. */
     private const string UNSUPPORTED = 'A client assertion key is an RSA key of at least 2048 bits or an elliptic curve key on P-256.';
 
-    /** @var string The refusal of a pinned algorithm the key cannot sign with. */
+    /** @var string The message for a pinned algorithm the key cannot sign with. */
     private const string INCOMPATIBLE = 'A client assertion algorithm must fit its key: PS256 or RS256 for an RSA key, ES256 for a P-256 key.';
 
-    /** @var array<string, string> The RSA members of a private JWK, by the name OpenSSL gives each. */
+    /** @var array<string, string> The private JWK RSA member of each OpenSSL name. */
     private const array RSA_PRIVATE = ['d' => 'd', 'p' => 'p', 'q' => 'q', 'dmp1' => 'dp', 'dmq1' => 'dq', 'iqmp' => 'qi'];
 
-    /** @var \SensitiveParameterValue The private JWK, when the key was read from its private half. */
+    /** @var \SensitiveParameterValue The private JWK, when read from the private half. */
     private \SensitiveParameterValue $privateJwk;
 
     /**
@@ -69,7 +53,7 @@ final readonly class ClientKey
         /** The public JWK, with its `kid`, `use` and `alg`. */
         public array $publicJwk,
 
-        // The private members; held wrapped
+        // Not promoted: held wrapped
         #[\SensitiveParameter]
         array $privateMembers = [],
     ) {
@@ -77,8 +61,7 @@ final readonly class ClientKey
     }
 
     /**
-     * What a dump shows: the algorithm and the public JWK, never a private
-     * member.
+     * Show the algorithm and public JWK, never a private member.
      *
      * @return array<string, mixed>
      */
@@ -88,8 +71,8 @@ final readonly class ClientKey
     }
 
     /**
-     * Refuse to be serialised: the private half lives only for the call that
-     * signs with it.
+     * Refuse to be serialised; the private half lives only for its signing
+     * call.
      *
      * @return array<string, mixed>
      *
@@ -119,8 +102,8 @@ final readonly class ClientKey
     }
 
     /**
-     * The key whose PEM private half is given, signing with the algorithm it is
-     * pinned to, or its default.
+     * Read the key from its PEM private half, under the pinned algorithm or its
+     * default.
      *
      * @param  \SineMacula\Laravel\Sso\Secrets\Secret  $privateKeyPem
      * @param  ?string  $algorithm
@@ -143,8 +126,8 @@ final readonly class ClientKey
     }
 
     /**
-     * The public JWK of the PEM public key, under the `kid` its private half
-     * signs with and the `alg` it is pinned to, or its default.
+     * The public JWK of the PEM public key, with the same `kid` its private
+     * half signs under.
      *
      * @param  string  $publicKeyPem
      * @param  ?string  $algorithm
@@ -175,7 +158,7 @@ final readonly class ClientKey
     }
 
     /**
-     * The private JWK, for the call that signs and nothing else.
+     * The private JWK, for the signing call only.
      *
      * @return array<string, string>
      */
@@ -186,8 +169,7 @@ final readonly class ClientKey
     }
 
     /**
-     * The algorithm and the public JWK of the key OpenSSL describes, pinned to
-     * the algorithm given, or its default.
+     * The algorithm and public JWK of the key OpenSSL describes.
      *
      * @param  array<array-key, mixed>  $details
      * @param  ?string  $pinned
@@ -265,7 +247,7 @@ final readonly class ClientKey
     }
 
     /**
-     * A P-256 coordinate or scalar, padded to its 32 bytes and encoded.
+     * Encode a P-256 coordinate or scalar, padded to 32 bytes.
      *
      * @param  mixed  $bytes
      * @return string
@@ -276,7 +258,7 @@ final readonly class ClientKey
     }
 
     /**
-     * The bytes, as unpadded base64url.
+     * Encode the bytes as unpadded base64url.
      *
      * @param  mixed  $bytes
      * @return string

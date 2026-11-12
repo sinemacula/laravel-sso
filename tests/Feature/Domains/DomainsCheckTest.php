@@ -12,12 +12,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[domains]` and the settings it checks (SSO-3.1 to SSO-3.3,
- * SSO-12.2, SSO-12.3): checked only while the package is in use; the shipped
- * defaults passing; each malformed setting reported with the message the domain
- * operations would fail closed with, naming its key and never its value; the
- * refused domains always holding the public mailbox providers; and the linking
- * maximum age never above a day.
+ * Feature tests for the `[domains]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,8 +26,8 @@ final class DomainsCheckTest extends TestCase
     use RunsConfigurationChecks;
 
     /**
-     * Not checked while the package is not in use, however malformed; the
-     * shipped defaults pass once it is.
+     * Not checked while the package is not in use; the shipped defaults pass
+     * once it is.
      *
      * @return void
      */
@@ -49,9 +44,7 @@ final class DomainsCheckTest extends TestCase
     }
 
     /**
-     * Settings that are not configured take their defaults: a production-safe
-     * record name, the mailbox providers refused, a week's pending expiry, a
-     * three-day grace period and a day's linking maximum age.
+     * Unset settings take their production-safe defaults.
      *
      * @return void
      */
@@ -89,7 +82,7 @@ final class DomainsCheckTest extends TestCase
 
     /**
      * Configured refused domains are normalised and added to the mailbox
-     * providers, each once; none is ever removed.
+     * providers once each.
      *
      * @return void
      */
@@ -145,8 +138,8 @@ final class DomainsCheckTest extends TestCase
     }
 
     /**
-     * Each setting reports exactly its problem, every one in a run, and the
-     * reader fails closed with the same message.
+     * Each setting reports exactly its problem, and the reader fails closed
+     * with the same message.
      *
      * @param  array<string, mixed>  $settings
      * @param  list<string>  $problems

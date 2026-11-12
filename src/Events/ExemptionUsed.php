@@ -7,16 +7,10 @@ namespace SineMacula\Laravel\Sso\Events;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * A session was established in an enforcing tenant under an exemption
- * (SSO-4.4): the exemption contract exempted the identity from the tenant's
- * enforcement, so it was signed in without a satisfying connection.
+ * A session was established in an enforcing tenant under an exemption.
  *
- * Dispatched once the transaction on the storage connection that established it
- * commits, at once when there is none, and never when it rolls back (SSO-10.5).
- * Its context names the enforcing tenant, whose rule owns the connections
- * (`connectionTenantId`), the active tenant the session acts in (`tenantId`),
- * the application, the identity and, when the caller passed it, the session
- * (SSO-10.4). It reports only; it crosses a queue as it is.
+ * Its context's `connectionTenantId` is the enforcing tenant and `tenantId` the
+ * tenant the session acts in.
  *
  * @api
  *

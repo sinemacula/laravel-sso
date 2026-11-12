@@ -8,20 +8,8 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The settings of `Pruning\Pruner` (SSO-11.11), read from `sso.pruning` on each
- * call (SSO-11.2), each failing closed with an `InvalidArgumentException`
- * naming its key when it is malformed; `[pruning]` reports the same at boot.
- *
- * - `retention_seconds`: how long past its expiry an authorisation request or a
- *   handoff code is kept, 0 to 7776000 seconds (90 days; default 86400, a day).
- *   It is retention for diagnosis and never a safety margin: every flow checks
- *   the expiry and locks what it writes, whether the row is still there or not.
- * - `batch_size`: how many primary keys one statement names, 1 to 10000
- *   (default 1000), well inside the bound parameters MySQL and PostgreSQL
- *   (65535) and SQLite from 3.32 (32766) accept.
- * - `max_rows_per_kind`: how many eligible rows one run looks at for each kind,
- *   1 to 100000000 (default 100000), so a backlog in one kind leaves every
- *   other its turn; a run that stops there says so, and `--drain` goes past it.
+ * The `sso.pruning` settings, read on each call and failing closed when
+ * malformed.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,7 +25,7 @@ final readonly class PruneSettings
     /** @var int The batch when none is configured, in rows. */
     public const int DEFAULT_BATCH_SIZE = 1000;
 
-    /** @var int The greatest batch that may be configured, in rows. */
+    /** @var int The greatest batch, in rows; well inside every engine's bound parameter limit. */
     public const int MAX_BATCH_SIZE = 10000;
 
     /** @var int The work cap when none is configured, in rows of each kind. */

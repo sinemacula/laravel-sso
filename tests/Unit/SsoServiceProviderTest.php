@@ -85,10 +85,7 @@ use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\Fixtures\Fetching\StubHostResolver;
 
 /**
- * Unit tests for the package SsoServiceProvider, on a bare application with no
- * framework bootstrapping: what registering merges and binds, how each default
- * is shared, that a binding made before is kept and one made after outlives
- * every scope, and which seams are still the package's defaults.
+ * Unit tests for the service provider, on a bare application.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -98,7 +95,7 @@ use Tests\Fixtures\Fetching\StubHostResolver;
 #[CoversClass(SsoServiceProvider::class)]
 final class SsoServiceProviderTest extends TestCase
 {
-    /** @var list<class-string> Every seam the provider binds a default for, each only while nothing is bound to it yet. */
+    /** @var list<class-string> Every seam the provider binds a default for when unbound. */
     private const array SEAMS = [
         ApplicationPolicy::class, AttemptLimiter::class, Clock::class, DnsResolver::class, EndpointResolver::class,
         Enforcement::class, EnforcementExemption::class, EnforcementInheritance::class, EvidencePolicy::class,
@@ -108,7 +105,7 @@ final class SsoServiceProviderTest extends TestCase
         SecretEncrypter::class, SessionRevocation::class, SingleUseStore::class, TenantMembership::class,
     ];
 
-    /** @var array<class-string, class-string> Each seam whose default holds nothing between calls, with its default. */
+    /** @var array<class-string, class-string> Each seam with a stateless default, and the default. */
     private const array SINGLETON_DEFAULTS = [
         Clock::class                    => SystemClock::class,
         HostResolver::class             => SystemHostResolver::class,
@@ -130,7 +127,7 @@ final class SsoServiceProviderTest extends TestCase
         ProviderSessionDeadline::class  => ProviderDeadlineLimitsSession::class,
     ];
 
-    /** @var array<class-string, class-string> Each seam whose default reads configuration or a connection, with its default. */
+    /** @var array<class-string, class-string> Each seam whose default reads config or a connection, and the default. */
     private const array SCOPED_DEFAULTS = [
         SingleUseStore::class   => DatabaseSingleUseStore::class,
         SecretEncrypter::class  => LaravelSecretEncrypter::class,
@@ -178,9 +175,7 @@ final class SsoServiceProviderTest extends TestCase
     ];
 
     /**
-     * Registering the provider merges the package's configuration under the
-     * `sso` key and binds the contracts' defaults and the configuration
-     * checker, and nothing else.
+     * Registering merges the `sso` config and binds defaults and the checker.
      *
      * @return void
      */
@@ -197,10 +192,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Each default is shared under its private key, a singleton default for the
-     * process and a scoped one within its scope, while the contract itself is
-     * shared by nothing; the protocol registry is a singleton, and the checker
-     * is built afresh each time it is resolved.
+     * Each default is shared under its private key, never by its contract.
      *
      * @return void
      */
@@ -233,8 +225,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * A singleton default is resolved through its private key, and the same
-     * instance serves every scope.
+     * A singleton default resolves through its key, one for every scope.
      *
      * @param  class-string  $contract
      * @param  class-string  $default
@@ -270,8 +261,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * A scoped default is resolved through its private key, one instance within
-     * a scope and a new one in the next.
+     * A scoped default resolves through its key, fresh per scope.
      *
      * @param  class-string  $contract
      * @param  class-string  $default
@@ -299,8 +289,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Rows of `[contract, how]`: every scoped seam, bound over by each kind of
-     * binding an application makes.
+     * Rows of `[contract, how]`: every scoped seam and each way to bind it.
      *
      * @return iterable<string, array{0: class-string, 1: string}>
      */
@@ -314,10 +303,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * What an application binds over a scoped seam after the provider
-     * registers, and after the default was resolved, is what the seam answers
-     * from then on: the contract is in no scope of the package's, so forgetting
-     * the scoped instances never brings the default back.
+     * A binding over a scoped seam survives forgetting the scoped instances.
      *
      * @param  class-string  $contract
      * @param  string  $how
@@ -358,8 +344,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * A seam still bound to the package's default is the package's, before it
-     * is resolved and after, in every scope.
+     * A seam left to its default is the package's in every scope.
      *
      * @param  class-string  $contract
      * @return void
@@ -384,8 +369,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Rows of `[contract, how]`: every seam, bound over by each kind of binding
-     * an application makes.
+     * Rows of `[contract, how]`: every seam and each way to bind over it.
      *
      * @return iterable<string, array{0: class-string, 1: string}>
      */
@@ -399,8 +383,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Once an application binds over a seam, whether or not the default was
-     * resolved, the seam is no longer the package's default.
+     * A seam bound over is not the package's default.
      *
      * @param  class-string  $contract
      * @param  string  $how
@@ -429,9 +412,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * A contract bound before the provider registers, or bound by nobody, is
-     * not the package's default; the configuration checker the provider binds
-     * is.
+     * Only what the provider binds is the package's default.
      *
      * @return void
      */
@@ -449,8 +430,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * A binding the application or another package made before the provider
-     * registers is kept, never replaced by the package's default.
+     * A binding made before the provider registers is kept.
      *
      * @return void
      */
@@ -483,8 +463,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * The seams are every contract the provider binds: registering on an
-     * application that binds nothing binds exactly these contracts.
+     * The seams are exactly the contracts the provider binds.
      *
      * @return void
      */
@@ -523,9 +502,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Whatever the application or another package bound to a seam before the
-     * provider registers is kept, for every seam, never replaced by the
-     * package's default (FEATURES "Adaptable to each consumer").
+     * Every seam bound before the provider registers is kept.
      *
      * @param  class-string  $seam
      * @return void
@@ -545,9 +522,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * An enforcement inheritance, exemption or session revocation the
-     * application bound before the provider registers is kept (SSO-4.2,
-     * SSO-4.4, SSO-4.5); without one, each default is a singleton.
+     * An enforcement contract bound before is kept; defaults are singletons.
      *
      * @return void
      */
@@ -578,9 +553,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Every package class that takes a PSR-3 logger is given `SanitizingLogger`
-     * by a contextual binding, and `LoggerInterface` is never bound for the
-     * whole application.
+     * Every logging class gets `SanitizingLogger` by contextual binding.
      *
      * @return void
      */
@@ -621,8 +594,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Every configuration check is registered under its subject, the
-     * foundations' first.
+     * Every configuration check is registered, the foundations' first.
      *
      * @return void
      */
@@ -660,8 +632,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * Make the contract an alias of the object, held under a name of the
-     * application's.
+     * Alias the contract to the object under an application-owned name.
      *
      * @param  \Illuminate\Foundation\Application  $app
      * @param  class-string  $contract
@@ -675,8 +646,7 @@ final class SsoServiceProviderTest extends TestCase
     }
 
     /**
-     * A bare application with an empty configuration repository and an
-     * encrypter.
+     * A bare application with an empty config repository and an encrypter.
      *
      * @return array{0: \Illuminate\Foundation\Application, 1: \Illuminate\Config\Repository}
      */

@@ -13,8 +13,7 @@ use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptScope;
 
 /**
- * Unit tests for the keys the attempt limiter stores its counters under: keyed
- * digests of the flow, the scope and the value in its canonical form.
+ * Unit tests for the attempt limiter's counter keys.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,10 +30,7 @@ final class CounterKeysTest extends TestCase
     private const string PURPOSE = 'laravel-sso rate limit counters';
 
     /**
-     * A counter's key is the HMAC-SHA256 of the flow, the scope and the value
-     * joined by NUL bytes, under a key derived from the application key: 64
-     * lower-case hexadecimal characters, and not the plain digest anyone could
-     * recompute from a guessed value.
+     * A key is an HMAC-SHA256 of the parts under a key derived from APP_KEY.
      *
      * @return void
      */
@@ -49,8 +45,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * The same flow, scope and value give the same key on every call and from
-     * every instance, so every server counts in the same row.
+     * The same parts give the same key from every instance.
      *
      * @return void
      */
@@ -63,8 +58,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * Another flow, scope or value gives another key, so no two limits share a
-     * counter.
+     * Another flow, scope or value gives another key.
      *
      * @return void
      */
@@ -87,8 +81,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * The parts are joined by a separator no part can hold, so moving text from
-     * one part to the next gives another key.
+     * Moving text between parts gives another key.
      *
      * @return void
      */
@@ -101,8 +94,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * Another application key gives every counter another key, so rotating it
-     * starts the counters afresh.
+     * Rotating the application key gives every counter another key.
      *
      * @return void
      */
@@ -132,8 +124,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * Without an application key the counters cannot be keyed, so the limiter
-     * fails closed rather than store digests anyone could reverse.
+     * Without an application key the limiter fails closed.
      *
      * @param  mixed  $key
      * @return void
@@ -171,9 +162,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * An IP address is counted as the client it stands for: an IPv4 address
-     * carried in IPv6 as that IPv4 address, any other IPv6 address as its /64,
-     * and anything else lower-cased as given.
+     * An IP address counts as its client: mapped IPv4 as IPv4, IPv6 by /64.
      *
      * @param  string  $ip
      * @param  string  $canonical
@@ -189,8 +178,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * IPv4-mapped and NAT64 addresses count with their IPv4 address; addresses
-     * in one /64 share a counter, and addresses in two do not.
+     * Addresses of one client share a key; addresses in two /64s do not.
      *
      * @return void
      */
@@ -230,8 +218,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * An email domain is counted lower-cased, without one trailing dot, in
-     * ASCII; one that will not convert is counted lower-cased as given.
+     * An email domain is counted lower-cased, in ASCII, without a trailing dot.
      *
      * @param  string  $domain
      * @param  string  $canonical
@@ -247,8 +234,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * A domain's case, a trailing dot and its Unicode and ASCII forms share a
-     * counter; another domain does not.
+     * Every form of one domain shares a key; another domain does not.
      *
      * @return void
      */
@@ -290,8 +276,7 @@ final class CounterKeysTest extends TestCase
     }
 
     /**
-     * The keyed digest of the parts, computed independently of the class under
-     * test.
+     * The keyed digest of the parts, computed independently of the class.
      *
      * @param  list<string>  $parts
      * @param  string  $appKey

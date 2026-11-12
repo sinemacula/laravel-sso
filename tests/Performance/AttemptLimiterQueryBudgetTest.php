@@ -13,12 +13,7 @@ use SineMacula\Laravel\Sso\RateLimiting\DatabaseAttemptLimiter;
 use SineMacula\Laravel\Sso\RateLimiting\RateLimitStore;
 
 /**
- * Query budgets for the default attempt limiter on the paths every limited
- * attempt takes, counted per counter as `RateLimitStore::take()` makes them:
- * one update for a live or ended window; an update that finds nothing and an
- * insert for a new counter; and, for a full window, the update, the insert its
- * key refuses, the update again and one read of the window's end. A slot given
- * back is one more update.
+ * Query budgets for the default attempt limiter, counted per counter.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,8 +31,7 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
     private const string DOMAIN = 'example.com';
 
     /**
-     * The first attempt of a window creates each counter: per counter, an
-     * update that finds nothing, then the insert.
+     * Per counter: an update that finds nothing, then the insert.
      *
      * @return void
      */
@@ -49,7 +43,7 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An attempt in a live window is one update per counter, and reads nothing.
+     * An attempt in a live window is one update per counter and no read.
      *
      * @return void
      */
@@ -63,8 +57,7 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An attempt once the window has ended restarts each counter in the same
-     * one update.
+     * An ended window restarts each counter in the same one update.
      *
      * @return void
      */
@@ -79,8 +72,8 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A refused attempt stops at the full counter: its update, the insert its
-     * key refuses, the update again, and one read of the window's end.
+     * The full counter's update, the insert its key refuses, the update again
+     * and a read of the window's end.
      *
      * @return void
      */
@@ -95,9 +88,8 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An attempt a later limit refuses gives back the slot it took from the
-     * earlier one: the earlier counter's two statements, the full counter's
-     * four, and one update giving the slot back.
+     * The earlier counter's two statements, the full counter's four and one
+     * update giving the slot back.
      *
      * @return void
      */
@@ -112,8 +104,7 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Limit redemptions per IP address, and authorisation requests per email
-     * domain, to two attempts a minute.
+     * Allow two redemptions per IP and two requests per email domain a minute.
      *
      * @param  mixed  $app
      * @return void
@@ -129,7 +120,7 @@ final class AttemptLimiterQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An authorisation request from the IP address for the email domain.
+     * An authorisation request from the IP for the email domain.
      *
      * @return \SineMacula\Laravel\Sso\RateLimiting\AttemptSubject
      */

@@ -7,17 +7,10 @@ namespace SineMacula\Laravel\Sso\Evidence;
 use Carbon\CarbonImmutable;
 
 /**
- * What the evidence contract accepted of a result's own assertion (SSO-8.7):
- * the connection id as the credential reference, the provider's authentication
- * time, only the accepted RFC 8176 `amr` values, and the raw `acr` or SAML
- * `AuthnContextClassRef` as data. Neither raw value is an assurance level, and
- * it holds none.
+ * The authentication evidence the evidence contract accepted; not an assurance
+ * level.
  *
- * It holds provider values behind `\SensitiveParameterValue`s: a dump and
- * `json_encode()` show the connection, the time and how many methods, and it
- * refuses to be serialised or unserialised. The adapter reads `methods()` and
- * `rawContext()` to map it to the further factor's proof: a `sign_in` result to
- * `first_factor`, a `reauthenticate` result to `first_factor_reauthentication`.
+ * Provider values are wrapped, redacted in dumps and refuse serialisation.
  *
  * @api
  *
@@ -112,8 +105,7 @@ final readonly class AcceptedEvidence implements \JsonSerializable
     }
 
     /**
-     * The raw `acr` or `AuthnContextClassRef`, as data and never an assurance
-     * level.
+     * The raw `acr` or `AuthnContextClassRef`, as data.
      *
      * @return ?string
      */
@@ -124,8 +116,7 @@ final readonly class AcceptedEvidence implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: the connection, the time, how many methods,
-     * and whether a raw context was stated.
+     * The redacted form: counts and presence, never provider values.
      *
      * @return array<string, mixed>
      */

@@ -31,13 +31,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Event sequence tests for the connection lifecycle (SSO-10.3, SSO-10.5): a
- * disable reports `[ConnectionDisabled]`; a deletion reports
- * `[ConnectionDeleted]` alone, however many links it removes; a subject
- * migration reports `ConnectionUpdated`, then a `LinkRemoved` for each link it
- * removed or relinked, in id order, then a `LinkCreated` for each relink, in
- * the order given, all once it commits, inside a caller's transaction too; and
- * every refusal reports nothing.
+ * Event sequence tests for the connection lifecycle.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -87,8 +81,8 @@ final class LifecycleEventSequenceTest extends TestCase
     private array $links = [];
 
     /**
-     * Bind a fixed clock and a fresh caller, create the tables and an enabled
-     * OIDC connection with three links, and record events.
+     * Bind a fixed clock and a fresh caller, seed an OIDC connection with three
+     * links, and record events.
      *
      * @return void
      */
@@ -131,8 +125,7 @@ final class LifecycleEventSequenceTest extends TestCase
     }
 
     /**
-     * A deletion reports `ConnectionDeleted` alone, with no event for the links
-     * it removes.
+     * A deletion reports `ConnectionDeleted` alone, with no event per link.
      *
      * @return void
      */
@@ -145,8 +138,8 @@ final class LifecycleEventSequenceTest extends TestCase
     }
 
     /**
-     * A migration reports the change, each link removed or relinked in id
-     * order, then each new link in the order the relinks are given.
+     * A migration reports the change, each removal in id order, then each new
+     * link in relink order.
      *
      * @return void
      */
@@ -158,8 +151,8 @@ final class LifecycleEventSequenceTest extends TestCase
     }
 
     /**
-     * Inside a caller's transaction, the migration reports nothing until the
-     * caller commits, and then the same sequence.
+     * Inside a caller's transaction, a migration reports the same sequence on
+     * commit.
      *
      * @return void
      *
@@ -255,8 +248,8 @@ final class LifecycleEventSequenceTest extends TestCase
     }
 
     /**
-     * Migrate the connection to a new client id, relinking the third link and
-     * then the first, and removing the second.
+     * Migrate to a new client id, relinking the third and first links and
+     * removing the second.
      *
      * @return void
      */
@@ -271,8 +264,8 @@ final class LifecycleEventSequenceTest extends TestCase
     }
 
     /**
-     * Assert the migration's sequence: the change, the three links removed in
-     * id order, then the third and first identities linked again.
+     * Assert the change, three removals in id order, then the third and first
+     * identities relinked.
      *
      * @return void
      */

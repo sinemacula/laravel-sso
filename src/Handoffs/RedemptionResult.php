@@ -13,39 +13,9 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
 
 /**
- * How redeeming a handoff code with the package's own redemption helper ended
- * (SSO-9.2, SSO-9.9, SSO-11.8), the value the application's redemption endpoint
- * answers from:
+ * How a handoff redemption ended.
  *
- * - redeemed: the code was consumed now and every check passed; it carries the
- *   verified result, the identity its link resolved to at completion (and still
- *   resolves to), the identity a `link` or `reauthenticate` flow was started
- *   for, the session a `reauthenticate` flow was started on, the version of the
- *   enforcement the redemption judged under its locks, the latest end of the
- *   application's session the provider's deadline sets (SSO-9.10), the link
- *   that established it, the evidence the evidence contract accepted, whether
- *   it was admitted (redeemed inside the caller's transaction, so its session
- *   write commits with it), and, for an admitted `sign_in` only, the session
- *   provenance captured from that admission (`Sessions\Provenance`, SSO-9.10),
- *   which the adapter writes with the session once and never rewrites. A result
- *   not admitted must never
- *   lead to a session;
- * - refused: for the reason given, the first check that refused it; a code
- *   consumed before the refusal stays consumed;
- * - rate limited: the redemption limit for the client's IP address is full,
- *   with the seconds until it may be tried again.
- *
- * Its outcome is its `status` (`Handoffs\Enums\RedemptionStatus`); a refused or
- * rate limited one names its `reason` too, `rate_limited` when throttled. A
- * database error is never one of these: it propagates as a server error
- * (SSO-11.4).
- *
- * It holds the verified result, which carries personal data (the subject and
- * the mapped attributes), so a dump and `json_encode()` show only the outcome,
- * the purpose, the connection and the request's public reference, never the
- * result's attributes, and it refuses to be serialised or unserialised: it
- * lives only for the request that redeemed the code. The result itself is
- * serialisable, as SSO-8.1 requires, for an application that keeps it.
+ * Only a result that isAdmitted() may lead to a session.
  *
  * @api
  *
@@ -76,16 +46,16 @@ final readonly class RedemptionResult implements \JsonSerializable
         /** How the redemption ended. */
         public RedemptionStatus $status,
 
-        /** Why the code was not redeemed, `rate_limited` included; none when it was. */
+        /** Why the code was not redeemed, `rate_limited` included. */
         public ?FailureReason $reason = null,
 
-        /** Seconds, at least 1, until it may be tried again, for a rate limited one. */
+        /** Seconds, at least 1, until a rate limited redemption may be retried. */
         public ?int $retryAfter = null,
 
         /** The verified result the code carried, for a redeemed one. */
         public ?VerifiedResult $result = null,
 
-        /** The identity the result's link resolved to at completion and still resolves to, if any. */
+        /** The identity the result's link resolved to, then and now. */
         public ?IdentityReference $linkedIdentity = null,
 
         /** The identity a `link` or `reauthenticate` flow was started for. */
@@ -94,10 +64,10 @@ final readonly class RedemptionResult implements \JsonSerializable
         /** The session a `reauthenticate` flow was started on. */
         public ?string $sessionId = null,
 
-        /** The version of the enforcement judged under the redemption's locks (SSO-4.6, SSO-9.10). */
+        /** The enforcement version judged under the redemption's locks. */
         public ?string $enforcementVersion = null,
 
-        /** The latest end of the application's session the provider's deadline sets. */
+        /** The session's latest end, set by the provider's deadline. */
         public ?CarbonImmutable $sessionNotAfter = null,
 
         /** The link the identity resolved through, which a session binds. */
@@ -114,7 +84,7 @@ final readonly class RedemptionResult implements \JsonSerializable
     ) {}
 
     /**
-     * What a dump shows: the outcome, never the result's subject or attributes.
+     * Dump the outcome only, never the result's subject or attributes.
      *
      * @return array<string, mixed>
      */
@@ -242,8 +212,8 @@ final readonly class RedemptionResult implements \JsonSerializable
     }
 
     /**
-     * Whether the code was redeemed inside the caller's transaction, so what
-     * the caller writes with it commits with its consumption (decision D5).
+     * Whether the code was redeemed inside the caller's transaction, so a
+     * session written with it commits with the consumption.
      *
      * @return bool
      */
@@ -273,7 +243,7 @@ final readonly class RedemptionResult implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: the outcome, as a dump shows it.
+     * Encode the outcome only, as a dump shows it.
      *
      * @return array<string, mixed>
      */
@@ -284,8 +254,7 @@ final readonly class RedemptionResult implements \JsonSerializable
     }
 
     /**
-     * The outcome, the purpose, the connection and the request's public
-     * reference: what may be shown of the redemption.
+     * What may be shown of the redemption.
      *
      * @return array<string, mixed>
      */

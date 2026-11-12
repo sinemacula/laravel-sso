@@ -54,15 +54,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Provider tokens are never kept (SSO-7.6, SSO-11.9, SSO-5.7), run end to end
- * through the public path, for verified and refused flows alike: every event
- * dispatched (serialised, as JSON and dumped), every log record and its
- * context, the result, every stored row of every table the flow writes, the
- * handoff's decrypted result, and every dump of the values involved. None holds
- * the access token, the refresh token, the ID token or a segment of it, the
- * code, the state, the nonce, the PKCE verifier, the client secret, the client
- * assertion, a UserInfo body or an `error_description`, and the request's
- * reference is the only flow identifier any event or log carries.
+ * Integration tests that no provider token or secret is kept anywhere by a
+ * flow.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -90,7 +83,7 @@ final class NoProviderTokensLeakTest extends TestCase
     /** @var ?\SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey The provider's next key, made once. */
     private static ?FakeSigningKey $next = null;
 
-    /** @var ?\SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey The connection's client assertion key, made once. */
+    /** @var ?\SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey The client assertion key, made once. */
     private static ?FakeSigningKey $clientKey = null;
 
     /** @var \SineMacula\Laravel\Sso\Testing\FakeFetcher The fetcher the provider answers on. */
@@ -106,10 +99,8 @@ final class NoProviderTokensLeakTest extends TestCase
     private string $clientVerifier = '';
 
     /**
-     * Bind a fixed clock, the fake fetcher and a request from a client, switch
-     * OIDC on, register the application and the endpoints, create the tables,
-     * serve the provider, capture logs and record events. The default handoff
-     * store is left in place, so a code is stored as it would be.
+     * Bind the fakes, enable OIDC, capture logs and record events. The default
+     * handoff store stays so a code is stored for real.
      *
      * @return void
      */
@@ -156,8 +147,7 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * A flow verified with UserInfo keeps nothing of its body, whatever claim
-     * it carries, nor the access token it was fetched with.
+     * A flow verified with UserInfo keeps nothing of its body or access token.
      *
      * @return void
      *
@@ -210,8 +200,8 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * A flow verified after a refetch keeps nothing, and what the refetch logs
-     * names no flow.
+     * A flow verified after a refetch keeps nothing, and the refetch logs name
+     * no flow.
      *
      * @return void
      *
@@ -256,8 +246,7 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * A flow refused at each check of the token keeps nothing, the tailored
-     * values included.
+     * A flow refused at each token check keeps nothing.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): (\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken|string)  $tailor
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -279,8 +268,7 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * A provider's error on the callback is logged by its code, with its
-     * description nowhere.
+     * A callback error is logged by its code, its description nowhere.
      *
      * @return void
      *
@@ -304,8 +292,7 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * Rows of `[error, logged]`: a token error's `error`, and what is logged of
-     * it: its code, or nothing of prose.
+     * Rows of `[error, logged]`: a token error and what is logged of it.
      *
      * @return iterable<string, array{0: string, 1: string}>
      */
@@ -345,8 +332,8 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * Rows of `[status, headers, reason]`: a UserInfo error whose body and
-     * headers carry what must never be kept.
+     * Rows of `[status, headers, reason]`: UserInfo errors carrying what must
+     * not be kept.
      *
      * @return iterable<string, array{0: int, 1: array<string, string>, 2: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -396,8 +383,7 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * A JWKS refused whole keeps nothing of its body, and its private key least
-     * of all, the keys stored staying as they were.
+     * A refused JWKS keeps nothing of its body, and the stored keys stay.
      *
      * @return void
      *
@@ -452,9 +438,7 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * A flow that finished across the key rotation its own token triggered
-     * keeps nothing either: the receipt it carried reaches no event, log or
-     * result.
+     * A flow finished across its own key rotation keeps nothing.
      *
      * @return void
      *
@@ -476,9 +460,8 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * Assert that nothing the flow dispatched, logged, answered, stored or was
-     * given holds any of the needles, and that the request's reference is the
-     * only flow identifier any event or log carries.
+     * Assert nothing the flow produced or stored holds a needle, and only the
+     * reference identifies it.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @param  list<string>  $needles
@@ -505,8 +488,7 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * Assert that each event names the flow by the request's reference or not
-     * at all, and that a log names nothing but what it may.
+     * Assert each event and log names the flow only by the request's reference.
      *
      * @return void
      */
@@ -557,8 +539,8 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * Every row of every table the package keeps, each column as stored, with
-     * the verified result a handoff carries decrypted.
+     * Every row of every package table as stored, with the handoff's result
+     * decrypted.
      *
      * @return array<string, string>
      */
@@ -585,8 +567,8 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * Every dump of the values the flow handled: each request it made through
-     * the fetcher and what holds the provider's tokens.
+     * Every dump of the requests the flow made and of what holds the provider's
+     * tokens.
      *
      * @return array<string, string>
      */
@@ -677,8 +659,8 @@ final class NoProviderTokensLeakTest extends TestCase
     }
 
     /**
-     * An enabled connection of the provider storing its key, with the settings
-     * given and a client secret unless told otherwise.
+     * An enabled connection of the provider, with the settings given and a
+     * client secret unless told otherwise.
      *
      * @param  array<string, mixed>  $settings
      * @param  bool  $secret

@@ -14,10 +14,7 @@ use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\TestCase;
 
 /**
- * Feature tests for the freshness contract's binding in a booted application:
- * the refusing default, shared as a singleton across requests and jobs, a
- * contract the application bound before the package registers kept, and one
- * bound afterwards used instead.
+ * Feature tests for the freshness contract's binding.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,8 +26,7 @@ use Tests\TestCase;
 final class FreshnessBindingTest extends TestCase
 {
     /**
-     * With nothing else bound, the container answers the refusing default,
-     * which refuses every operation.
+     * With nothing else bound, the container answers the refusing default.
      *
      * @return void
      */
@@ -44,9 +40,7 @@ final class FreshnessBindingTest extends TestCase
     }
 
     /**
-     * The default holds nothing, so one instance is shared by every caller, and
-     * is kept when the scoped instances are forgotten between requests or jobs,
-     * as Octane and a queue worker forget them.
+     * The default is a singleton that survives forgetting the scoped instances.
      *
      * @return void
      */
@@ -65,12 +59,7 @@ final class FreshnessBindingTest extends TestCase
     }
 
     /**
-     * A contract the application bound before the package's provider registers
-     * is kept, never replaced by the default.
-     *
-     * Testbench registers the provider before a test can bind anything, so the
-     * test binds its contract and then runs the provider's registration again,
-     * as a fresh application would.
+     * A contract bound before the provider registers is kept.
      *
      * @return void
      */
@@ -82,6 +71,7 @@ final class FreshnessBindingTest extends TestCase
 
         $app->instance(Freshness::class, $freshness);
 
+        // Testbench registered the provider already; register it again.
         (new SsoServiceProvider($app))->register();
 
         self::assertSame($freshness, $this->freshness());
@@ -89,8 +79,7 @@ final class FreshnessBindingTest extends TestCase
     }
 
     /**
-     * A contract the application binds as a class before the provider registers
-     * is kept too, rather than only an instance.
+     * A class bound before the provider registers is kept.
      *
      * @return void
      */
@@ -107,8 +96,8 @@ final class FreshnessBindingTest extends TestCase
     }
 
     /**
-     * A contract bound once the package has registered, and after the default
-     * was resolved, replaces the default for every later caller.
+     * A contract bound after the default resolved replaces it for later
+     * callers.
      *
      * @return void
      */

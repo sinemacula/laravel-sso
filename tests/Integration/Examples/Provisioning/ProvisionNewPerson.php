@@ -12,12 +12,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 
 /**
- * The provisioning listener of `docs/guides/provisioning.md` (SSO-8.6,
- * SSO-12.5): for a `sign_in` that resolved to nobody, a new user and their
- * membership of the result's tenant, linked to the result through the package's
- * helper with the grant the event carries, in one transaction on the package's
- * storage connection, committed when the link is made and rolled back on a
- * refusal or an exception.
+ * The provisioning listener of `docs/guides/provisioning.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

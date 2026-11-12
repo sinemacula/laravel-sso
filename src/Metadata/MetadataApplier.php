@@ -20,52 +20,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
 
 /**
- * Writes what a SAML metadata refresh found (SSO-2.8, SSO-2.13), through the
- * shared `RefreshWriter`: each write in one transaction on the storage
- * connection that locks the connection's row first, the only lock a refresh
- * takes, and decides from what that locking read gives.
- *
- * `apply()` and `fail()` each compare and set against the refresh's claim
- * (`RefreshClaim`, `RefreshWriter::locked()`): the connection must still be
- * there, still hold the claim's token, and have the metadata version and the
- * trust version the refresh read before it claimed; and its identity provider
- * signing certificates and metadata signing anchors, read again with a locking
- * read (`trustedOf()`), must be exactly the claim's. Anything else is
- * `conflict` (`metadata_conflict`): a change of the connection's trust, a
- * certificate or anchor added or removed (additive or not), another refresh won
- * meanwhile, or the claim lost, and the refresh writes nothing. Then, for
- * `apply()`:
- *
- * - metadata of another entity than the pinned `idp_entity_id`, or whose
- *   endpoint would not be a valid setting, is refused `metadata_invalid`, and
- *   metadata that has expired by the clock read at commit is refused
- *   `metadata_expired`: its expiry is the earlier of its `validUntil` (an
- *   enclosing aggregate's included) and the moment it was validated plus the
- *   stale limit (`MetadataExpiry::hasExpired()`);
- * - the identity provider signing certificates are replaced exactly
- *   (`Keys\KeyService::replaceTrustedCertificatesLocked()`): one no longer
- *   published is distrusted, one newly published trusted, and a removal voids
- *   what is in flight through the connection and raises its trust version;
- * - a changed single sign-on URL or binding is written to the settings and is a
- *   trust change: it voids what is in flight and raises the trust version, once
- *   with any removal, and is reported as `ConnectionUpdated`. Nothing else a
- *   connection holds (its entity id, subject settings, mapping or
- *   enforcement) is ever written;
- * - the refresh's bookkeeping is written with the endpoints
- *   (`RefreshWriter::succeeded()`), and `MetadataRefreshed` names the settings
- *   changed, in the order the connection's settings name them, then
- *   `idp_signing_certificates` when the certificates changed.
- *
- * Adding a certificate alone voids nothing and leaves the trust version as it
- * was. The identity provider's encryption certificates are never written: the
- * package encrypts nothing to an identity provider, so there is nothing to keep
- * them for.
- *
- * `fail()`, and a refusal above, record a failure (`RefreshWriter::failed()`).
- * Every event is dispatched after the transaction commits (SSO-10.5). A
- * database error propagates (SSO-11.4). It holds the key helpers, the voider,
- * the reporter, the expiry and the writer, none of which keeps anything of one
- * refresh for the next (SSO-11.2).
+ * Writes what a SAML metadata refresh found through `RefreshWriter`: the
+ * signing certificates and the single sign-on endpoint, nothing else.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -108,9 +64,8 @@ final readonly class MetadataApplier
     ) {}
 
     /**
-     * Apply the metadata, validated at the moment given, to the connection the
-     * claim holds, unless the claim was lost or the connection, its trust or
-     * its certificates changed meanwhile.
+     * Apply the metadata to the claimed connection, unless the claim was lost
+     * or its trust changed meanwhile.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
@@ -132,9 +87,8 @@ final readonly class MetadataApplier
     }
 
     /**
-     * Record a failed refresh of the connection the claim holds, unless the
-     * claim was lost or the connection, its trust or its certificates changed
-     * meanwhile.
+     * Record a failed refresh of the claimed connection, unless the claim was
+     * lost or its trust changed meanwhile.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -156,9 +110,8 @@ final readonly class MetadataApplier
     }
 
     /**
-     * The sorted fingerprints of the connection's identity provider signing
-     * certificates and metadata signing anchors, by use, read with a locking
-     * read: the snapshot a SAML refresh compares under the lock.
+     * The sorted fingerprints of the connection's signing certificates and
+     * anchors, by use, read locked: the snapshot a SAML refresh compares.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @return array<string, list<string>>
@@ -184,8 +137,7 @@ final readonly class MetadataApplier
 
     /**
      * Why the metadata may not be applied to the locked connection, or `null`
-     * when it may: another entity, an endpoint that is not a valid setting, or
-     * metadata validated at the moment given that has expired by now.
+     * when it may.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
@@ -215,8 +167,7 @@ final readonly class MetadataApplier
 
     /**
      * Replace the certificates, write the endpoints and the refresh, and report
-     * them; a certificate refused records a failure instead, with nothing
-     * replaced.
+     * them; a certificate refused records a failure instead.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
@@ -240,6 +191,7 @@ final readonly class MetadataApplier
         $stored    = $locked->settings;
         $endpoints = array_filter(self::endpointsOf($metadata), static fn (string $value, string $name): bool => ($stored[$name] ?? null) !== $value, ARRAY_FILTER_USE_BOTH);
 
+        // A removal has already voided and raised the trust version once
         if ($endpoints !== [] && !$removed) {
             $this->voider->voidFor($locked);
         }
@@ -255,8 +207,7 @@ final readonly class MetadataApplier
     }
 
     /**
-     * The settings the metadata gives a connection's endpoint, in the order the
-     * connection's settings name them.
+     * The endpoint settings the metadata gives, in the connection's order.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\IdpMetadata  $metadata
      * @return array<string, string>

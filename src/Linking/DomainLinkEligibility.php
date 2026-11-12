@@ -30,51 +30,11 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * Judges the conditions of linking by a verified domain (SSO-8.8), the one
- * place they are written, at completion and again at redemption:
+ * The one place the conditions of linking by a verified domain are judged, at
+ * completion and again at redemption.
  *
- * - the `domain_linking` feature is on, the connection's linking is on, its
- *   issuer is classified, an issuer of one organisation with the
- *   administrator's acknowledgement, and a shared issuer (one the administrator
- *   classified so, or one `requiredClaim()` knows, which is never downgraded)
- *   names its organisation claim and the expected value, which the result's
- *   accepted value equals exactly;
- * - the linking email came from the protocol: for SAML through the named
- *   attribute with the administrator's acknowledgement, for OIDC through the ID
- *   token or UserInfo, and never from attribute mapping;
- * - the linking policy version the response was validated under is the locked
- *   connection's;
- * - the email's domain, canonicalised (`Domains\DomainName::normalize()`, with
- *   the whitespace that trims refused, since an address is compared as
- *   asserted), is this connection's locked claim, whose standing allows linking
- *   (`Domains\DomainStanding::allowsLinking()`, not the result's mapped-email
- *   flag, since discovery's grace period authorises nothing here);
- * - `Contracts\LinkEmailMatcher` finds exactly one identity,
- *   `Contracts\PrincipalScope` answers `within_tenant` for it, and
- *   `Contracts\TenantMembership` answers a membership the person accepted
- *   strictly before the domain's current verification;
- * - the identity holds no link in the connection, and the subject none.
- *
- * It runs only over `Contracts\LinkStorage`: a linker not backed by it cannot
- * hold a reservation, and `Links\LinkStorageBinding` refuses it with a
- * `LogicException` before anything is written. `atCompletion()` answers the
- * identity and the terms to reserve, with the connection and result they stand
- * on, or `null`. `isStillEligible()` answers whether everything still holds for
- * that same identity at redemption; another match never becomes the target.
- *
- * The package's locks come before the application's answers: what an identity
- * holds is read by a locking read before the matcher, the principal scope or
- * the membership are asked. At completion that identity is the one whose guard
- * the completion took (`Linking\ReservationDiscovery`); an identity matched
- * only now is answered without its scope or membership being asked, and
- * `Completion\Stages\DomainReservation` refuses it. `requiredClaim()` answers
- * the organisation claim a known shared issuer must be told apart by: one a
- * preset with an organisation claim names (`Protocols\Preset::names()`), or
- * else one `LinkingSettings` lists.
- *
- * It holds the container, the clock, the settings, the presets and the storage
- * binding, none of which keeps anything of one flow for the next (SSO-11.2). A
- * contract's exception propagates.
+ * What an identity holds is read by a locking read before any application
+ * contract is asked.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -134,10 +94,8 @@ final readonly class DomainLinkEligibility
     ) {}
 
     /**
-     * The email's domain as SSO-3.1 compares one, or `null` when it could be no
-     * registered domain. The whitespace `DomainName::normalize()` would trim
-     * from what an administrator typed is no part of an address, so it refuses
-     * here.
+     * The email's normalised domain, or `null`; surrounding whitespace is
+     * refused, since an address is compared as asserted.
      *
      * @param  \SineMacula\Laravel\Sso\Results\LinkingEmail  $email
      * @return ?string
@@ -172,9 +130,8 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * Whether everything a reservation of the identity stands on still holds at
-     * redemption, for the result, under the locks, with the reservation itself
-     * left out of what the identity holds.
+     * Whether the reservation's conditions still hold for that same identity at
+     * redemption, under the locks.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -203,10 +160,8 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * The organisation claim the issuer must be told apart by, or `null` for an
-     * issuer the package does not know to be shared. What the protocol's
-     * presets name comes first, so configuration only ever adds an issuer, and
-     * what `LinkingSettings` lists after it.
+     * A known shared issuer's organisation claim, or `null`; presets come
+     * first, so configuration only adds.
      *
      * @param  string  $protocol
      * @param  string  $issuer
@@ -291,9 +246,8 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * Whether the identity matched goes on: the one whose guard is held, when
-     * it holds nothing in the connection and its principals and membership
-     * allow it; or another, which is left for the stage to refuse, unasked.
+     * Whether the match goes on; one whose guard is not held passes unasked,
+     * for the stage to refuse.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $guarded
@@ -314,8 +268,7 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * Whether the state's store, linking policy version, policy and domain
-     * allow a reservation.
+     * Whether the store, policy version, policy and domain allow a reservation.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -338,8 +291,7 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * The terms of the reservation, or `null` when the request or application
-     * leaves no time to redeem it.
+     * The reservation's terms, or `null` when no time is left to redeem it.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  \SineMacula\Laravel\Sso\Results\LinkingEmail  $email
@@ -362,8 +314,8 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * When a reservation and its handoff expire: the earlier of the request's
-     * expiry and the application's handoff lifetime from now.
+     * The earlier of the request's expiry and the application's handoff
+     * lifetime from now.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
@@ -375,9 +327,7 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * Whether the connection's linking policy allows the result's email: the
-     * feature and linking on, the issuer classified, the source the protocol's
-     * own, and a shared issuer's organisation exactly its expected value.
+     * Whether the connection's linking policy allows the result's email.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
@@ -402,8 +352,8 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * Whether the connection is classified as one organisation's, with the
-     * administrator's acknowledgement of that.
+     * Whether the connection is classified single-organisation and
+     * acknowledged.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return bool
@@ -414,8 +364,8 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * Whether the connection is classified shared and the result's accepted
-     * organisation is exactly its expected value, both set.
+     * Whether the connection is shared and the organisation is exactly its
+     * expected value.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Results\LinkingEmail  $email
@@ -432,9 +382,8 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * Whether the email's source is the protocol's own, with a SAML
-     * connection's acknowledgement that the provider decides who holds each
-     * address.
+     * Whether the email came from the protocol itself, a SAML attribute only
+     * with acknowledgement.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Results\LinkingEmail  $email
@@ -450,8 +399,8 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * Whether the locked claim is this connection's claim of exactly the
-     * email's canonicalised domain, and allows linking now.
+     * Whether the locked claim is this connection's for the email's domain and
+     * allows linking now.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $domain
@@ -470,9 +419,8 @@ final readonly class DomainLinkEligibility
     }
 
     /**
-     * Whether the identity's complete set of principals is within the tenant,
-     * and the person accepted its membership before the domain's current
-     * verification.
+     * Whether the identity is within the tenant and accepted its membership
+     * before the domain's verification.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $tenantId

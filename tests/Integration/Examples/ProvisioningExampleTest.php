@@ -13,10 +13,8 @@ use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\Integration\Examples\Application\ProvisionNewPeople;
 
 /**
- * The provisioning worked example of the testing guide (SSO-8.6, SSO-12.4): a
- * `sign_in` of a subject nobody is linked to is offered to the application's
- * listener, which provisions a new person, and the same sign-in then completes
- * for them; with no listener, it is refused as `unlinked`.
+ * The testing guide's provisioning example: a listener provisions an unlinked
+ * `sign_in`, which ends `unlinked` without one.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -47,8 +45,7 @@ final class ProvisioningExampleTest extends ExampleTestCase
     }
 
     /**
-     * The listener provisions a new person for the unlinked result, and the
-     * sign-in completes for them.
+     * The listener provisions a new person, and the sign-in completes for them.
      *
      * @return void
      *
@@ -71,8 +68,7 @@ final class ProvisioningExampleTest extends ExampleTestCase
     }
 
     /**
-     * With no listener, nobody is provisioned, and the sign-in fails with
-     * `unlinked`: the application allows no unlinked handoff.
+     * With no listener, the sign-in fails with `unlinked`.
      *
      * @return void
      *

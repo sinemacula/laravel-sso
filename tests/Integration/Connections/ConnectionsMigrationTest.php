@@ -12,13 +12,8 @@ use SineMacula\Laravel\Sso\Database\TableAlreadyExistsException;
 use Tests\TestCase;
 
 /**
- * Integration tests for the shipped connections migration, on whichever engine
- * the suite runs against: the table's shape and defaults, its index, the guard
- * against an existing table, the rollback, and the connection and name it runs
- * under.
- *
- * Marked `#[CoversNothing]` because a migration is an anonymous class PHPUnit
- * cannot attribute coverage to.
+ * Integration tests for the connections migration. `#[CoversNothing]` because
+ * PHPUnit cannot attribute coverage to an anonymous migration class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,9 +59,7 @@ final class ConnectionsMigrationTest extends TestCase
     }
 
     /**
-     * The table has exactly these columns, only the secrets, the metadata
-     * refresh's instants and token, and the JWKS, its instants and token
-     * nullable, with the id as its primary key.
+     * The table has exactly these columns and nullability, keyed by id.
      *
      * @return void
      */
@@ -122,9 +115,7 @@ final class ConnectionsMigrationTest extends TestCase
     }
 
     /**
-     * The secondary indexes are on the tenant, for listing a tenant's
-     * connections, and on when the metadata refresh is next due, for the
-     * scheduled refresh; neither is unique.
+     * The tenant and the refresh due time are indexed, neither uniquely.
      *
      * @return void
      */
@@ -141,9 +132,8 @@ final class ConnectionsMigrationTest extends TestCase
     }
 
     /**
-     * A row written with only what the table requires is disabled, has
-     * completed no sign-in, has every version and the refresh failures at zero,
-     * no metadata refresh instant and no JWKS.
+     * A minimal row is disabled, with zeroed versions and counters and no
+     * refresh or JWKS state.
      *
      * @return void
      */
@@ -175,8 +165,8 @@ final class ConnectionsMigrationTest extends TestCase
     }
 
     /**
-     * Running the migration over an existing table is refused before any
-     * change, naming the setting that renames the table.
+     * An existing table is refused before any change, naming the setting that
+     * renames it.
      *
      * @return void
      */
@@ -201,8 +191,7 @@ final class ConnectionsMigrationTest extends TestCase
     }
 
     /**
-     * The table is created under its configured name, with its index named from
-     * it.
+     * The table and its index take the configured name.
      *
      * @return void
      */

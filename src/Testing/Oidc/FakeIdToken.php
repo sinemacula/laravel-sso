@@ -5,22 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Testing\Oidc;
 
 /**
- * An ID token the fake OpenID provider issues (SSO-12.4), built with every knob
- * a test needs and signed by hand (`JwsSigner`), never by the package's JOSE
- * library. Each knob answers a new token; `toString()` signs it.
- *
- * - Claims: `with()` sets any claim to any JSON value (a string `exp`, an
- *   integer `sub`, an `aud` as a string or a list), `without()` removes one,
- *   and `accessTokenHash()` sets the `at_hash` of an access token for the
- *   token's algorithm.
- * - Header: `withHeader()` and `withoutHeader()` set or remove any member
- *   (`kid`, `crit`, `b64`, `jku`, `typ`); `signedWith()` signs with another key
- *   by another algorithm, naming its `kid` or none.
- * - Raw JSON: `withHeaderJson()` and `withPayloadJson()` replace the encoded
- *   text whole, so a member can be repeated, escaped or nested twice.
- * - Hostile forms: `unsigned()` (an empty signature, as `none` has), `hmac()`
- *   (an HMAC under a secret such as a public key's PEM), `asJwe()` (five
- *   segments) and `withSignatureOf()` (another token's signature).
+ * An immutable builder for the fake provider's ID tokens, signed by `JwsSigner`
+ * and never by the package's JOSE library.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,7 +51,7 @@ final class FakeIdToken implements \Stringable
     ) {}
 
     /**
-     * The token, signed.
+     * Sign the token.
      *
      * @return string
      *
@@ -98,7 +84,7 @@ final class FakeIdToken implements \Stringable
     }
 
     /**
-     * The token with the claim set to the value.
+     * The token with the claim set to any JSON value.
      *
      * @param  string  $claim
      * @param  mixed  $value
@@ -158,8 +144,8 @@ final class FakeIdToken implements \Stringable
     }
 
     /**
-     * The token signed with the key by the algorithm, its header naming the
-     * key's `kid`, or none when the key has none.
+     * The token signed with another key and algorithm, naming the key's `kid`
+     * if it has one.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey  $key
      * @param  string  $algorithm
@@ -175,8 +161,7 @@ final class FakeIdToken implements \Stringable
     }
 
     /**
-     * The token whose `at_hash` is the access token's, for its algorithm
-     * (OpenID Connect Core §3.1.3.6): the left half of the hash, encoded.
+     * The token with the access token's `at_hash` for its algorithm.
      *
      * @param  string  $accessToken
      * @return self
@@ -189,7 +174,8 @@ final class FakeIdToken implements \Stringable
     }
 
     /**
-     * The token whose header is the JSON text given, whole.
+     * The token with the header's JSON text replaced whole, so a member can
+     * repeat.
      *
      * @param  string  $json
      * @return self
@@ -203,7 +189,7 @@ final class FakeIdToken implements \Stringable
     }
 
     /**
-     * The token whose payload is the JSON text given, whole.
+     * The token with the payload's JSON text replaced whole.
      *
      * @param  string  $json
      * @return self
@@ -218,7 +204,7 @@ final class FakeIdToken implements \Stringable
 
     /**
      * The token with an empty signature, as `alg` `none` has it; the header's
-     * `alg` is left as it is, so a test sets it.
+     * `alg` is left for the test to set.
      *
      * @return self
      */
@@ -231,8 +217,7 @@ final class FakeIdToken implements \Stringable
     }
 
     /**
-     * The token with an HMAC signature under the secret, by the hash of its
-     * header's algorithm size.
+     * The token with an HMAC signature under the secret.
      *
      * @param  string  $secret
      * @return self
@@ -274,7 +259,7 @@ final class FakeIdToken implements \Stringable
     }
 
     /**
-     * The token, signed as asked.
+     * Sign the token by its mode.
      *
      * @return string
      *
@@ -290,7 +275,7 @@ final class FakeIdToken implements \Stringable
     }
 
     /**
-     * The header and payload, signed by the token's mode.
+     * Sign the header and payload by the token's mode.
      *
      * @param  array<string, mixed>|string  $header
      * @param  array<string, mixed>|string  $payload
@@ -309,7 +294,7 @@ final class FakeIdToken implements \Stringable
     }
 
     /**
-     * The header's `alg`, or none.
+     * The header's `alg`, or an empty string.
      *
      * @return string
      */

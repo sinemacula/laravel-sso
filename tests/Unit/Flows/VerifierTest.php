@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Flows\S256Challenge;
 use SineMacula\Laravel\Sso\Flows\Verifier;
 
 /**
- * Unit tests for the client's handoff verifier: 43 to 128 unreserved
- * characters, generated from 256 random bits, never shown in a dump, JSON or a
- * serialisation, and compared in constant time.
+ * Unit tests for the client's handoff verifier.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -23,8 +21,7 @@ use SineMacula\Laravel\Sso\Flows\Verifier;
 final class VerifierTest extends TestCase
 {
     /**
-     * A generated verifier is 43 base64url characters, new each time, and its
-     * challenge is its S256 challenge.
+     * A verifier is 43 base64url characters, random, with its S256 challenge.
      *
      * @return void
      *

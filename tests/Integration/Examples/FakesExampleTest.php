@@ -19,11 +19,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FrozenClock;
 
 /**
- * The worked examples of the fakes' own behaviour in the testing guide
- * (SSO-12.4): the fake fetcher and the fake DNS resolver throw on a request
- * nobody gave them an answer for, the frozen clock holds its instant whatever
- * Laravel's time travel does, and the fake freshness contract answers what the
- * test tells it and records what it was asked.
+ * The testing guide's examples of the fakes' own behaviour.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -37,8 +33,7 @@ use SineMacula\Laravel\Sso\Testing\FrozenClock;
 final class FakesExampleTest extends ExampleTestCase
 {
     /**
-     * A discovery document nobody told the fake fetcher to answer is a
-     * `LogicException` naming its URL, never a quiet failure.
+     * The fake fetcher throws on a request it has no answer for.
      *
      * @return void
      */
@@ -53,8 +48,7 @@ final class FakesExampleTest extends ExampleTestCase
     }
 
     /**
-     * A record nobody told the fake resolver to answer is a `LogicException`
-     * naming it, never a quiet failure.
+     * The fake resolver throws on a lookup it has no answer for.
      *
      * @return void
      */
@@ -74,8 +68,8 @@ final class FakesExampleTest extends ExampleTestCase
     }
 
     /**
-     * Laravel's time travel moves Laravel's clock, never the frozen clock the
-     * package reads; the frozen clock moves only when the test moves it.
+     * The frozen clock ignores Laravel's time travel and moves only when the
+     * test moves it.
      *
      * @return void
      */
@@ -99,10 +93,8 @@ final class FakesExampleTest extends ExampleTestCase
     }
 
     /**
-     * The fake freshness contract answers `stale` for the operations it is told
-     * to, refusing a `link` with `freshness_required`, and `fresh` for any
-     * other; it records each operation it was asked about, with the maximum
-     * age.
+     * Fake freshness answers what the test says and records each operation
+     * asked.
      *
      * @return void
      */

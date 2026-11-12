@@ -12,11 +12,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for where the package's tables live and what they are called:
- * the storage connection, the counters' connection that falls back to it, the
- * connection and name of each table, a malformed setting failing closed,
- * whether a model lives on the storage connection, compared by name, and an
- * operation refused while a transaction is open on it.
+ * Feature tests for the connection and name of each package table.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -27,8 +23,8 @@ use Tests\TestCase;
 final class StorageConnectionTest extends TestCase
 {
     /**
-     * The storage connection is the one configured, read on each call; `null`
-     * or an empty name means the default connection.
+     * The storage connection is the configured one, `null` or empty meaning the
+     * default.
      *
      * @return void
      */
@@ -49,9 +45,8 @@ final class StorageConnectionTest extends TestCase
     }
 
     /**
-     * The counters live on the connection `rate_limits.connection` names, and
-     * on the storage connection when it names none; every other table on the
-     * storage connection.
+     * The counters fall back to the storage connection; every other table uses
+     * it.
      *
      * @return void
      */
@@ -76,8 +71,8 @@ final class StorageConnectionTest extends TestCase
     }
 
     /**
-     * Rows of `[key, value, message]`: settings that are neither a connection
-     * name nor `null` or empty, and what each is refused with.
+     * Rows of `[key, value, message]`: malformed connection settings and their
+     * messages.
      *
      * @return iterable<string, array{0: string, 1: mixed, 2: string}>
      */
@@ -97,9 +92,7 @@ final class StorageConnectionTest extends TestCase
     }
 
     /**
-     * A setting that is not a name fails closed, naming the key, instead of
-     * putting the tables on another connection than the one meant; the
-     * counters' connection refuses a malformed storage connection too.
+     * A connection setting that is not a name fails closed, naming the key.
      *
      * @param  string  $key
      * @param  mixed  $value
@@ -118,8 +111,7 @@ final class StorageConnectionTest extends TestCase
     }
 
     /**
-     * Each table takes its default name, with the `sso_` prefix, until its
-     * setting names another, and every table the package has is listed.
+     * Each table takes its `sso_` default name until configured otherwise.
      *
      * @return void
      */
@@ -177,7 +169,7 @@ final class StorageConnectionTest extends TestCase
 
     /**
      * A table name that is not a plain, optionally schema-qualified, name fails
-     * closed, naming the key.
+     * closed.
      *
      * @param  mixed  $value
      * @return void
@@ -194,8 +186,7 @@ final class StorageConnectionTest extends TestCase
     }
 
     /**
-     * A key that names no package table is a caller's mistake, whether its
-     * table or its connection is asked for.
+     * A key that names no package table is refused.
      *
      * @return void
      */
@@ -216,8 +207,8 @@ final class StorageConnectionTest extends TestCase
     }
 
     /**
-     * A model lives on the storage connection when the two name the same one, a
-     * model that names none counting as on the default.
+     * A model is on the storage connection when the two name the same
+     * connection.
      *
      * @return void
      */
@@ -238,9 +229,8 @@ final class StorageConnectionTest extends TestCase
     }
 
     /**
-     * An operation that runs outside any transaction is refused, with the
-     * message given, while one is open on the storage connection, however deep,
-     * and is let through once none is.
+     * An operation is refused while any transaction is open on the storage
+     * connection.
      *
      * @return void
      *

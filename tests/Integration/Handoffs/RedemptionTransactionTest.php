@@ -37,12 +37,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * A redemption and the transaction it runs in (SSO-9.2, SSO-10.5, SSO-11.4,
- * decision D5): inside the caller's transaction on the storage connection it is
- * part of it, reported only once that commits, and undone, its consumption and
- * acknowledgement included, when it rolls back, a refusal as much as a
- * redemption; a linker that throws propagates, rolls the redemption back, and
- * reports nothing.
+ * Integration tests for a redemption inside the caller's transaction.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,9 +59,8 @@ final class RedemptionTransactionTest extends TestCase
     private ?\Throwable $linkerFailure = null;
 
     /**
-     * Bind a fixed clock, a linker that links every result to one identity
-     * unless it is set to throw, and a request from an IP address, register the
-     * driver, create the tables and the connection, and start recording events.
+     * Bind a fixed clock, a linker that can be told to throw and a request from
+     * an IP address, and record events.
      *
      * @return void
      */
@@ -144,9 +138,7 @@ final class RedemptionTransactionTest extends TestCase
     }
 
     /**
-     * A redemption inside the caller's transaction that rolls back is undone:
-     * the code is unredeemed and unrecorded, no sign-in is acknowledged,
-     * nothing is reported, and the code can still be redeemed.
+     * A redemption whose transaction rolls back is undone entirely.
      *
      * @return void
      *
@@ -176,8 +168,7 @@ final class RedemptionTransactionTest extends TestCase
     }
 
     /**
-     * A refusal inside the caller's transaction that rolls back reports
-     * nothing, and its consumption is undone with it.
+     * A refusal whose transaction rolls back reports nothing.
      *
      * @return void
      *
@@ -200,7 +191,7 @@ final class RedemptionTransactionTest extends TestCase
     }
 
     /**
-     * A redemption inside the caller's transaction is reported only once that
+     * A redemption in the caller's transaction is reported only once it
      * commits.
      *
      * @return void
@@ -226,8 +217,7 @@ final class RedemptionTransactionTest extends TestCase
     }
 
     /**
-     * A linker that throws propagates: the redemption is rolled back, the code
-     * stays unredeemed and unrecorded, and nothing is reported.
+     * A linker that throws rolls the redemption back and propagates.
      *
      * @return void
      *
@@ -255,9 +245,7 @@ final class RedemptionTransactionTest extends TestCase
     }
 
     /**
-     * A linker that throws inside the caller's transaction rolls back only the
-     * redemption's savepoint: the caller's transaction stays open, and the code
-     * unredeemed in it.
+     * A linker that throws rolls back only the redemption's savepoint.
      *
      * @return void
      *
@@ -288,8 +276,7 @@ final class RedemptionTransactionTest extends TestCase
     }
 
     /**
-     * Issue a linked `sign_in` code for `web` through the connection, bound to
-     * the client's verifier.
+     * Issue a linked `sign_in` code for `web` bound to the client's verifier.
      *
      * @return string
      *

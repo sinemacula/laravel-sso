@@ -46,19 +46,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Feature tests for the management helpers of a connection's own keys (SSO-2.5,
- * SSO-2.7, SSO-2.11, SSO-2.12): every outcome of adding, making current and
- * retiring a key; the first key of a use made current at once; a second `next`
- * key refused; the overlap a replaced key is kept for; tenant scoping; the
- * exact freshness operation and maximum age asked; a stale caller refused with
- * nothing written and nothing reported; a state changed between the first read
- * and the transaction refused; the listing's order; signing and encryption keys
- * rotated on their own; every read made on the write connection; and a private
- * key stored only as the encrypter's ciphertext, which a failed write never
- * quotes.
- *
- * Keys are generated on P-256 wherever the type does not matter, since RSA
- * generation is slow; the class generates one RSA key, to show the default.
+ * Feature tests for managing a connection's own keys. Keys are P-256 where the
+ * type does not matter, since RSA generation is slow.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -92,8 +81,8 @@ final class KeyServiceTest extends TestCase
     private Caller $actor;
 
     /**
-     * Bind a fixed clock and a recording freshness contract, create the tables
-     * and a SAML connection, and record events.
+     * Bind a fixed clock and recording freshness, create the tables and a SAML
+     * connection, and record events.
      *
      * @return void
      */
@@ -117,8 +106,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * The first key of a use is added as current, made current now, and
-     * reported as added and then made current, with nothing it replaced.
+     * The first key of a use is added and made current at once, reported as
+     * added then made current.
      *
      * @return void
      */
@@ -187,7 +176,7 @@ final class KeyServiceTest extends TestCase
 
     /**
      * A second next key of a use is a conflict, refused before freshness is
-     * asked, with nothing written or reported.
+     * asked.
      *
      * @return void
      */
@@ -210,8 +199,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Each use rotates on its own, and a key's type is RSA, of the configured
-     * modulus, unless another is given.
+     * Each use rotates on its own, and the key type defaults to RSA of the
+     * configured size.
      *
      * @return void
      */
@@ -244,8 +233,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Rows of `[protocol, use, type, violations]`: a use or type not allowed
-     * for the connection, and what is refused.
+     * Rows of `[protocol, use, type, violations]` for a use or type the
+     * connection does not allow.
      *
      * @return iterable<string, array{
      *     0: string,
@@ -272,8 +261,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A use or type not allowed for the connection is invalid, refused before
-     * freshness is asked, with nothing written or reported.
+     * A use or type not allowed for the connection is refused before freshness
+     * is asked.
      *
      * @param  string  $protocol
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
@@ -312,9 +301,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A connection that is unknown, or another tenant's, is not found, the same
-     * answer for each, before freshness is asked and with nothing written or
-     * reported.
+     * An unknown or other tenant's connection is not found, alike, before
+     * freshness is asked.
      *
      * @param  string  $operation
      * @return void
@@ -352,8 +340,7 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * The listing of a connection that is unknown, or another tenant's, is
-     * `null`.
+     * The listing of an unknown or other tenant's connection is `null`.
      *
      * @return void
      */
@@ -383,9 +370,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Each helper asks the freshness contract once, with its own operation
-     * (`sso.keys.rotate` for a key, `sso.connection.trust` for a certificate)
-     * and that operation's configured maximum age.
+     * Each helper asks freshness once with its own operation and that
+     * operation's configured maximum age.
      *
      * @return void
      */
@@ -421,9 +407,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A caller whose authentication is not fresh enough, asked about as given,
-     * is refused with `freshness_required`: nothing is written and nothing is
-     * reported.
+     * A stale caller is refused with `freshness_required`, writing and
+     * reporting nothing.
      *
      * @param  string  $operation
      * @return void
@@ -450,9 +435,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Making the next key current makes the current key of its use retiring,
-     * accepted until the configured overlap ends, and reports the change with
-     * the key it replaced.
+     * Making the next key current retires the current one for the configured
+     * overlap and reports the replaced key.
      *
      * @return void
      */
@@ -501,9 +485,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Making a signing key current retires only the current signing key: the
-     * current encryption key stays current, with no overlap, and still the only
-     * key that decrypts, however long the overlap runs.
+     * Making a signing key current leaves the current encryption key current
+     * and alone in decrypting.
      *
      * @return void
      */
@@ -552,10 +535,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Only a next key of the service provider's own is made current: the
-     * current key, a retiring key and a trusted certificate are a conflict, and
-     * a key that is not the connection's is not found; each before freshness is
-     * asked, with nothing written or reported.
+     * Only a next own key is made current; other keys conflict and another
+     * connection's key is not found.
      *
      * @return void
      */
@@ -590,8 +571,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A retiring key, or a next key never made current, is retired and removed,
-     * and reported with the key as it was.
+     * A retiring key, or a next key never made current, is retired, removed and
+     * reported as it was.
      *
      * @return void
      */
@@ -629,9 +610,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * The current key and a trusted certificate are never retired: a conflict;
-     * a key that is not the connection's is not found; each before freshness is
-     * asked, with nothing written or reported.
+     * The current key and a trusted certificate are never retired, and another
+     * connection's key is not found.
      *
      * @return void
      */
@@ -659,7 +639,7 @@ final class KeyServiceTest extends TestCase
 
     /**
      * A next key added between the first read and the transaction makes the
-     * addition a conflict: the key generated is never written.
+     * addition a conflict.
      *
      * @return void
      */
@@ -679,7 +659,7 @@ final class KeyServiceTest extends TestCase
 
     /**
      * A key made current between the first read and the transaction makes
-     * making it current, or retiring it, a conflict.
+     * promoting or retiring it a conflict.
      *
      * @return void
      */
@@ -742,9 +722,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * The private key is stored only as the bound encrypter's ciphertext, which
-     * decrypts to the key pair's private half, and no result, listing or
-     * serialisation shows it.
+     * The private key is stored only as the encrypter's ciphertext and no
+     * result, listing or serialisation shows it.
      *
      * @return void
      */
@@ -777,9 +756,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A failed insert of a key propagates as a server error that quotes nothing
-     * of the encrypted private key, chains nothing that does, and writes and
-     * reports nothing.
+     * A failed key insert propagates without quoting or chaining the encrypted
+     * private key, and writes nothing.
      *
      * @return void
      *
@@ -810,9 +788,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Every read is made on the write connection (SSO-11.3), the checks made
-     * before the transaction among them: with the read connection unusable,
-     * every helper still answers.
+     * Every read, including the pre-transaction checks, uses the write
+     * connection.
      *
      * @return void
      */
@@ -847,8 +824,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * The listing holds every key and certificate of the connection, by use,
-     * then current, next, retiring and a certificate's none, then oldest first.
+     * The listing holds every key and certificate, by use, then state, then
+     * oldest first.
      *
      * @return void
      */
@@ -880,8 +857,7 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * The listing orders by use before state, and by state before age: an older
-     * key of a later use, or an older next key, never comes first.
+     * The listing orders by use before state, and state before age.
      *
      * @return void
      */
@@ -904,8 +880,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A certificate the inspector refuses is invalid with the inspector's
-     * violation, before freshness is asked, with nothing written.
+     * A certificate the inspector refuses is invalid with its violation, before
+     * freshness is asked.
      *
      * @return void
      */
@@ -920,9 +896,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A certificate the connection already trusts is a duplicate, and the
-     * eleventh is one too many, each refused before freshness is asked; the
-     * tenth is still trusted.
+     * A duplicate certificate and an eleventh are refused before freshness is
+     * asked; the tenth is trusted.
      *
      * @return void
      */
@@ -946,8 +921,7 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A key id no key can have, empty or longer than an id, is not found
-     * without a query of the keys.
+     * A key id no key can have is not found without querying the keys.
      *
      * @return void
      */
@@ -987,10 +961,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * The keys are read locked for update inside each change's transaction, and
-     * never by the listing or the checks made before it. SQLite has no row
-     * lock, so there the lock is compiled to a marker comment to show it was
-     * asked for.
+     * The keys are locked for update only inside each change's transaction.
+     * SQLite has no row lock, so the lock compiles to a marker comment.
      *
      * @return void
      */
@@ -1020,11 +992,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Replacing the trusted signing certificates trusts exactly those given:
-     * one no longer given is distrusted and reported retired, one newly given
-     * is trusted and reported added, one kept is left as it was, and a metadata
-     * signing anchor is untouched; the flows in flight are voided and the trust
-     * version raised once, and no freshness is asked.
+     * Replacing the signing certificates trusts exactly those given, leaves
+     * anchors alone, voids flows in flight and raises the trust version once.
      *
      * @return void
      */
@@ -1066,9 +1035,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Replacing the certificates with those trusted and another adds it alone,
-     * which voids nothing and leaves the trust version as it was; replacing
-     * them with exactly those trusted changes and reports nothing.
+     * An additive replacement voids nothing and keeps the trust version; an
+     * identical one changes nothing.
      *
      * @return void
      */
@@ -1098,8 +1066,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Rows of `[certificates, violations]`: certificates a replacement refuses,
-     * and each violation, at the certificate's position.
+     * Rows of `[certificates, violations]` a replacement refuses, with each
+     * violation at its position.
      *
      * @return iterable<string, array{0: \Closure(): list<string>, 1: list<array{setting: string, code: string}>}>
      */
@@ -1123,8 +1091,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * A replacement any of whose certificates is refused names each violation
-     * and writes, voids and reports nothing; ten certificates are accepted.
+     * A refused replacement names each violation and writes, voids and reports
+     * nothing; ten are accepted.
      *
      * @param  \Closure(): list<string>  $certificates
      * @param  list<array{setting: string, code: string}>  $violations
@@ -1173,8 +1141,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Add a P-256 signing key to the connection, the tenant's own unless
-     * another is given, and answer its summary.
+     * Add a P-256 signing key to the connection, the tenant's by default, and
+     * answer its summary.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return \SineMacula\Laravel\Sso\Keys\KeySummary
@@ -1187,8 +1155,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Put the connection in a state the mutation can act on, and answer the id
-     * of the key it acts on.
+     * Prepare the connection for the operation and answer the id of the key it
+     * acts on.
      *
      * @param  string  $operation
      * @return string
@@ -1254,9 +1222,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Record each read of the keys table from now on: whether it was made
-     * inside a transaction, and whether it locked the rows for update; on
-     * SQLite, with the lock compiled to a marker comment when asked.
+     * Record each keys-table read: whether in a transaction and whether locked,
+     * with SQLite's lock as a marker comment when asked.
      *
      * @param  bool  $markLocks
      * @return \ArrayObject<int, array{transaction: bool, locked: bool}>
@@ -1303,8 +1270,8 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
-     * Replace the connection's trusted signing certificates with those given,
-     * inside a transaction holding the connection's lock.
+     * Replace the trusted signing certificates inside a transaction holding the
+     * connection's lock.
      *
      * @param  list<string>  $certificates
      * @return Replacement

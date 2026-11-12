@@ -32,18 +32,15 @@ return new class extends Migration {
         (new MigrationCollisionGuard($schema))->ensureNotExists($this->table(), 'rate_limits.table');
 
         $schema->create($this->table(), static function (Blueprint $blueprint): void {
-            // HMAC-SHA256 hex digest, keyed from the application key, of what
-            // the counter counts (see CounterKeys), so the table alone gives
-            // none of it back.
+            // HMAC-SHA256 hex digest keyed from the application key, so the
+            // table alone reveals nothing it counts.
             $blueprint->char('key', 64)->primary();
             $blueprint->unsignedInteger('hits');
 
-            // Whole seconds in UTC, whatever the application timezone, so a
-            // daylight-saving change never repeats a value; compared with the
-            // window boundaries the limiter computes.
+            // UTC whole seconds, so a daylight-saving change never repeats one.
             $blueprint->dateTime('window_ends_at', 0);
 
-            // Pruning reads ended windows in this order, by keyset.
+            // Pruning keyset order.
             $blueprint->index(['window_ends_at', 'key']);
         });
     }
@@ -62,9 +59,7 @@ return new class extends Migration {
     }
 
     /**
-     * The connection the counters live on, the one the model reads and writes
-     * them on: `sso.rate_limits.connection`, or the storage connection (see
-     * `StorageConnection::connectionFor()`).
+     * `sso.rate_limits.connection`, or the storage connection.
      *
      * @return ?string
      *

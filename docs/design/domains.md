@@ -4,9 +4,8 @@
 
 This note records how a tenant claims an email domain for one of its connections and proves it controls it with a DNS
 TXT record (SSO-3.1, SSO-3.2): what a claim holds, how a domain is normalised and which are refused, the resolver
-contract and its three outcomes (decision D3), the one verified connection per domain, how the helpers lock and in which
-order, and the predicates every later reader judges a domain by. The scheduled rechecks and lapses (SSO-3.3) are in
-`domain-rechecks.md`.
+contract and its three outcomes, the one verified connection per domain, how the helpers lock and in which order, and
+the predicates every reader judges a domain by. The scheduled rechecks and lapses (SSO-3.3) are in `domain-rechecks.md`.
 
 ## Invariants
 
@@ -62,8 +61,8 @@ order, and the predicates every later reader judges a domain by. The scheduled r
   read by `verified_domain`, whose MySQL gap locks would deadlock with a verification's update; the unique index on it
   is the last guard, and a verification it refuses (caught in a savepoint) is `domain_unavailable`. A deadlock MySQL's
   gap locks can still cause between claims of neighbouring domains is retried up to three times when the helper's
-  transaction is the outermost; inside the application's, it propagates. Later items that lock domains (the recheck,
-  linking, a connection's deletion) keep this order.
+  transaction is the outermost; inside the application's, it propagates. Everything else that locks domains (the
+  recheck, linking, a connection's deletion) keeps this order.
 - Discovery reads `DomainFinder::claimsOf($domain)` without a lock, since it writes nothing on the strength of it, and
   routes by the claim `DomainClaims::routing($now)` picks ([discovery.md](discovery.md)).
 - Every outcome is a `Domains\DomainResult` (status `Domains\Enums\DomainStatus`): `claimed`, `verified`, `unchanged`

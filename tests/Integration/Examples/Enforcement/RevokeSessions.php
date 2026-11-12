@@ -12,12 +12,7 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * The example application's session revocation (SSO-4.5): it marks revoked, in
- * the application's own `sessions` table and through the package's storage
- * connection, the sessions each scope names: those of the enforcing tenant and
- * every tenant that inherits its rule not established through a satisfying
- * connection, every session through a connection, or every session through a
- * link.
+ * The example application's session revocation, on its own `sessions` table.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

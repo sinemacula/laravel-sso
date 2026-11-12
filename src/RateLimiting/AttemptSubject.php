@@ -9,17 +9,8 @@ use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptFlow;
 use SineMacula\Laravel\Sso\RateLimiting\Enums\AttemptScope;
 
 /**
- * One attempt at a limited flow (SSO-11.8) and what it is counted against: the
- * client's IP address, the email domain an authorisation request gave for
- * discovery, and the connection, whichever the flow counts. Built only through
- * the named constructor of its flow, so it names nothing its flow does not
- * count. The IP address is the one of the `Http\ClientContext` the action was
- * given. A `null` IP address or email domain is not counted (work with no
- * client, such as a console command, has no IP address); the connection of a
- * flow counted by connection is always given.
- *
- * Values are passed as given; the limiter brings each to the form it counts in
- * (an IPv4-mapped IPv6 address as its IPv4 address, a domain in lower case).
+ * An attempt at a limited flow and the raw values it counts against; a `null`
+ * value is not counted.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -45,13 +36,12 @@ final readonly class AttemptSubject
         /** The domain of the email given for discovery, if one was. */
         public ?string $emailDomain = null,
 
-        /** The id of the connection attempted through, for a flow counted by connection. */
+        /** The connection id, for a flow counted by connection. */
         public ?string $connection = null,
     ) {}
 
     /**
-     * Starting an authorisation request, from the client's IP address and, for
-     * discovery, with the email's domain.
+     * Starting an authorisation request.
      *
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $emailDomain
@@ -63,8 +53,7 @@ final readonly class AttemptSubject
     }
 
     /**
-     * A response at a connection's assertion consumer service or callback, from
-     * the client's IP address.
+     * A response at a connection's assertion consumer service or callback.
      *
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  string  $connection
@@ -76,7 +65,7 @@ final readonly class AttemptSubject
     }
 
     /**
-     * Redeeming a handoff code, from the client's IP address.
+     * Redeeming a handoff code.
      *
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return self
@@ -109,8 +98,7 @@ final readonly class AttemptSubject
     }
 
     /**
-     * What the attempt is counted against, by scope: each scope of its flow
-     * whose value was given.
+     * The non-null values of the flow's scopes, by scope.
      *
      * @return array<string, string>
      */

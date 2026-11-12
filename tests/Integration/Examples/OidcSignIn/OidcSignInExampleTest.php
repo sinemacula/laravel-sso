@@ -26,19 +26,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/oidc-sign-in.md` (SSO-5.4, SSO-5.10, SSO-2.4,
- * SSO-12.5), on the shared example harness, through a connection that sends
- * `max_age=3600` and an extra `prompt=select_account`: the sign-in start
- * endpoint and the reauthentication start, each run as the application runs it,
- * with the client's own PKCE challenge. Each asserts its outcome and a refusal:
- * a sign-in start answers `200` and sends the browser to the provider with the
- * parameters the guide lists, in its order, and never the client's challenge,
- * and the flow it starts signs the person in; an authorisation endpoint whose
- * own query names `state` answers `400` `connection_unavailable`, while one
- * whose query names nothing the request sets keeps it. A reauthentication sends
- * `max_age=0` and `prompt=login` in place of the connection's own and renews
- * the session; one for a session the person is not signed in on is refused
- * `session_ineligible`.
+ * Integration tests for the examples of `docs/guides/oidc-sign-in.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -68,8 +56,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     private IdentityReference $person;
 
     /**
-     * Make the tenant's OIDC connection, sending a `max_age` and an extra
-     * `prompt` of its own, and link the person through it.
+     * Make a connection with its own `max_age` and `prompt`; link the person.
      *
      * @return void
      *
@@ -88,13 +75,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * The start answers `200`, `no-store`, with a `redirect` navigation and no
-     * verifier, since the client sent its challenge. The provider is sent the
-     * guide's parameters in the guide's order, the connection's `max_age` and
-     * its extra `prompt` last, and a challenge of the package's own verifier,
-     * not the client's; `state` is not the request's public reference. The
-     * provider's answer, redeemed with the client's verifier, signs the person
-     * in.
+     * A sign-in start sends the guide's parameters, in order, and signs in.
      *
      * @return void
      *
@@ -130,10 +111,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * An authorisation endpoint's own query is kept ahead of the request's
-     * parameters; one that names `state`, in another case, refuses the start
-     * with `400` and `connection_unavailable`, and no navigation, rather than
-     * sending it twice.
+     * An endpoint query naming a request parameter refuses the start.
      *
      * @return void
      */
@@ -152,12 +130,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * An hour after signing in, a reauthentication of the person's session is
-     * started with the client's challenge and no verifier of the package's;
-     * the provider is sent `max_age=0` and `prompt=login` in place of the
-     * connection's `max_age` and extra `prompt`, which is left out; and its
-     * answer, admitted with the client's verifier, renews that session to when
-     * the provider authenticated the person again.
+     * A reauthentication forces `max_age=0` and `prompt=login` and renews.
      *
      * @return void
      *
@@ -186,8 +159,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * A reauthentication of a session the person is not signed in on is refused
-     * `session_ineligible`, sending the browser nowhere.
+     * A reauthentication of another session is `session_ineligible`.
      *
      * @return void
      *
@@ -206,8 +178,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * An enabled OIDC connection of the tenant to another provider, whose
-     * authorisation endpoint carries the query given.
+     * An enabled OIDC connection whose authorisation endpoint has this query.
      *
      * @param  string  $issuer
      * @param  string  $query
@@ -221,8 +192,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * Deliver the provider's answer to the connection's callback, and read the
-     * redirect the browser is sent back with.
+     * Deliver the provider's answer to the callback and read the redirect.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization  $grant
      * @return \SineMacula\Laravel\Sso\Testing\HandoffRedirect
@@ -235,8 +205,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * Admit the handoff in the application's transaction on the package's
-     * storage connection, with the verifier the client kept.
+     * Admit the handoff in a storage transaction with the client's verifier.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  \SineMacula\Laravel\Sso\Testing\HandoffRedirect  $redirect
@@ -253,8 +222,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * The sign-in start endpoint's answer to the connection and challenge the
-     * client sends.
+     * The sign-in start endpoint's answer.
      *
      * @param  array{connection: string, code_challenge: ?string}  $input
      * @return \Illuminate\Http\JsonResponse
@@ -271,8 +239,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * The reauthentication start for the caller the application authenticated,
-     * with the client's challenge.
+     * The reauthentication start for the authenticated caller.
      *
      * @param  array{connection: string, code_challenge: ?string, identity: \SineMacula\Laravel\Sso\Identities\IdentityReference, session: string}  $input
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
@@ -289,8 +256,7 @@ final class OidcSignInExampleTest extends ExampleTestCase
     }
 
     /**
-     * The start response's body, once its status is the one expected and it is
-     * never cached.
+     * The start's body, asserting its status and `no-store`.
      *
      * @param  \Illuminate\Http\JsonResponse  $response
      * @param  int  $status

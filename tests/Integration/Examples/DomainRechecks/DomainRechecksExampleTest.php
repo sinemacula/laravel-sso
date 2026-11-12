@@ -27,14 +27,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/domain-rechecks.md` (SSO-3.3, SSO-11.12,
- * SSO-12.5), on the shared example harness: the schedule its
- * `bootstrap/app.php` wires runs the recheck hourly; a recheck run from code
- * reports a record still published as confirmed, one gone as suspended, with
- * its lapse three days on, and a lookup that failed, and a resolver that throws
- * as such; and the command, with a fake resolver bound, suspends a domain whose
- * record has gone and exits `0`, while a failed lookup changes nothing and
- * fails it.
+ * Examples of `docs/guides/domain-rechecks.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,8 +56,8 @@ final class DomainRechecksExampleTest extends ExampleTestCase
     }
 
     /**
-     * Once Artisan starts, the schedule the guide's `bootstrap/app.php` wires
-     * holds the recheck once, hourly, on the hour.
+     * The guide's `bootstrap/app.php` schedules the recheck once, hourly, on
+     * the hour.
      *
      * @return void
      */
@@ -95,10 +88,8 @@ final class DomainRechecksExampleTest extends ExampleTestCase
     }
 
     /**
-     * A recheck run from code an hour after three domains were verified
-     * confirms the one whose record is still published, suspends the one whose
-     * record has gone, fixing its lapse three days on, and reports the one
-     * whose lookup failed, which it leaves as it was.
+     * A recheck from code confirms, suspends or reports each domain by its
+     * lookup.
      *
      * @return void
      *
@@ -146,8 +137,7 @@ final class DomainRechecksExampleTest extends ExampleTestCase
     }
 
     /**
-     * A resolver that throws is reported as such, never as a failed lookup, and
-     * the domain is left exactly as it was.
+     * A resolver that throws is reported as such and changes nothing.
      *
      * @return void
      *
@@ -176,9 +166,7 @@ final class DomainRechecksExampleTest extends ExampleTestCase
     }
 
     /**
-     * With a fake resolver bound that answers the domain's record as gone, the
-     * command suspends the domain, which still routes until it lapses three
-     * days on, and exits `0`.
+     * The command suspends a domain whose record has gone and exits `0`.
      *
      * @return void
      */
@@ -205,8 +193,7 @@ final class DomainRechecksExampleTest extends ExampleTestCase
     }
 
     /**
-     * A lookup that failed fails the command, which names the domain and counts
-     * it, and changes nothing about the domain.
+     * A failed lookup fails the command and changes nothing.
      *
      * @return void
      */
@@ -233,8 +220,7 @@ final class DomainRechecksExampleTest extends ExampleTestCase
     }
 
     /**
-     * Claim the domain for the connection and verify it, the tenant having
-     * published its record.
+     * Claim and verify the domain for the connection.
      *
      * @param  string  $domain
      * @return \SineMacula\Laravel\Sso\Domains\DomainSummary
@@ -254,7 +240,7 @@ final class DomainRechecksExampleTest extends ExampleTestCase
     }
 
     /**
-     * The connection's claim of the domain, as the domain service reads it.
+     * The connection's claim of the domain.
      *
      * @param  string  $domain
      * @return \SineMacula\Laravel\Sso\Domains\DomainSummary

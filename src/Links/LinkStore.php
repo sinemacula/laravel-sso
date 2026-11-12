@@ -31,75 +31,11 @@ use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * The package's link store (SSO-8.2 to SSO-8.4, SSO-1.5): the
- * `Contracts\LinkStorage` over the links table, and the one place a link is
- * created.
+ * The package's `Contracts\LinkStorage` over the links table, and the one place
+ * a link is created.
  *
- * It is not the default: `Links\NoLinks` is, and links nothing. The application
- * binds this store as `Contracts\Linker`, or an adapter does, answering the
- * link questions of the application's authentication from it too.
- *
- * `resolve()` finds the row of the result's connection whose `subject_key` is
- * `LinkSubject::of($result)->key()`, by a locking read on the write connection
- * (SSO-11.3), and compares the connection, issuer, format and subject again in
- * PHP, byte for byte, so neither a collation nor a forged key can match another
- * subject (SSO-6.9). A result reaches only the links of the connection it
- * completed through: another connection with the same issuer and subject
- * resolves nothing. It answers a `LinkResolution`:
- *
- * - no row, or a reservation expired, is `absent`;
- * - a live reservation is `reserved`, and a row suspended is `suspended`;
- * - an active link is `linked`, with `last_used_at` stamped from the clock by
- *   one conditional update, at most once a minute, for a `sign_in` result
- *   alone, since a `link` or a `reauthenticate` is no sign-in. A link that
- *   stands on a verified domain asks `Contracts\PrincipalScope` first, for its
- *   identity and the result's tenant:
- *   - `within_tenant` goes on;
- *   - `outside_tenant` stores the suspension, latched (`suspended_at`, the
- *     connection's links version raised), and revokes the sessions established
- *     through the link, in one transaction (a savepoint inside the caller's),
- *     in the established lock order: the link's connection is locked, then the
- *     link read again by a locking read, and only a link still active by a
- *     verified domain is suspended, revoked and reported, once. The answer is
- *     `suspended`. The principal's change was the place to revoke them; this
- *     repairs what it missed, and asking twice is safe. Removing the principal
- *     later never restores the link; only `confirm()`, from a confirming
- *     `link`, does (SSO-8.8). A principal added and removed between resolutions
- *     is what `Linking\ScopeWidening` catches;
- *   - `unknown` is `scope_unknown`: this attempt is refused, and nothing is
- *     stored, suspended or revoked, since uncertainty asserts no widening. An
- *     implementation that cannot reach its store throws instead.
- *
- * A caller inside a transaction of its own locks the result's connection before
- * it resolves, as the package's completion and redemptions do, so the link is
- * never locked before its connection; with none open, `resolve()` keeps that
- * order itself.
- *
- * `create()` makes an active link, in one transaction on the storage connection
- * (a savepoint inside the caller's), in a fixed order: the connection's row is
- * read again locked, which serialises every creation in the connection; the
- * identity's links in it are counted by a locking read, active and suspended
- * ones and reserved ones whose reservation has not expired; the link limit
- * contract, resolved from the container at that moment, is asked, and an answer
- * below one is a `LogicException` naming the binding; at the limit it is
- * `link_limit_reached`; an expired reservation of the subject is deleted, since
- * it holds nothing; the link is inserted through the model in a savepoint, and
- * the unique index on connection and key refusing it is
- * `subject_already_linked`; the connection's links version is raised by one, so
- * a link's insert also writes the connection's row (a PostgreSQL
- * `REPEATABLE READ` transaction that locks the row after the creation commits
- * then fails to serialise rather than miss the link); and `LinkCreated` is
- * reported after commit. A missing connection is a `LogicException`; any other
- * error propagates (SSO-11.4).
- *
- * `confirm()` clears a link's suspension and verified domain provenance for
- * good, under the connection's lock, raising its links version and reporting
- * `LinkConfirmed` (SSO-8.8, SSO-5.11).
- *
- * Every call that can report takes the client it is made for
- * (`Http\ClientContext`), whose IP address and user agent the event carries. It
- * holds the connection lookup, the clock, the reporter and the container, none
- * of which keeps anything of one request for the next (SSO-11.2).
+ * A caller in its own transaction locks the result's connection before
+ * `resolve()`, so a link is never locked before its connection.
  *
  * @api
  *
@@ -108,7 +44,7 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
  */
 final readonly class LinkStore implements LinkStorage
 {
-    /** @var int How long, in seconds, a link's last use stands before a resolution stamps it again. */
+    /** @var int How often a link's last use is stamped at most, in seconds. */
     public const int LAST_USED_RESOLUTION_SECONDS = 60;
 
     /**
@@ -135,8 +71,7 @@ final readonly class LinkStore implements LinkStorage
     ) {}
 
     /**
-     * The number of links the identity holds in the connection, by a locking
-     * read: active and suspended ones, and reserved ones that have not expired.
+     * Count the identity's held links in the connection by a locking read.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -149,7 +84,7 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * What the result's connection, issuer, format and subject resolve to.
+     * What the result resolves to within the connection it completed through.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
@@ -176,9 +111,8 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * Clear the link's suspension and verified domain provenance for good, once
-     * the person confirmed it through the `link` purpose, under the locks of
-     * the redemption, unless it is already neither.
+     * Clear the link's suspension and domain provenance for good, under the
+     * redemption's locks.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $locked
      * @param  string  $linkId
@@ -206,8 +140,7 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * Store the locked link's suspension, latched, raise the connection's links
-     * version and report it.
+     * Latch the locked link's suspension and report it.
      *
      * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -233,8 +166,8 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * Revoke the sessions established through the locked link, through the
-     * bound revocation, resolved at that moment, in the caller's transaction.
+     * Revoke the sessions established through the locked link, in the caller's
+     * transaction.
      *
      * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -265,9 +198,8 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * Make an active link of the subject, through the connection, to the
-     * identity, unless the subject is linked already or the identity holds as
-     * many links in the connection as it may.
+     * Link the subject to the identity unless it is linked already or the
+     * identity is at its limit.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
@@ -327,10 +259,8 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * The row of the subject in the connection, of any state, by a locking read
-     * on the write connection, or `null` when there is none. A row is the
-     * subject's only when what it holds matches byte for byte as well as its
-     * key, whatever the collation.
+     * The subject's row in the connection by a locking read, matched byte for
+     * byte as well as by key, or `null`.
      *
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
@@ -392,9 +322,8 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * What the active row resolves to: its identity and its provenance, once a
-     * sign-in's use is stamped, unless it stands on a verified domain and its
-     * identity's principals are not known to be within the tenant.
+     * What the active row resolves to, judging a domain-made link's principal
+     * scope first.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
@@ -426,12 +355,8 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * Suspend the link for good, and revoke the sessions established through
-     * it, in one transaction (a savepoint inside the caller's): the link's
-     * connection is locked first, then the link is read again by a locking
-     * read, and only a link still active by a verified domain is suspended and
-     * reported; anything else is resolved again as it is now, under those
-     * locks, so a latch another caller made first is never made twice.
+     * Suspend the link for good and revoke its sessions, unless another caller
+     * latched it first under the same locks.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
@@ -462,9 +387,8 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * Stamp the link's last use with the clock's now, in one update that
-     * changes the row only when it was never used or last used at least
-     * `LAST_USED_RESOLUTION_SECONDS` ago.
+     * Stamp the link's last use, at most once per
+     * `LAST_USED_RESOLUTION_SECONDS`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @return void
@@ -484,10 +408,8 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * Raise the locked connection's links version by one, so the insert also
-     * writes the connection's row: a PostgreSQL `REPEATABLE READ` transaction
-     * that locks the row after this one commits fails to serialise, rather than
-     * go on from a snapshot without the link (`SubjectMigration`).
+     * Raise the links version, so a stale PostgreSQL snapshot fails to
+     * serialise rather than miss the link.
      *
      * @param  string  $connectionId
      * @return void
@@ -498,8 +420,7 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * The connection's row, read again locked for update until the transaction
-     * ends.
+     * The connection's row, read again locked for update.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -513,8 +434,7 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * The most links the identity may hold in the connection, as the bound link
-     * limit contract answers.
+     * The bound link limit for the identity in the connection.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
@@ -529,10 +449,8 @@ final readonly class LinkStore implements LinkStorage
     }
 
     /**
-     * Insert the active link through the model in a transaction of its own (a
-     * savepoint inside the creation's), or answer `null` when the unique index
-     * on the connection and the subject's key refuses it. Any other error
-     * propagates.
+     * Insert the active link in a savepoint; `null` when the subject's unique
+     * index refuses it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject

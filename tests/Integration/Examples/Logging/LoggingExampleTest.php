@@ -26,16 +26,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/logging.md` (SSO-5.7, SSO-9.8, SSO-11.9,
- * SSO-12.5), on the shared example harness: the `sso` channel the application's
- * `config/logging.php` configures and `SSO_LOG_CHANNEL` names, the logging
- * settings its published `config/sso.php` holds, and its own secret encrypter
- * logging a refusal of its key management service through the package's logger.
- * Each reads what the daily file of the channel holds, under a storage
- * directory of the test's own, and asserts a refusal: a channel no
- * `logging.channels` configures, a malformed list of redacted keys, a
- * diagnostic length out of range, and a key management service that refuses to
- * decrypt.
+ * The examples of `docs/guides/logging.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -52,25 +43,23 @@ final class LoggingExampleTest extends ExampleTestCase
     /** @var list<string> The environment variables the published settings read. */
     private const array VARIABLES = ['SSO_LOG_CHANNEL', 'SSO_LOG_MAX_DIAGNOSTIC_LENGTH'];
 
-    /** @var string The API key the key management service client carries. */
+    /** @var string The API key the KMS client carries. */
     private const string API_KEY = 'k-3f9a2c';
 
-    /** @var string The problem `sso:check` reports for the `sso` channel while no `logging.channels` configures it. */
+    /** @var string What `sso:check` reports for an unconfigured `sso` channel. */
     private const string UNCONFIGURED_CHANNEL = '[logging] `sso.logging.channel` names the channel [sso], which is not configured in `logging.channels`.';
 
-    /** @var string A line in a log file: its level, its message, and its context as JSON, if any. */
+    /** @var string A log line: level, message and optional JSON context. */
     private const string LINE = '/^\[[^\]]+\] [^.\s]+\.(?<level>[A-Z]+): (?<message>.*?)(?: (?<context>\{.*\}|\[\]))?\s*$/';
 
     /** @var ?string The application's storage directory, which the test removes. */
     private ?string $storage = null;
 
-    /** @var \Tests\Integration\Examples\Logging\KmsClient The application's key management service client. */
+    /** @var \Tests\Integration\Examples\Logging\KmsClient The KMS client. */
     private KmsClient $kms;
 
     /**
-     * Give the application a storage directory of the test's own, so the log
-     * files it writes are the test's alone, and make the key management service
-     * client.
+     * Give the test its own storage directory and make the KMS client.
      *
      * @return void
      *
@@ -88,8 +77,7 @@ final class LoggingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Unset the variables a test set in the environment and remove the storage
-     * directory.
+     * Unset the environment variables and remove the storage directory.
      *
      * @return void
      */
@@ -108,9 +96,7 @@ final class LoggingExampleTest extends ExampleTestCase
     }
 
     /**
-     * With `SSO_LOG_CHANNEL=sso` and the `sso` channel configured, a provider's
-     * error is logged to that channel's daily file, by its code alone, naming
-     * the request by the public reference its failure redirect names.
+     * A provider's error is logged by its code alone to the configured channel.
      *
      * @return void
      *
@@ -137,9 +123,7 @@ final class LoggingExampleTest extends ExampleTestCase
     }
 
     /**
-     * `sso:check` reports `SSO_LOG_CHANNEL=sso` while `logging.channels`
-     * configures no `sso` channel, with the guide's message, and reports
-     * logging as sound once the channel is configured.
+     * `sso:check` reports the `sso` channel until it is configured.
      *
      * @return void
      */
@@ -163,10 +147,8 @@ final class LoggingExampleTest extends ExampleTestCase
     }
 
     /**
-     * An added redacted key is redacted wherever it is logged, in the message
-     * and as a context key, where the built-in keys alone leave it in clear;
-     * a list of redacted keys holding a name with no letter or digit refuses
-     * the log call with the guide's message.
+     * An added key is redacted in messages and context; a malformed key list
+     * refuses the log call.
      *
      * @return void
      */
@@ -203,9 +185,8 @@ final class LoggingExampleTest extends ExampleTestCase
     }
 
     /**
-     * `SSO_LOG_MAX_DIAGNOSTIC_LENGTH` caps every string logged, ending a cut
-     * one in `…`; a length out of range refuses the log call with the guide's
-     * message.
+     * `SSO_LOG_MAX_DIAGNOSTIC_LENGTH` caps every string logged; a length out of
+     * range refuses the log call.
      *
      * @return void
      */
@@ -231,11 +212,8 @@ final class LoggingExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's own secret encrypter carries a flow while its key
-     * management service answers, each of the package's secrets kept there; once
-     * the service refuses, decrypting fails as a server error, and the refusal
-     * reaches the `sso` channel as the exception's class, redacted message and
-     * code, never the API key or a trace.
+     * A KMS refusal fails decryption and is logged redacted, without the API
+     * key or a trace.
      *
      * @return void
      *
@@ -286,8 +264,7 @@ final class LoggingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Lay the guide's `config/logging.php` channels over the application's, as
-     * the application's own file configures them.
+     * Lay the guide's `config/logging.php` channels over the application's.
      *
      * @return void
      */
@@ -303,8 +280,7 @@ final class LoggingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Lay the guide's published configuration over the package's, key by key,
-     * as Laravel merges a published file with a package's, reading the
+     * Lay the guide's published configuration over the package's, reading the
      * environment as it is now.
      *
      * @return void
@@ -321,9 +297,8 @@ final class LoggingExampleTest extends ExampleTestCase
     }
 
     /**
-     * Every line of the `sso` channel's daily files with the message, in order:
-     * its level and its context, the context's keys sorted, since the order
-     * JSON writes them in is not the guide's to promise.
+     * The level and context of each `sso` line with the message; context keys
+     * are sorted, as JSON key order is not promised.
      *
      * @param  string  $message
      * @return list<array{level: string, context: array<array-key, mixed>}>

@@ -9,20 +9,8 @@ use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
 
 /**
- * Reads which authorisation request an OpenID Connect callback answers, by its
- * `state` (SSO-7.1), from the raw query before anything parses it, validating
- * nothing else.
- *
- * A callback is correlated only when it is a `GET` (a `form_post` response is
- * never accepted), its raw query passes `CallbackParameters::parse()`, so a
- * repeated, conflicting, array-shaped or oversized parameter is refused before
- * any request is looked up, and its `state` is exactly the 43 base64url
- * characters of the package's 256-bit state. Anything else is uncorrelated,
- * which the pipeline reports as `request_unknown` with no redirect target and
- * nothing consumed (SSO-5.7).
- *
- * It logs nothing and reads no other value of the query. It holds the limits
- * alone, read afresh on each call (SSO-11.2).
+ * Reads the `state` of an OpenID Connect callback from its raw `GET` query to
+ * find the authorisation request it answers, validating nothing else.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -31,10 +19,10 @@ use SineMacula\Laravel\Sso\Protocols\Correlation;
  */
 final readonly class CallbackCorrelator
 {
-    /** @var string The only method an authorisation response arrives by (`response_mode=query`). */
+    /** @var string The only accepted method; `form_post` responses are refused. */
     private const string METHOD = 'GET';
 
-    /** @var string The package's 256-bit state: exactly 43 base64url characters, with no padding. */
+    /** @var string The package's 256-bit state as unpadded base64url. */
     private const string STATE = '/^[A-Za-z0-9_-]{43}$/D';
 
     /**

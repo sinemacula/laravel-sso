@@ -4,9 +4,9 @@
 
 This note records how a connection's keys and certificates are kept, generated, rotated and read (SSO-2.5 to SSO-2.7,
 SSO-2.11, SSO-2.12, SSO-5.9): the service provider's own key pairs (SAML signing and encryption, OIDC
-`private_key_jwt`), each moving through `next`, `current` and `retiring`, and the identity provider signing
-certificates a SAML connection trusts as a set. Which signature and encryption algorithms each key serves is decided
-with the SAML and OIDC drivers (P4, P5), not here.
+`private_key_jwt`), each moving through `next`, `current` and `retiring`, and the identity provider signing certificates
+a SAML connection trusts as a set. Which signature and encryption algorithms each key serves is decided with the SAML
+and OIDC drivers, not here.
 
 ## Invariants
 
@@ -25,10 +25,10 @@ with the SAML and OIDC drivers (P4, P5), not here.
   | `idp_signing`      | The identity provider's, trusted by the connection      | `saml2`  | RSA           | `sso.connection.trust` |
   | `metadata_signing` | A metadata signing anchor, trusted by the connection    | `saml2`  | RSA           | `sso.connection.trust` |
 
-  Every SAML use is RSA alone, by the owner's decision while SAML stays on PHP 8.3 and saml2 v6 (`saml-library.md`,
-  condition 8): a generated key of another type for `sp_signing` or `sp_encryption` is refused (`key_type`,
-  `not_allowed`), and a certificate of another type given for `idp_signing` or `metadata_signing` is refused
-  (`certificate`, `unsupported`). ECDSA arrives when the PHP floor moves to 8.5 and saml2 v7 is stable.
+  Every SAML use is RSA alone while SAML stays on PHP 8.3 and saml2 v6 (`saml-library.md`, condition 8): a generated key
+  of another type for `sp_signing` or `sp_encryption` is refused (`key_type`, `not_allowed`), and a certificate of
+  another type given for `idp_signing` or `metadata_signing` is refused (`certificate`, `unsupported`). ECDSA arrives
+  when the PHP floor moves to 8.5 and saml2 v7 is stable.
 
   A `client_assertion` key must also fit the connection's `client_assertion_algorithm` when it pins one
   (`ClientAssertionKeys`): one that does not is refused (`key_type`, `not_allowed`), before it is generated and again
@@ -80,7 +80,7 @@ with the SAML and OIDC drivers (P4, P5), not here.
 
 - Expiry is reported, never enforced (SSO-2.6): a certificate's dates are read and stored, an expired certificate is
   trusted, and the key ring offers every trusted certificate whatever its dates. `KeySummary::isExpiredAt()` and
-  `expiresWithin()` answer the report; the nearing-expiry report and its event are BL-14's.
+  `expiresWithin()` answer the report; `Keys\ExpiryReport` and `KeyNearingExpiry` warn of it (`event-model.md`).
 - Every helper (`Keys\KeyService`) follows the management helpers' order (see `outcomes.md`): find the tenant's
   connection, and the key, through `Connections\ConnectionFinder` on the write connection; validate what was given;
   check the key's state; ask `Freshness\FreshnessGate` with the use's operation; generate the key, when one is added;
@@ -115,12 +115,11 @@ with the SAML and OIDC drivers (P4, P5), not here.
 - A state that changed between the first read and the transaction is `key_state_conflict` (a key made current or a
   `next` added meanwhile); a key removed meanwhile is `key_not_found`; a certificate trusted meanwhile is `duplicate`.
 - A stale caller is `freshness_required`, with nothing generated, written or reported.
-- Removing the last trusted certificate is allowed: the SAML driver (P4) then finds the connection incomplete, so no
-  sign-in runs through it until another is trusted.
+- Removing the last trusted certificate is allowed: the SAML driver then finds the connection incomplete, so no sign-in
+  runs through it until another is trusted.
 - A connection's first metadata signing anchor brings it to hold a stale deadline and, unless `metadata_refresh` is
   `false`, to refresh from its `metadata_url`, and clears what was stamped before, in the same transaction; removing its
-  last ends both
-  (`Metadata\SamlRefreshRule`, `metadata-refresh.md`).
+  last ends both (`Metadata\SamlRefreshRule`, `metadata-refresh.md`).
 - Distrusting a certificate, and trusting a metadata signing anchor, is a trust change (SSO-2.13): in its
   transaction, under the connection's lock, it voids the connection's unfinished authorisation requests and unredeemed
   handoff codes and raises its trust version (`Connections\InFlightVoider`; see

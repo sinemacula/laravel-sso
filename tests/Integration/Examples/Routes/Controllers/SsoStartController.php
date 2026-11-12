@@ -15,11 +15,7 @@ use SineMacula\Laravel\Sso\Http\ClientContext;
 use Tests\Integration\Examples\Routes\Application\Caller;
 
 /**
- * The example application's start routes (SSO-5.1, SSO-12.5): one endpoint per
- * purpose, each fixing its purpose server side. A `sign_in` is public and names
- * a connection or an email address to discover one by; a `link` and a
- * `reauthenticate` are the authenticated caller's own, their identity and
- * session taken from the authentication, never from the body.
+ * The example application's start routes, one per purpose.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -143,8 +139,7 @@ final readonly class SsoStartController
     }
 
     /**
-     * The response for a start: its body and headers, which carry
-     * `Cache-Control: no-store` and, when rate limited, `Retry-After`.
+     * The response for a start, with the result's own headers.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $result
      * @return \Illuminate\Http\JsonResponse

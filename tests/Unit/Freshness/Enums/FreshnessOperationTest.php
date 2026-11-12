@@ -10,10 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 
 /**
- * Unit tests for the freshness operations: exactly the twelve stable names of
- * the operations SSO-2.12 lists (enabling and disabling a connection named
- * apart), in order, each with the key its maximum age is configured under, and
- * every key in the shipped `freshness` block, which holds no other.
+ * Unit tests for the freshness operations and their configuration keys.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -23,7 +20,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 #[CoversClass(FreshnessOperation::class)]
 final class FreshnessOperationTest extends TestCase
 {
-    /** @var list<string> The stable names of the operations SSO-2.12 lists, enabling and disabling a connection apart, in order. */
+    /** @var list<string> The operations' stable names, in order. */
     private const array NAMES = [
         'sso.connection.trust',
         'sso.connection.enable',
@@ -50,8 +47,7 @@ final class FreshnessOperationTest extends TestCase
     }
 
     /**
-     * Rows of `[operation, name, key]`: each operation, its stable name and the
-     * key its maximum age is configured under.
+     * Rows of `[operation, name, key]`: each operation's name and config key.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation, 1: string, 2: string}>
      */
@@ -74,8 +70,7 @@ final class FreshnessOperationTest extends TestCase
     }
 
     /**
-     * Each operation is its stable name, and its key is that name after `sso.`
-     * with the dots as underscores.
+     * Each key is the operation's name after `sso.` with dots as underscores.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  string  $name
@@ -91,8 +86,7 @@ final class FreshnessOperationTest extends TestCase
     }
 
     /**
-     * Every key is distinct, lower case and free of dots, so it is one key of
-     * the block rather than a path into it.
+     * Every key is distinct, lower case and a single segment.
      *
      * @return void
      */
@@ -108,8 +102,7 @@ final class FreshnessOperationTest extends TestCase
     }
 
     /**
-     * The shipped `freshness` block configures every operation's key, and no
-     * other.
+     * The shipped `freshness` block has every operation's key and no other.
      *
      * @return void
      */

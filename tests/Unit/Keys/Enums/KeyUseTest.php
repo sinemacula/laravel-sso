@@ -12,9 +12,7 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 
 /**
- * Unit tests for what a key or certificate is for: stable values, and for each
- * use whether it is the service provider's own, its protocol, the key types it
- * may hold and the freshness operation a change to it needs.
+ * Unit tests for the key uses.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,8 +33,7 @@ final class KeyUseTest extends TestCase
     }
 
     /**
-     * Rows of `[use, own key, protocol, allowed types, freshness]`: each use; a
-     * SAML use holds RSA only, since its library signs and verifies RSA alone.
+     * Rows of `[use, own key, protocol, types, freshness]`; SAML is RSA only.
      *
      * @return iterable<string, array{
      *     0: \SineMacula\Laravel\Sso\Keys\Enums\KeyUse,
@@ -58,8 +55,7 @@ final class KeyUseTest extends TestCase
     }
 
     /**
-     * Each use says whether it is the service provider's own, its protocol, the
-     * types it may hold and the operation a change to it needs.
+     * Each use reports its ownership, protocol, types and freshness operation.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
      * @param  bool  $ownKey

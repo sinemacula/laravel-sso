@@ -19,15 +19,8 @@ use Tests\Integration\Examples\ExampleTestCase;
 use Tests\Integration\Examples\SiblingStandIns;
 
 /**
- * The `laravel-audit-log` example of `docs/guides/events.md` (SSO-10.4,
- * SSO-12.5), on the shared example harness, against the examples' stand-ins for
- * that sibling's facade, mapper contract, pending record and reference
- * (`Events/AuditLog`), which mirror its real signatures: the service provider
- * maps the package's failed flows through the guide's mapper, so a flow refused
- * for its token's audience is recorded once, under its code, as a failure with
- * its reason, by the person the flow was for, for the connection's tenant, and
- * correlated by the connection and the request's reference; and every event of
- * a flow that succeeds is skipped, by the registration and by the mapper alike.
+ * The `laravel-audit-log` example of `docs/guides/events.md`, against the
+ * stand-ins in `Events/AuditLog`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -48,8 +41,8 @@ final class AuditLogMapperExampleTest extends ExampleTestCase
     private IdentityReference $person;
 
     /**
-     * Load the stand-ins, forget what an earlier test recorded, register the
-     * application's service provider, and make the connection and the person.
+     * Load the stand-ins, register the service provider, and make the
+     * connection and person.
      *
      * @return void
      */
@@ -82,10 +75,8 @@ final class AuditLogMapperExampleTest extends ExampleTestCase
     }
 
     /**
-     * A `link` refused for its token's audience is recorded once: under its
-     * code, as a failure with its reason, with its flow and application, by the
-     * person it was for, for the connection's tenant (the event names no active
-     * one), correlated by the connection and the request's reference.
+     * A failed flow is recorded once through the mapper, for the connection's
+     * tenant.
      *
      * @return void
      *
@@ -113,8 +104,7 @@ final class AuditLogMapperExampleTest extends ExampleTestCase
     }
 
     /**
-     * A flow that succeeds records nothing: no event of it is a failed flow,
-     * and the mapper, handed each of them, skips it.
+     * The mapper skips every event of a successful flow.
      *
      * @return void
      *

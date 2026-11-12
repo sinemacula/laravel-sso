@@ -25,76 +25,11 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * The explicit migration helper (SSO-2.13): the one way to change a setting
- * that may alter what a connection's existing subjects mean (one the protocol's
- * `subjectNames()` lists) while the connection has links, which
- * `ConnectionService::update()` refuses with `connection_has_links`. It makes
- * the change and, in the same transaction, relinks each link the caller maps to
- * its subject under the new meaning and removes each link the caller lists.
+ * Changes a subject-defining setting on a connection with links, relinking or
+ * removing every link in the same transaction.
  *
- * `migrate()` takes the change as `update()` does, and an exhaustive
- * disposition of the connection's links: the relinks, each link id mapped to a
- * list of its new subject, then optionally its new SAML `NameID` format and its
- * new issuer (the format `null`, or left out, for none, and the issuer, when
- * `null` or left out, the link's own); and the removals, a list of link ids.
- * Every link the connection has when the migration runs must be in exactly one
- * of the two, so a link created after the caller prepared the call is never
- * removed or kept by accident. It goes in one order, and a refusal writes,
- * revokes and reports nothing:
- *
- * 1. In one transaction on the storage connection (a savepoint inside the
- *    caller's), the connection is read locked (`connection_not_found` when the
- *    tenant has no such connection, `protocol_unavailable` when its protocol is
- *    not), and then its links, locked, in id order.
- * 2. The disposition is judged against the locked links: a link in neither the
- *    relinks nor the removals, an id in both, or an id (or a removal that is
- *    not a string) that is not one of the connection's links is
- *    `links_unaccounted`, with nothing changed. Every link's creation raises
- *    the connection's `links_version` under the same lock, so on PostgreSQL
- *    under `REPEATABLE READ`, a migration whose snapshot predates a link fails
- *    to serialise when it locks the connection (SQLSTATE 40001, propagated)
- *    rather than go on without the link.
- * 3. The change is validated as `update()` validates one, and the relinks with
- *    it, each violation at `relinks.<id>`: `not_allowed` for a reserved link
- *    (only an active one is relinked; a reserved one may be removed),
- *    `invalid_type` for anything but a list of one to three strings (the format
- *    and issuer possibly `null`), and `invalid_format` for a subject, issuer or
- *    format of the wrong length; any violation is `invalid`
- *    (`settings_invalid`). A change that changes nothing is `unchanged`, and
- *    touches no link.
- * 4. The freshness contract is asked, through `checkAll()`, with
- *    `sso.connection.trust`, every operation the change asks and
- *    `sso.link.remove`; `stale` is `freshness_required`.
- * 5. In a savepoint: the change is written and reported (`ConnectionUpdated`),
- *    and what the connection has in flight is voided (`InFlightVoider`); every
- *    link of the connection is deleted and reported removed (`LinkRemoved`, in
- *    id order), and, for each link removed rather than relinked, and each
- *    relinked link of verified domain provenance, whose new row a session of
- *    the old one could no longer be reached through, the identity's sessions
- *    through the old link are revoked, naming the connection and that link's id
- *    (`RevocationScope::identityInConnection`).
- * 6. Each relinked link's identity is linked to its new subject through
- *    `Links\LinkStore::create()` with the origin `migration`, in the order the
- *    relinks are given (`LinkCreated`). A link of verified domain provenance
- *    keeps it, since only a confirming `link` clears it (SSO-8.8), so the new
- *    row is still judged by `Contracts\PrincipalScope` at its next resolution
- *    and found by `Linking\ScopeWidening`; any other relinked link's provenance
- *    is `migration`. A new subject already linked in the connection, another
- *    relink's included, is `duplicate` at `relinks.<id>`, and an identity at
- *    its link limit `too_many` there: either is `invalid` and rolls the whole
- *    migration back.
- *
- * Its events are dispatched once it commits, in that order
- * (`ConnectionUpdated`, each `LinkRemoved`, each `LinkCreated`), and never when
- * it rolls back (SSO-10.5). The revocation runs inside the transaction, so an
- * adapter that writes through the same Laravel connection commits or rolls back
- * with the migration (decision D5); an exception it throws rolls everything
- * back and propagates. An empty or overlong tenant id is an
- * `InvalidArgumentException`; a database error propagates (SSO-11.4).
- *
- * It holds the lookup, the registry, the management helpers, the link store,
- * the link reporter and the container, none of which keeps anything of one
- * request for the next (SSO-11.2). Resolve it from the container per request.
+ * Every link must be either relinked or removed, so one created after the call
+ * was prepared is never dropped by accident.
  *
  * @api
  *
@@ -106,7 +41,7 @@ final readonly class SubjectMigration
     /** @var string The relinks, as a violation names them. */
     private const string RELINKS = 'relinks';
 
-    /** @var int The most parts a relink gives: the subject, the format and the issuer. */
+    /** @var int The most parts a relink gives: subject, format and issuer. */
     private const int MAX_RELINK_PARTS = 3;
 
     /**
@@ -141,9 +76,8 @@ final readonly class SubjectMigration
     ) {}
 
     /**
-     * Make the change to the tenant's connection, relink each link given to its
-     * new subject, and remove each link listed; every link of the connection is
-     * one or the other.
+     * Each relink maps a link id to `[subject, ?format, ?issuer]`; the issuer
+     * defaults to the link's own.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -185,9 +119,7 @@ final readonly class SubjectMigration
     }
 
     /**
-     * Validate the change and the relinks against the locked connection and its
-     * locked links; make the change and remove the links in a savepoint; then
-     * relink.
+     * Make the change and remove the links in a savepoint, then relink.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, \SineMacula\Laravel\Sso\Models\Link>  $links
@@ -225,10 +157,8 @@ final readonly class SubjectMigration
     }
 
     /**
-     * Make the change through the management helpers and, once it is written,
-     * delete every link of the connection, report each removed and revoke the
-     * sessions of each identity that is not relinked, or whose link stood on a
-     * verified domain.
+     * Make the change, then delete every link, revoking sessions of removed and
+     * domain-provenance links, which the new row could not reach.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $changes
@@ -278,9 +208,8 @@ final readonly class SubjectMigration
     }
 
     /**
-     * Link each relinked link's identity to its new subject, in the order the
-     * relinks are given; the refusal of the first that cannot be linked, or
-     * `null` when every one is.
+     * Link each identity to its new subject in the order given; the first
+     * refusal, or `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, \SineMacula\Laravel\Sso\Models\Link>  $links
@@ -319,9 +248,8 @@ final readonly class SubjectMigration
     }
 
     /**
-     * Give the new row of a relinked link back the verified domain provenance
-     * the old one held, under the connection's lock, in the migration's
-     * transaction.
+     * Keep verified domain provenance on the new row, since only a confirming
+     * `link` clears it.
      *
      * @param  string  $linkId
      * @return void
@@ -332,11 +260,8 @@ final readonly class SubjectMigration
     }
 
     /**
-     * Run the migration in one transaction on the storage connection (a
-     * savepoint inside the caller's), committed only when it changed the
-     * connection and rolled back otherwise, so a relink refused after the
-     * change was written leaves nothing of it. An exception rolls it back and
-     * propagates.
+     * Commit only when the connection changed, so a relink refused after the
+     * change was written leaves nothing of it.
      *
      * @param  \Closure(): \SineMacula\Laravel\Sso\Connections\ConnectionResult  $migration
      * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
@@ -372,8 +297,7 @@ final readonly class SubjectMigration
     }
 
     /**
-     * The links of the locked connection, keyed by id, in id order, read with a
-     * locking read on the write connection.
+     * The connection's links keyed by id, by a locking read in id order.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @return array<string, \SineMacula\Laravel\Sso\Models\Link>
@@ -390,10 +314,8 @@ final readonly class SubjectMigration
     }
 
     /**
-     * Whether the relinks and the removals account for every locked link
-     * exactly once: each link id in one of the two and not in both, and no id
-     * (nor a removal that is not a string) that is not one of the links.
-     * Removals listed twice count once.
+     * Whether the relinks and removals name every locked link exactly once and
+     * nothing else; a removal listed twice counts once.
      *
      * @param  array<string, \SineMacula\Laravel\Sso\Models\Link>  $links
      * @param  array<array-key, mixed>  $relinks
@@ -408,8 +330,6 @@ final readonly class SubjectMigration
             return false;
         }
 
-        // As many ids given as there are links, and every link among them: each
-        // link given exactly once, and nothing else
         $given   = [...array_keys($relinks), ...array_unique($removed)];
         $current = array_keys($links);
 
@@ -417,8 +337,7 @@ final readonly class SubjectMigration
     }
 
     /**
-     * The new subject of each valid relink, by link id, in the order given, and
-     * a violation at `relinks.<id>` for each other.
+     * The new subject of each valid relink, and a violation for each other.
      *
      * @param  array<array-key, mixed>  $relinks
      * @param  array<string, \SineMacula\Laravel\Sso\Models\Link>  $links
@@ -447,8 +366,7 @@ final readonly class SubjectMigration
     }
 
     /**
-     * The new subject the relink gives the link, or why it gives none: a link
-     * that is not active, or a relink of the wrong shape.
+     * The new subject, or why none: only an active link can be relinked.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $link
      * @param  mixed  $relink
@@ -464,8 +382,8 @@ final readonly class SubjectMigration
     }
 
     /**
-     * Whether the relink is a list of one to three parts: the subject, a
-     * string; then the NameID format and the issuer, each a string or `null`.
+     * Whether the relink is a list of a subject string, then an optional
+     * nullable format and issuer.
      *
      * @param  mixed  $relink
      * @return bool
@@ -484,9 +402,8 @@ final readonly class SubjectMigration
     }
 
     /**
-     * The subject the well-shaped relink gives, its issuer the one given or
-     * else the link's own, or `invalid_format` when a part is empty or too long
-     * for a link.
+     * The subject the relink gives, or `invalid_format` for a part of the wrong
+     * length.
      *
      * @param  array{0: string, 1?: ?string, 2?: ?string}  $relink
      * @param  string  $issuer

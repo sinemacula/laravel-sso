@@ -13,12 +13,8 @@ use SineMacula\Laravel\Sso\Database\TableAlreadyExistsException;
 use Tests\TestCase;
 
 /**
- * Integration tests for the shipped identity guards migration, on whichever
- * engine the suite runs against: the table's shape, one row per identity by the
- * digest of it, the guard against an existing table and the rollback.
- *
- * Marked `#[CoversNothing]` because a migration is an anonymous class PHPUnit
- * cannot attribute coverage to.
+ * Integration tests for the identity guards migration. `#[CoversNothing]`:
+ * PHPUnit cannot attribute coverage to a migration's anonymous class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

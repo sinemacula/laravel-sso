@@ -16,39 +16,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * Writes a refresh of any source (SSO-2.8, SSO-2.13): the transaction, the
- * lock, the compare and set, the bookkeeping and the events every source shares
- * (`MetadataSource`), so a SAML metadata refresh and an OIDC discovery and JWKS
- * refresh are judged and recorded alike.
- *
- * `locked()` runs a source's write in one transaction on the storage connection
- * whose first statement locks the connection's row, the only lock a refresh
- * takes. The locked connection must still be there, still hold the claim's
- * token (no other server took the claim over once it expired), have the
- * metadata version and the trust version the refresh read before it claimed,
- * and give, read again under the lock by the source, exactly the claim's
- * snapshot of its trust. Anything else is `conflict` (`metadata_conflict`): the
- * refresh writes nothing, not even its claim, and `MetadataRefreshFailed`
- * reports the connection as the winner left it.
- *
- * `failed()` records a failure on the locked connection: the failures in a row
- * raised, the next refresh due after the backoff for that many, the claim and
- * its token released, the last good settings kept, and `MetadataRefreshFailed`
- * reported. `succeeded()` writes the source's attributes with the refresh's
- * bookkeeping in one save: the metadata version raised, `metadata_fetched_at`
- * the moment the fetched document was validated (never the later commit),
- * `metadata_valid_until` its `validUntil`, the failures reset, the claim and
- * its token released, and the next refresh due after the refresh interval,
- * never after the `validUntil`; `refreshed()` then reports `MetadataRefreshed`
- * with the settings the source changed and whether its trust changed.
- * `keysSucceeded()` is the same for a refresh of keys alone, which fetched no
- * document, so `metadata_fetched_at` and `metadata_valid_until` stay as they
- * were.
- *
- * Every event is dispatched after the transaction commits (SSO-10.5). A
- * database error propagates (SSO-11.4). It holds the reporter, the settings and
- * the clock, none of which keeps anything of one refresh for the next
- * (SSO-11.2).
+ * Writes a refresh of any source: the lock, the compare and set against the
+ * claim, the bookkeeping and the events.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -77,10 +46,8 @@ final readonly class RefreshWriter
     ) {}
 
     /**
-     * Run the work on the connection the claim holds, locked, unless the claim
-     * was lost or the connection or its trust changed meanwhile: the source
-     * reads its snapshot of the locked connection's trust again, with locking
-     * reads, through the closure given.
+     * Run the work on the claimed connection, locked, unless the claim was lost
+     * or the trust snapshot the source reads again under the lock changed.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\Connection): array<string, mixed>  $lockedTrust
@@ -106,9 +73,8 @@ final readonly class RefreshWriter
     }
 
     /**
-     * Record a failed refresh of the locked connection: one more failure in a
-     * row, the next refresh after the backoff, the claim and its token
-     * released.
+     * Record a failed refresh: one more failure in a row, the next after the
+     * backoff, the claim released and the last good settings kept.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -136,10 +102,8 @@ final readonly class RefreshWriter
     }
 
     /**
-     * Write the source's attributes and the refresh's bookkeeping to the locked
-     * connection, in one save: the metadata version raised, the validated fetch
-     * and `validUntil`, the failures reset, the claim released and the next
-     * refresh due.
+     * Write the source's attributes and the refresh's bookkeeping in one save,
+     * stamping the moment the document was validated, never the commit.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $attributes
@@ -161,10 +125,8 @@ final readonly class RefreshWriter
     }
 
     /**
-     * Write the source's attributes and the bookkeeping of a refresh that
-     * fetched keys alone, in one save: the metadata version raised, the
-     * failures reset, the claim released and the next refresh due, leaving when
-     * the document was last validated, and until when, as they were.
+     * Write the bookkeeping of a refresh that fetched keys alone, leaving the
+     * document's stamps as they were.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $attributes
@@ -202,9 +164,8 @@ final readonly class RefreshWriter
     }
 
     /**
-     * The refresh lost its claim or to a change made while it fetched, and
-     * writes nothing; the failure is reported with the connection as the winner
-     * left it.
+     * The refresh lost its claim or to a change: write nothing and report the
+     * connection as the winner left it.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $locked
@@ -224,8 +185,7 @@ final readonly class RefreshWriter
     }
 
     /**
-     * When the next refresh is due after one that succeeded now: after the
-     * refresh interval, or at the `validUntil` when that comes first.
+     * The next refresh after the interval, or at the `validUntil` if sooner.
      *
      * @param  \Carbon\CarbonImmutable  $now
      * @param  ?\Carbon\CarbonImmutable  $validUntil
@@ -241,8 +201,7 @@ final readonly class RefreshWriter
     }
 
     /**
-     * What every successful refresh writes whatever it fetched: the metadata
-     * version raised, the failures reset and the claim released.
+     * What every successful refresh writes, whatever it fetched.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @return array<string, mixed>
@@ -274,8 +233,7 @@ final readonly class RefreshWriter
     }
 
     /**
-     * The connection the claim holds read again, locked for update until the
-     * transaction ends, or `null` when it is gone.
+     * The claimed connection read again under lock, or `null` when it is gone.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @return ?\SineMacula\Laravel\Sso\Models\Connection

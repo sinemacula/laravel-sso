@@ -9,13 +9,8 @@ use SineMacula\Laravel\AuditLog\Contracts\EventMapper;
 use SineMacula\Laravel\AuditLog\Records\PendingRecord;
 
 /**
- * A stand-in for `laravel-audit-log`'s real `Facades\AuditLog`, which this
- * package does not install, with the exact signature of the `map()` the guide
- * calls in a service provider's `boot()` (`docs/guides/events.md`): every event
- * of the class or interface, but those excepted, is handed to the mapper the
- * container resolves with a new `PendingRecord`, and each record it returns is
- * kept. `recorded()` and `forget()` are the stand-in's own, for a test; the
- * sibling writes each record to its store instead.
+ * A stand-in for `laravel-audit-log`'s `Facades\AuditLog`, with the exact
+ * signature of `map()`; `recorded()` and `forget()` exist only for tests.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

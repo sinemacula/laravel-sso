@@ -8,16 +8,9 @@ use SineMacula\Laravel\Sso\Config\UrlSetting;
 use SineMacula\Laravel\Sso\Endpoints\Enums\Endpoint;
 
 /**
- * A connection's endpoints (SSO-5.5), as `Contracts\EndpointResolver` answers
- * them: its SAML assertion consumer service, its OIDC callback, its service
- * provider entity id, its metadata URL and its public JWKS URL.
+ * A connection's endpoints, as `Contracts\EndpointResolver` answers them.
  *
- * Each must be an absolute `https` URL, or `http` on `127.0.0.1` or `[::1]` for
- * development, with no user information, fragment or wildcard
- * (`Config\UrlSetting::web()`); anything else fails closed with an
- * `InvalidArgumentException` when the value is built, naming the endpoint and
- * never the URL, so a resolver can never publish or check an endpoint a
- * response could be addressed to elsewhere. Each is used exactly as built.
+ * Each is validated as a web URL on construction and used exactly as built.
  *
  * @api
  *
@@ -39,19 +32,19 @@ final readonly class ConnectionEndpoints implements \JsonSerializable
      */
     public function __construct(
 
-        /** The SAML assertion consumer service, `Destination` and `Recipient` compared with it exactly. */
+        /** The SAML assertion consumer service; `Destination` and `Recipient` must match it exactly. */
         public string $assertionConsumerService,
 
         /** The OIDC callback, sent as `redirect_uri`. */
         public string $callback,
 
-        /** The service provider entity id, the `Issuer` of an `AuthnRequest` and the audience an assertion must name. */
+        /** The service provider entity id: the `AuthnRequest` issuer and required audience. */
         public string $entityId,
 
-        /** The URL the service provider metadata is published at. */
+        /** The service provider metadata URL. */
         public string $metadata,
 
-        /** The URL an OIDC connection's public client assertion keys are served at, its `jwks_uri`. */
+        /** The OIDC client assertion keys' `jwks_uri`. */
         public string $jwks,
     ) {
         UrlSetting::web('endpoints.assertion_consumer_service', $assertionConsumerService);
@@ -78,8 +71,7 @@ final readonly class ConnectionEndpoints implements \JsonSerializable
     }
 
     /**
-     * The endpoints with snake_case keys, as an administrator registers them at
-     * the identity provider.
+     * The endpoints with snake_case keys.
      *
      * @return array{assertion_consumer_service: string, callback: string, entity_id: string, metadata: string, jwks: string}
      */

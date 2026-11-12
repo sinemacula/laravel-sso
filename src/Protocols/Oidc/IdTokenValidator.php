@@ -27,54 +27,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken;
 
 /**
- * Validates the ID token of a token response against the connection and the
- * consumed request (SSO-7.3, SSO-7.4, SSO-5.10). The checks run in this fixed
- * order, and the first that fails answers:
- *
- * 1. `Jose\CompactToken::parse()` under `OidcLimits::maxIdTokenBytes()`: a
- *    token it does not read is `id_token_invalid`;
- * 2. the key, from the connection's stored JWKS (`Metadata\ProviderKeys`, which
- *    refetches once on an unknown `kid`): only a key found goes on, unknown or
- *    refused is `signature_invalid`, and a connection gone or a trust change
- *    found while looking is `connection_unavailable`, as the completion's locks
- *    would have answered. Before a refetch, steps 4 to 10 run on the token's
- *    unverified claims, for rejection only: a token that would be refused
- *    anyway fetches nothing and leaves the shared cooldown unclaimed, answered
- *    `signature_invalid` like any token no key the connection holds verifies,
- *    so the answer says nothing of its claims. Unverified claims never
- *    establish identity or choose a URL to fetch, and every step runs again
- *    after the signature;
- * 3. the signature, `Jose\JoseAdapter::verify()`, under the connection's
- *    allow-list: `signature_invalid`;
- * 4. every claim the package reads has its exact type
- *    (`IdTokens\ClaimTypes`): `id_token_invalid`;
- * 5. `iss` is the connection's issuer and the issuer the request pinned, each
- *    exactly: `issuer_mismatch`;
- * 6. `aud` and `azp` (`IdTokens\AudienceRules`): `audience_mismatch`;
- * 7. `exp`, `iat` and `nbf` (`Jose\TimeClaims`), against the package's clock
- *    and skew, never the library's: `assertion_expired`;
- * 8. `nonce`, a string of 1 to 512 bytes whose digest is the one the request
- *    stored, compared in constant time; none is `nonce_mismatch`;
- * 9. `auth_time` (`IdTokens\AuthenticationTimeRules`), under the connection's
- *    `max_age` and, for a `reauthenticate` or a `max_age` of 0, not before the
- *    request started less the skew, never relative to when the callback runs;
- * 10. `at_hash` when present (`IdTokens\AccessTokenHash`): `at_hash_mismatch`.
- *
- * A claim decides a refusal only once the signature has verified with a key the
- * connection holds, so no refusal says anything of a token that is not the
- * provider's.
- *
- * A token validated under keys its own refetch rotated carries that refetch's
- * `Protocols\TransitionReceipt` on: it is handed on only here, once every step
- * has passed under the keys the rotation left.
- *
- * It runs outside any transaction, since the refetch fetches. A database error,
- * a misconfigured limit and a misconfigured allow-list propagate (SSO-11.4). It
- * logs nothing and puts nothing of the token in an exception (SSO-7.6). It
- * holds the key reader, the adapter, the limits and the clock, none of which
- * keeps anything of one call for the next, and reads the skew and the limits on
- * each call (SSO-11.2). It is not final, so a test of the flow around it can
- * observe and answer its calls.
+ * Validates an ID token in a fixed order: parse, key, signature, then claims.
+ * Not final, so a flow test can observe and answer its calls.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -112,7 +66,8 @@ readonly class IdTokenValidator
     ) {}
 
     /**
-     * Validate the token response's ID token, or refuse it.
+     * Validate the ID token, or refuse it. Before a JWKS refetch, the claims
+     * are checked unverified so a doomed token cannot spend the cooldown.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -142,7 +97,7 @@ readonly class IdTokenValidator
     }
 
     /**
-     * Why the token's key or signature refuses it (steps 2 and 3), or `null`.
+     * Why the token's key or signature refuses it, or `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\KeySelection  $selection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
@@ -161,8 +116,7 @@ readonly class IdTokenValidator
     }
 
     /**
-     * Why the verified token's claims refuse it (steps 4 to 10), or `null`, the
-     * first failure answering.
+     * Why the token's claims refuse it, or `null`; the first failure answers.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse  $tokens
@@ -189,8 +143,8 @@ readonly class IdTokenValidator
     }
 
     /**
-     * Why `iss` refuses the token: it must be the connection's issuer and the
-     * issuer the request pinned, each exactly.
+     * Why `iss` refuses the token: it must equal both the connection's issuer
+     * and the request's pinned issuer.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -209,8 +163,7 @@ readonly class IdTokenValidator
     }
 
     /**
-     * Why `nonce` refuses the token: it must be a string of 1 to 512 bytes
-     * whose digest is the one the request stored.
+     * Why `nonce` refuses the token: its digest must be the request's.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
@@ -225,9 +178,8 @@ readonly class IdTokenValidator
     }
 
     /**
-     * Why `auth_time` refuses the token, under the connection's `max_age` and,
-     * for a `reauthenticate` or a `max_age` of 0, which each ask the provider
-     * to authenticate afresh, when the request started.
+     * Why `auth_time` refuses the token; a fresh authentication must follow the
+     * request's start.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  \Carbon\CarbonImmutable  $now
@@ -250,8 +202,7 @@ readonly class IdTokenValidator
     }
 
     /**
-     * The token as validated: its issuer and subject known to be strings, and
-     * every number among its claims a number, never its digits.
+     * The validated token, with every number a number, never its digits.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
      * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\ValidatedIdToken

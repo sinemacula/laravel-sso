@@ -18,18 +18,8 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/service-provider-metadata.md` (SSO-5.9,
- * SSO-12.5), on the shared example harness: the description of a tenant's
- * connection, the metadata route and the public keys route, each run as the
- * application runs it, the routes over HTTP. A SAML connection is described
- * before its identity provider's settings are given and while it is disabled,
- * and an OIDC connection as JSON; another tenant's connection and an unknown
- * one are refused `connection_unavailable`, and a connection whose protocol is
- * off `protocol_unavailable`. The metadata route serves the description at the
- * URL its entity id names, and answers each refusal with `404`; the public keys
- * route serves an OIDC `private_key_jwt` connection's keys at the `jwks_uri`
- * its description names, whatever the host, and answers `404` for a connection
- * with no keys to serve.
+ * Integration tests for the examples of
+ * `docs/guides/service-provider-metadata.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,10 +31,10 @@ use Tests\Integration\Examples\ExampleTestCase;
 #[CoversClass(FakeServiceProvider::class)]
 final class ServiceProviderMetadataExampleTest extends ExampleTestCase
 {
-    /** @var string Where the package builds every connection's URLs, as the harness configures it. */
+    /** @var string The base URL the harness configures. */
     private const string BASE_URL = 'https://sp.example.test';
 
-    /** @var string A host the application serves for another tenant, which has no connection. */
+    /** @var string A host served for another tenant, which has no connection. */
     private const string OTHER_HOST = 'https://other.example.test';
 
     /** @var string A connection id no tenant has. */
@@ -72,9 +62,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * A SAML connection with no identity provider settings, never enabled, is
-     * described by its service provider metadata, whose entity id is the URL
-     * the metadata route serves.
+     * An unconfigured, disabled SAML connection is described by its metadata.
      *
      * @return void
      */
@@ -95,8 +83,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * An OIDC connection is described by what its driver describes: client
-     * metadata as JSON, naming the callback and its client authentication.
+     * An OIDC connection is described as JSON client metadata.
      *
      * @return void
      *
@@ -116,8 +103,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * Another tenant's connection is refused exactly as an unknown one, with
-     * `connection_unavailable` and no document.
+     * Another tenant's connection is refused as an unknown one.
      *
      * @return void
      */
@@ -131,8 +117,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * A connection whose protocol is switched off is refused
-     * `protocol_unavailable`.
+     * A connection whose protocol is off is refused `protocol_unavailable`.
      *
      * @return void
      */
@@ -149,8 +134,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * The metadata route serves the description's exact bytes at the URL the
-     * entity id names, with its content type and cache lifetime.
+     * The metadata route serves the description at the entity id's URL.
      *
      * @return void
      */
@@ -168,8 +152,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * The metadata route answers `404` for another tenant's connection, an
-     * unknown one, and one whose protocol is off, serving no metadata.
+     * The metadata route answers `404` for every refusal.
      *
      * @return void
      */
@@ -194,9 +177,8 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * An OIDC connection using `private_key_jwt` is described naming its
-     * `jwks_uri`, and the public keys route serves its one public key there,
-     * with no private member, the same from any host.
+     * The public keys route serves a `private_key_jwt` connection's key at its
+     * `jwks_uri`.
      *
      * @return void
      *
@@ -221,9 +203,8 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * The public keys route answers `404` for a client secret connection, a
-     * SAML connection, an unknown one, and a `private_key_jwt` connection with
-     * no key yet.
+     * The public keys route answers `404` for a connection with no keys to
+     * serve.
      *
      * @return void
      */
@@ -244,8 +225,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * The tenant's SAML connection, with no identity provider settings and
-     * never enabled.
+     * The tenant's unconfigured, disabled SAML connection.
      *
      * @return string
      */
@@ -259,8 +239,7 @@ final class ServiceProviderMetadataExampleTest extends ExampleTestCase
     }
 
     /**
-     * The tenant's OIDC connection using `private_key_jwt`, with a P-256 key
-     * added.
+     * The tenant's `private_key_jwt` OIDC connection, with a P-256 key.
      *
      * @return string
      */

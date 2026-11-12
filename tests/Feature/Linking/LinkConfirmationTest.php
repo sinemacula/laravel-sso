@@ -48,13 +48,8 @@ use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Adversarial tests of who may confirm a link of verified domain provenance
- * (SSO-8.8, SSO-8.5). An identity provider that captured a person by a verified
- * domain can sign that person in, and so can answer a `link` of them with the
- * same subject: that must not count as the person's confirmation, or it clears
- * the provenance and the link escapes the principal scope rule for good. Nor
- * may it add a second subject, in that connection or another, with no such
- * provenance.
+ * Adversarial tests of who may confirm a verified domain link: the provider
+ * that captured the person must not.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -79,9 +74,7 @@ final class LinkConfirmationTest extends LinkingTestCase
     private int $rows = 0;
 
     /**
-     * Bind a fresh caller and an eligibility that lets every identity link: all
-     * that stands between a captured session and a confirmation is the contract
-     * these tests are about.
+     * Bind a fresh caller and an eligibility that lets every identity link.
      *
      * @return void
      */
@@ -95,10 +88,8 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * Under the package's default, a session established through the domain
-     * link cannot clear its provenance: the `link` is refused, the row is left
-     * exactly as it was, no `LinkConfirmed` is reported, and a later widening
-     * still finds the link and suspends it.
+     * Under the default, a session through the domain link cannot clear its
+     * provenance.
      *
      * @return void
      */
@@ -186,11 +177,8 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * Independent authentication confirms: the provenance and any suspension
-     * are cleared. The contract is asked in the judgement and again in the
-     * admission, for this identity and connection, naming exactly the link, and
-     * each time it is given the caller the redemption was made for, with its
-     * session, as given.
+     * Independent authentication confirms, the contract asked at judgement and
+     * admission.
      *
      * @return void
      */
@@ -274,10 +262,7 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * The identity's guard comes first, then every connection holding one of
-     * its domain links with the redemption's own, in one locking statement,
-     * then the code and the links; and every application contract is asked only
-     * then, so its guards come after the package's.
+     * Every package lock is taken before any application contract is asked.
      *
      * @return void
      */
@@ -343,10 +328,8 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * A domain link in a connection the plain read did not find stands in a
-     * connection that was not locked, and cannot be locked now: the redemption
-     * throws for a retry of the whole transaction, with nothing written and the
-     * code unspent. The retry reaches it, and asks the contract.
+     * A domain link in a connection the plain read missed throws for a retry,
+     * with the code unspent.
      *
      * @return void
      *
@@ -390,11 +373,8 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * Removing one domain link, through the link service, does not make the
-     * session that survives it independent, nor touch the identity's other
-     * domain link: a contract that answers from the links it is given, and
-     * would pass a caller holding none, is asked about exactly the one left,
-     * and refuses.
+     * Removing one domain link does not confirm the identity's other domain
+     * link.
      *
      * @return void
      */
@@ -421,8 +401,7 @@ final class LinkConfirmationTest extends LinkingTestCase
 
     /**
      * Rows of `[whether the identity holds a provisioned link of the second
-     * subject]`: without it the `link` would create that subject's link, and
-     * with it, confirm the one held.
+     * subject]`.
      *
      * @return iterable<string, array{0: bool}>
      */
@@ -433,10 +412,8 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * Once the identity's only domain link is removed, through the link
-     * service, the session that survived it still cannot link: the guard
-     * remembers that the identity held one, so the contract is asked, with no
-     * link left to name, and refuses; nothing is written and the code is spent.
+     * After its only domain link is removed, the surviving session still cannot
+     * link.
      *
      * @param  bool  $provisioned
      * @return void
@@ -471,9 +448,8 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * Removed and then linked again by the domain, the identity is asked about
-     * the new link alone, and a contract that independent authentication passes
-     * lets it confirm; the guard's mark is the first activation's.
+     * Removed and linked again by the domain, the identity is asked about the
+     * new link alone.
      *
      * @return void
      */
@@ -519,8 +495,7 @@ final class LinkConfirmationTest extends LinkingTestCase
 
     /**
      * A standalone `link` takes the identity's guard before any read in its
-     * transaction: the connection's tenant is read before it opens, so the
-     * guard's upsert is its first statement.
+     * transaction.
      *
      * @return void
      */
@@ -549,9 +524,7 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * A standalone `link` that comes to a domain link in a connection it did
-     * not lock is rolled back and restarted once, from its transaction, and
-     * then redeems: what the first attempt saw rolls back with it.
+     * A standalone `link` whose candidates change restarts once, then redeems.
      *
      * @return void
      */
@@ -600,9 +573,8 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * A standalone `link` whose candidates change again in its restart
-     * propagates `LinkCandidatesChanged`: it restarts once, never twice, and
-     * leaves nothing written and the code unspent.
+     * A standalone `link` whose candidates change again propagates
+     * `LinkCandidatesChanged`.
      *
      * @return void
      *
@@ -659,9 +631,8 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * With independent authentication a second subject is made, with no domain
-     * provenance; every domain link is named, in id order, active and suspended
-     * alike.
+     * Independent authentication adds a second subject with no domain
+     * provenance.
      *
      * @return void
      */
@@ -700,9 +671,8 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * The contract is asked only for what stands on a verified domain, and only
-     * what it is asked about is named; refused, it refuses, and otherwise the
-     * `link` goes on unasked.
+     * The contract is asked only about domain links, and its refusal refuses
+     * the `link`.
      *
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkState  $state

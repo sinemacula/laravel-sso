@@ -40,19 +40,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for the recheck an adapter makes when it redeems its own codes
- * (SSO-4.3, SSO-4.6, SSO-8.5, SSO-9.9, decision D5): each outcome and the order
- * of the checks, a connection gone, disabled, incomplete, of another tenant or
- * over a protocol no longer registered; enforcement satisfied and not; a link
- * unchanged, removed, reassigned and added; a `LogicException` outside a
- * transaction on the storage connection or under another result's lock; the
- * locks taken in the package's order (the enforcement row, inserted
- * unconfigured when the tenant has none, then the connections in ascending id
- * order) under the default contract with the feature on, the connection alone
- * otherwise, with no enforcement statement and no inheritance asked while the
- * feature is off; an enforcing tenant that moved since the lock; and the
- * acknowledgement of a completed sign-in, written once, only for a `sign_in`
- * result, and undone with the redeemer's transaction.
+ * Feature tests for the recheck an adapter makes when redeeming its own codes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -67,7 +55,7 @@ final class HandoffRecheckTest extends TestCase
     use RecordsLockOrder, UsesConnections, UsesEnforcement;
 
     /** @var string What a call outside the redeemer's transaction is told. */
-    private const string NO_TRANSACTION = 'A handoff is rechecked inside the redeemer\'s transaction on the package\'s storage connection (decision D5).';
+    private const string NO_TRANSACTION = 'A handoff is rechecked inside the redeemer\'s transaction on the package\'s storage connection.';
 
     /** @var string What a call under another result's lock is told. */
     private const string OTHER_LOCK = 'A handoff is rechecked under the lock taken for its result\'s tenant, connection and application.';
@@ -85,8 +73,7 @@ final class HandoffRecheckTest extends TestCase
     private int $linkerAsked = 0;
 
     /**
-     * Bind a fixed clock and a linker answering the linked identity, register
-     * the driver, and create the tables and a usable connection.
+     * Bind a fixed clock and a linker, register the driver, create the tables.
      *
      * @return void
      */
@@ -145,8 +132,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * A usable connection that satisfies its tenant's enforcement, with a
-     * result still linked to the same identity, passes, the linker asked once.
+     * A usable, enforced connection with an unchanged link passes.
      *
      * @return void
      */
@@ -157,8 +143,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * A result linked to nothing at completion, and still linked to nothing,
-     * passes.
+     * A result still linked to nothing passes.
      *
      * @return void
      */
@@ -170,9 +155,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Rows of `[the version the binding names, the raise since issuance]`: a
-     * binding that names no trust version, and one issued under a version the
-     * connection has since left.
+     * Rows of `[the version the binding names, the raise since issuance]`.
      *
      * @return iterable<string, array{0: ?int, 1: int}>
      */
@@ -185,10 +168,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * A binding whose trust version is not the connection's under the lock, or
-     * that names none, is `connection_unavailable` before the link is asked
-     * about; the same binding naming the version the connection now holds
-     * passes.
+     * A binding of another trust version, or none, is `connection_unavailable`.
      *
      * @param  ?int  $named
      * @param  int  $raised
@@ -224,9 +204,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * A connection gone, disabled, incomplete, of another tenant than the
-     * result names, or over a protocol no longer registered is
-     * `connection_unavailable`, before enforcement or the link is asked.
+     * A connection no longer usable is `connection_unavailable` first.
      *
      * @param  string  $change
      * @return void
@@ -252,10 +230,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * A tenant whose enforcement requires other connections is
-     * `enforcement_unsatisfied`, before the link is asked; one whose
-     * enforcement includes the connection passes. Enforcement is asked for the
-     * connection's tenant on the result's application.
+     * Unsatisfied enforcement is `enforcement_unsatisfied` before the link.
      *
      * @return void
      */
@@ -295,8 +270,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * A link removed, reassigned, or added where there was none since
-     * completion is `link_changed`.
+     * A link removed, reassigned or added since completion is `link_changed`.
      *
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $atCompletion
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $now
@@ -312,9 +286,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Outside a transaction on the storage connection, taking the lock is a
-     * `LogicException`, and so is a recheck under a lock its transaction no
-     * longer holds; nothing is asked.
+     * Locking or rechecking outside a transaction is a `LogicException`.
      *
      * @return void
      */
@@ -347,8 +319,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Rows of `[tenant, application, connection]`: a lock taken for another
-     * tenant, application or connection than the result names.
+     * Rows of `[tenant, application, connection]` other than the result's.
      *
      * @return iterable<string, array{0: string, 1: string, 2: ?string}>
      */
@@ -360,9 +331,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * A recheck or an acknowledgement under a lock taken for another tenant,
-     * application or connection than the result's is a `LogicException`, and
-     * nothing is asked or written.
+     * Rechecking under another result's lock is a `LogicException`.
      *
      * @param  string  $tenantId
      * @param  string  $application
@@ -397,10 +366,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * With the feature on and the default contract, the lock takes the tenant's
-     * enforcement row first (inserting it unconfigured when it has none), then
-     * the connection and the rule's connections in one statement in ascending
-     * id order; the recheck judges the locked rows and locks nothing more.
+     * The lock takes the enforcement row, then the connections in id order.
      *
      * @return void
      */
@@ -419,8 +385,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * A tenant with no rule stored has an unconfigured row inserted to lock,
-     * which requires nothing; the lock then takes only the connection.
+     * A tenant with no rule is locked through an inserted unconfigured row.
      *
      * @return void
      */
@@ -443,9 +408,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * With the feature off, the lock takes the connection alone: no statement
-     * names the enforcement table, no row is inserted and the inheritance
-     * contract is never asked.
+     * With the feature off, only the connection is locked and nothing is asked.
      *
      * @return void
      */
@@ -464,8 +427,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Under another enforcement contract, the lock takes the connection alone
-     * and the contract is asked at the recheck, as it is bound.
+     * Under another enforcement contract, only the connection is locked.
      *
      * @return void
      */
@@ -484,10 +446,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * An inheritance contract that names another enforcing tenant by the
-     * recheck than when the lock was taken is `connection_unavailable`: the
-     * other tenant's rule is never locked out of order, and the link is not
-     * asked.
+     * An enforcing tenant that moved since the lock is unavailable.
      *
      * @return void
      */
@@ -507,9 +466,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * An inherited rule is the enforcing tenant's: its row is locked and its
-     * connections judged, a connection of another tenant it names never
-     * satisfying it.
+     * An inherited rule's row is locked and its connections judged.
      *
      * @return void
      */
@@ -535,8 +492,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * The connection's row is read with a locking read, once, where the
-     * database has one.
+     * The connection's row is read once with a locking read where supported.
      *
      * @return void
      */
@@ -562,9 +518,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Acknowledging a `sign_in` result records the completed sign-in on its
-     * connection, stamped now, inside the redeemer's transaction; a connection
-     * that has one is not written again.
+     * Acknowledging a `sign_in` records the completed sign-in once.
      *
      * @return void
      */
@@ -588,8 +542,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * An acknowledgement undone with the redeemer's transaction records
-     * nothing.
+     * An acknowledgement rolled back with its transaction records nothing.
      *
      * @return void
      */
@@ -644,8 +597,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Outside a transaction on the storage connection, acknowledging is a
-     * `LogicException`, and records nothing.
+     * Acknowledging outside a transaction is a `LogicException`.
      *
      * @return void
      */
@@ -665,8 +617,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Acknowledging through a connection gone, or of another tenant, is a
-     * `LogicException`.
+     * Acknowledging through a missing or foreign connection is refused.
      *
      * @return void
      */
@@ -691,8 +642,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Take the lock for the result and recheck it under the lock, inside a
-     * transaction on the storage connection.
+     * Lock and recheck the result in a transaction on the storage connection.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $linkedIdentity
@@ -706,8 +656,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Take the lock for the result and acknowledge its sign-in under it, in the
-     * transaction open.
+     * Lock and acknowledge the result's sign-in in the open transaction.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @return void
@@ -720,8 +669,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * The lock for the result's tenant, connection and application, taken in
-     * the transaction open.
+     * Take the lock for the result in the open transaction.
      *
      * @param  \SineMacula\Laravel\Sso\Results\VerifiedResult  $result
      * @return \SineMacula\Laravel\Sso\Handoffs\RecheckLock
@@ -762,8 +710,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * Bind an enforcement contract answering the policy, and answer the list
-     * each question it is asked is recorded in.
+     * Bind an enforcement contract answering the policy; record its questions.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @return \ArrayObject<int, array{0: string, 1: string}>
@@ -809,8 +756,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * A verified result through the connection, of the tenant, for the
-     * application and the purpose.
+     * A verified result for the connection, tenant, application and purpose.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  string  $tenantId
@@ -846,8 +792,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * What a code that resolved to the identity, through its link, was bound
-     * to, issued under the connection's trust version as this test holds it.
+     * The binding of a code resolved to the identity, at the trust version.
      *
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return \SineMacula\Laravel\Sso\Handoffs\HandoffBinding
@@ -858,8 +803,7 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * What a code that resolved to the identity, through its link, was bound
-     * to, issued under the trust version given, or naming none.
+     * The binding of a code resolved to the identity, at the version given.
      *
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  ?int  $trustVersion

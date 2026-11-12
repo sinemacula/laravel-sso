@@ -9,14 +9,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Base64Url;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * An ID token's `at_hash` (OpenID Connect Core §3.1.3.8, SSO-7.4): when present
- * it must be the unpadded base64url encoding of the left half of the access
- * token's hash, by the hash of the token's algorithm size (SHA-256, SHA-384 or
- * SHA-512 for `*256`, `*384` and `*512`), compared in constant time, and
- * anything else is `at_hash_mismatch`. An absent one is accepted, as the code
- * flow allows.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The ID token `at_hash` check (OpenID Connect Core 3.1.3.8); an absent claim
+ * passes, as the code flow allows.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,8 +28,7 @@ final class AccessTokenHash
     private function __construct() {}
 
     /**
-     * Why the token's `at_hash` refuses it for the access token under the
-     * algorithm, or `null`.
+     * Why the token's `at_hash` refuses it, or `null`.
      *
      * @param  array<array-key, mixed>  $claims
      * @param  string  $accessToken
@@ -55,8 +48,8 @@ final class AccessTokenHash
     }
 
     /**
-     * The `at_hash` of the access token under the algorithm, or `null` for an
-     * algorithm whose size names no hash.
+     * Compute the `at_hash` of the access token, or `null` for an algorithm
+     * whose size names no hash.
      *
      * @param  string  $accessToken
      * @param  string  $algorithm

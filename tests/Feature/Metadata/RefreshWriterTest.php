@@ -27,11 +27,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for what every refresh source's write shares (SSO-2.8,
- * SSO-2.13): the locked compare and set on the claim's token, the metadata and
- * trust versions and the source's snapshot, each mismatching alone; the
- * failure's backoff and released claim; the success's bookkeeping and next
- * refresh; and what each reports.
+ * Feature tests for the write every refresh source shares.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -74,9 +70,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * With its claim still held and nothing changed, the work runs on the
-     * connection read again, inside one transaction on the storage connection,
-     * and answers for the refresh.
+     * With the claim held and nothing changed, the work runs on the reread
+     * connection in one storage transaction.
      *
      * @return void
      *
@@ -115,8 +110,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * Any of them is a conflict: the work never runs, nothing is written, and
-     * the failure reports the connection as the winner left it.
+     * Any mismatch is a conflict: the work never runs, nothing is written and
+     * the winner's state is reported.
      *
      * @param  array<string, mixed>  $columns
      * @return void
@@ -152,8 +147,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * Rows of `[snapshot]`: the source's snapshot, read again under the lock,
-     * that is not exactly the claim's.
+     * Rows of `[snapshot]` that differ from the claim's when reread under the
+     * lock.
      *
      * @return iterable<string, array{0: array<string, mixed>}>
      */
@@ -168,8 +163,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * A snapshot that is not exactly the claim's is a conflict too, read from
-     * the locked connection.
+     * A snapshot that differs from the claim's, read under the lock, is a
+     * conflict.
      *
      * @param  array<string, mixed>  $snapshot
      * @return void
@@ -194,8 +189,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * A connection deleted while the refresh fetched is a conflict with nothing
-     * to report: neither the snapshot nor the work is read.
+     * A connection deleted during the fetch is a conflict with no event, and
+     * nothing is read.
      *
      * @return void
      *
@@ -214,8 +209,7 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * Rows of `[failures before, failures after, backoff]`: how a failure backs
-     * off for the failures in a row.
+     * Rows of `[failures before, failures after, backoff]`.
      *
      * @return iterable<string, array{0: int, 1: int, 2: int}>
      */
@@ -229,8 +223,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * A failure raises the failures in a row, backs off for that many, releases
-     * the claim and its token, keeps everything else, and reports them.
+     * A failure increments the count, backs off, releases the claim and token,
+     * and reports them.
      *
      * @param  int  $before
      * @param  int  $after
@@ -274,9 +268,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * A success writes the source's attributes with the refresh's bookkeeping,
-     * in one save: the metadata version raised, the validated moment and the
-     * `validUntil` as given, the failures reset and the claim released.
+     * A success writes the source's attributes and bookkeeping in one save,
+     * raising the version and releasing the claim.
      *
      * @return void
      *
@@ -308,9 +301,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * Rows of `[valid until, next]`: a refresh's `validUntil` around the
-     * interval, in seconds from now, and when the next refresh is due; `null`
-     * for none.
+     * Rows of `[valid until, next]` in seconds from now around the interval;
+     * `null` for none.
      *
      * @return iterable<string, array{0: ?int, 1: int}>
      */
@@ -361,8 +353,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * A refresh reports the settings changed, the connection's metadata version
-     * and whether its trust changed, and answers them.
+     * A refresh reports and answers the changed settings, metadata version and
+     * trust change.
      *
      * @return void
      *
@@ -400,8 +392,8 @@ final class RefreshWriterTest extends TestCase
     }
 
     /**
-     * A connection with a claim written and the attributes given, and the claim
-     * as a refresh read it: both versions at 2, the snapshot `TRUSTED`.
+     * A claimed connection with the given attributes, and its claim at versions
+     * 2 with a `TRUSTED` snapshot.
      *
      * @param  array<string, mixed>  $attributes
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshClaim

@@ -22,16 +22,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/rate-limits.md` (SSO-11.8, SSO-12.5), on the
- * shared example harness: the guide's published limits laid over the package's,
- * passing the `[rate_limits]` check and counted with the table and its
- * connection left to their defaults; the start route answering a full limit
- * `429` with the seconds to wait in `Retry-After`; and the application's own
- * sign-in hint counting its attempts through the package's limiter, all or
- * none, each value in its canonical form. Each refusal is shown: a flow left
- * out of the published block fails closed and is reported, a limit the package
- * does not count is reported, and a full limit refuses the attempt, counts it
- * against nothing and frees when its window ends.
+ * Integration tests for the examples of `docs/guides/rate-limits.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,7 +44,7 @@ final class RateLimitsExampleTest extends ExampleTestCase
     /** @var string The address of another client. */
     private const string ELSEWHERE = '198.51.100.9';
 
-    /** @var string What the check and the limiter say of a flow with no limits. */
+    /** @var string The message for a flow with no limits. */
     private const string REDEMPTION_MISSING = '`sso.rate_limits.redemption.per_ip` must be an array of `max` (1 to 1000000) and `decay_seconds` (1 to 86400).';
 
     /** @var string The connection the start route starts through. */
@@ -75,10 +66,7 @@ final class RateLimitsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Under the published block, which leaves out the table and its connection,
-     * the check finds every limit, and the office's address may start sixty
-     * sign-ins in the minute, not sixty-one, while another address may still
-     * start one.
+     * The published per-IP limit is the one counted.
      *
      * @return void
      */
@@ -102,9 +90,7 @@ final class RateLimitsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A published block that leaves out a flow fails the check under
-     * `[rate_limits]`, naming the key, and every attempt at that flow throws,
-     * while the flows it keeps are counted as before.
+     * A flow left out of the published block fails closed.
      *
      * @return void
      */
@@ -132,9 +118,7 @@ final class RateLimitsExampleTest extends ExampleTestCase
     }
 
     /**
-     * A limit the package does not count, a `per_connection` under
-     * `redemption`, fails the check, though redemptions are still counted by
-     * the limits they have.
+     * A limit the package does not count is reported.
      *
      * @return void
      */
@@ -152,10 +136,7 @@ final class RateLimitsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Once the office's address has used its two starts, the next, fifteen
-     * seconds into the minute, is answered `429` with the forty-five seconds
-     * left in `Retry-After` and the flow's one `rate_limited` failure; another
-     * address still starts, and the office starts again once the minute ends.
+     * A full limit is answered `429` with the seconds left in its window.
      *
      * @return void
      */
@@ -185,12 +166,8 @@ final class RateLimitsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The application's own hint counts each attempt against the address and
-     * the email's domain, all or none: the domain is counted in its ASCII form,
-     * in lower case and without a trailing dot, so a third attempt at it is
-     * refused, counting against neither; the address then has room for its
-     * three, one with no domain, before it is refused too; and a minute on, the
-     * domain may be tried again.
+     * The application's own hint counts against the address and domain, all or
+     * none.
      *
      * @return void
      */
@@ -226,8 +203,8 @@ final class RateLimitsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Lay the guide's published configuration over the package's, key by key,
-     * as Laravel merges a published file with a package's.
+     * Lay the guide's published configuration over the package's, as Laravel
+     * merges a published file.
      *
      * @return void
      */
@@ -243,8 +220,7 @@ final class RateLimitsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Post a sign-in start to the guide's route from the address, as the client
-     * does.
+     * Post a sign-in start to the guide's route from the address.
      *
      * @param  string  $ip
      * @return \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>
@@ -272,8 +248,7 @@ final class RateLimitsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Run the application's sign-in hint for a request from the address with
-     * the email's domain, and answer what the limiter decided.
+     * Run the application's sign-in hint for the address and email domain.
      *
      * @param  string  $ip
      * @param  ?string  $emailDomain

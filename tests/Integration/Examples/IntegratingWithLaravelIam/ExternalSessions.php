@@ -7,16 +7,8 @@ namespace Tests\Integration\Examples\IntegratingWithLaravelIam;
 use Tests\Integration\Examples\IntegratingWithLaravelIam\Contracts\ExternalIdentityLinks;
 
 /**
- * A stand-in for `laravel-authentication`'s external sign-in,
- * `Auth::sessions()->signInExternally()` (its PR #127), which this package does
- * not install: it asks the link contract for the result's connection, issuer
- * and subject, refuses the result as `link_mismatch` unless the answer is
- * exactly the result's link, and otherwise establishes a session, or refuses
- * for the reason a test sets, as authentication's policy would.
- *
- * It keeps its sessions in memory, which is all a test needs. Authentication
- * writes them on the same database connection, inside the adapter's
- * transaction, so they commit or roll back with the redemption.
+ * An in-memory stand-in for `laravel-authentication`'s `Auth::sessions()`;
+ * it refuses as `link_mismatch` unless the link contract names the link.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -28,7 +20,7 @@ final class ExternalSessions
     /** @var array<string, \Tests\Integration\Examples\IntegratingWithLaravelIam\ExternalResult> Each session established, by its id. */
     private array $sessions = [];
 
-    /** @var ?string Why authentication refuses every sign-in for now, if it does. */
+    /** @var ?string Why every sign-in is refused, if it is. */
     private ?string $refusal = null;
 
     /**

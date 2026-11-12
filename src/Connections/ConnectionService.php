@@ -32,70 +32,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Enums\Saml2Setting;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Settings;
 
 /**
- * The management helpers that create, update, read, list and enable a tenant's
- * connections (SSO-1.2, SSO-2.11), for the application's own administration
- * screens: who may call them is the application's authorisation, never the
- * package's.
+ * Creates, updates, reads, lists and enables a tenant's connections.
  *
- * Every helper is scoped to a tenant, an opaque id of 1 to 255 bytes: another
- * tenant's connection is answered exactly as an unknown one. A change follows
- * one order: find the connection, locked, on the write connection; refuse an
- * unavailable protocol; validate what was given, as a whole; ask the freshness
- * contract with each operation the change is (SSO-2.12); then write through the
- * model, in one transaction on the storage connection, and report the change
- * through `Administration\AdministrationEvents` inside it. A refusal at any
- * step is a `ConnectionResult` that wrote and reported nothing; a change that
- * changes nothing succeeds as `unchanged`, writes nothing and reports nothing.
- * An update that changes nothing asks nothing, while enabling an enabled
- * connection still asks freshness. A database error and a `SecretEncrypter`
- * that cannot encrypt propagate (SSO-11.4); a failed write of the encrypted
- * secrets propagates as a `RuntimeException` that quotes none of them; an empty
- * or overlong tenant id is an `InvalidArgumentException`.
- *
- * Secrets are taken out of the settings by the protocol's `secretNames()`, each
- * a string of 1 to 1024 bytes with no control character, encrypted on its own,
- * never returned and kept when an update does not name it (SSO-2.5). Every
- * parameter that carries what an administrator gave, secrets among it, is
- * `#[\SensitiveParameter]`, so an exception's trace shows none of it. A map
- * given again in another key order, such as `extra_parameters`, is not a
- * change: maps are compared whatever their key order, lists in order. A new
- * connection is disabled; enabling one needs no complete settings, since only a
- * complete connection is ever usable.
- *
- * A change to a setting the protocol's `subjectNames()` lists (the issuer or
- * entity id, the client id, the subject source, the NameID format) may change
- * what the connection's existing subjects mean, so an update making one is
- * refused with `connection_has_links` while the connection has a link, active
- * or reserved until after now, read with a locking read once freshness has been
- * asked; `Connections\SubjectMigration` makes such a change and relinks or
- * removes the links with it (SSO-2.13). Every update that asks
- * `sso.connection.trust` voids, in its transaction and under the connection's
- * lock, the requests and handoff codes in flight through the connection
- * (`Connections\InFlightVoider`) and raises its trust version; a change that
- * asks only another operation, or none, voids nothing. Enabling a connection
- * raises its trust version too, under its lock. An update of an OIDC
- * connection's `issuer` or `jwks_uri` also clears, in the same save, the keys
- * fetched for it and their cooldown, and for an `issuer` the discovery
- * document's refresh dates too (`Metadata\ProviderKeys::resetFor()`), so keys
- * fetched for another issuer or URL are never used; so does an endpoint changed
- * with `metadata_refresh` off clear when the document was last validated, since
- * the endpoints are then saved by hand. A change of an OIDC connection's
- * `client_assertion_algorithm` is refused as `unsupported` when its current or
- * next key cannot sign under it (`Keys\ClientAssertionKeys`), read under the
- * lock, and is a trust change like any other. Setting a SAML connection's
- * `metadata_refresh` is one too: `true` delegates trust to its metadata URL and
- * its TLS, and a change that brings it to hold a stale deadline clears what was
- * stamped before and makes its first refresh due
- * (`Metadata\SamlRefreshRule::resetForSettings()`). A change of the setting
- * naming the issuer (the protocol's `issuerNames()`) turns the connection's
- * linking off and clears its classification, organisation and acknowledgement
- * in the same save (`LinkingPolicyReset`), raising `linking_version` and naming
- * each as `linking.*`, since they were stated about another issuer (SSO-8.8).
- *
- * It holds the registry, the lookup, the freshness gate, the secrets, the
- * reporter, the mapping's caps, the voider and the clock, none of which keeps
- * anything of one request for the next (SSO-11.2). Resolve it from the
- * container per request.
+ * Another tenant's connection is answered exactly as an unknown one.
  *
  * @api
  *
@@ -122,16 +61,16 @@ final readonly class ConnectionService
     /** @var string The column of the encrypted secrets. */
     private const string SECRETS = 'secrets';
 
-    /** @var string The failure of a write of the encrypted secrets, which names none of them. */
+    /** @var string The failure of a write of the encrypted secrets. */
     private const string SECRETS_NOT_WRITTEN = 'The connection\'s secrets could not be written';
 
-    /** @var list<string> What a change may never name: a connection's tenant and protocol are fixed (SSO-2.1). */
+    /** @var list<string> What a change may never name, being fixed at creation. */
     private const array FIXED = ['tenant_id', 'protocol'];
 
     /** @var array<string, null> What an update gives for each change it leaves out. */
     private const array NO_CHANGES = [self::SETTINGS => null, self::ATTRIBUTE_MAPPING => null, self::DISPLAY_NAME => null];
 
-    /** @var list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation> What a subject migration asks besides what its change asks. */
+    /** @var list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation> What a subject migration also asks. */
     private const array MIGRATION_OPERATIONS = [FreshnessOperation::CONNECTION_TRUST, FreshnessOperation::LINK_REMOVE];
 
     /**
@@ -174,16 +113,8 @@ final readonly class ConnectionService
     ) {}
 
     /**
-     * Create a connection for the tenant, disabled, over the protocol: its
-     * display name, its settings (secrets among them, by name), its attribute
-     * mapping over the protocol's defaults, and optionally a preset of the
-     * protocol, whose settings and mapping what is given replaces.
-     *
-     * A setting or mapping target given as `null` is not set. Refused with
-     * `protocol_unavailable` when the protocol is not registered or its feature
-     * is off, `settings_invalid` with every violation, or `freshness_required`
-     * when the caller's authentication is not fresh enough for a trust change
-     * and each operation a setting given needs.
+     * Create a disabled connection; what is given overrides the preset, which
+     * overrides the protocol's default mapping.
      *
      * @param  string  $tenantId
      * @param  string  $protocol
@@ -263,19 +194,8 @@ final readonly class ConnectionService
     }
 
     /**
-     * Change the tenant's connection: its `display_name`, its `settings` (a
-     * setting given replaces the stored one and `null` removes it; a secret
-     * given as a string sets it, as `null` clears it, and one not given is
-     * kept) and its `attribute_mapping` (a target given replaces the stored one
-     * and `null` removes it).
-     *
-     * The merged connection is validated as a whole, as `create()` validates a
-     * new one; a change to `tenant_id` or `protocol` is `immutable`, and any
-     * other key `unknown`. Only what changed asks for freshness, and only a
-     * change that changed something is written and reported, naming each
-     * setting, secret, `display_name` or `attribute_mapping` that changed. A
-     * change to a subject setting of a connection with links is refused with
-     * `connection_has_links`, and a trust change voids what is in flight.
+     * Merge the changes, where `null` removes a value, and validate the result
+     * as a whole; only what changed asks for freshness.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -338,9 +258,8 @@ final readonly class ConnectionService
     }
 
     /**
-     * Enable the tenant's connection. Freshness is asked even when it is
-     * enabled already, which then succeeds as `unchanged`. Its settings need
-     * not be complete: an incomplete connection is never usable.
+     * Freshness is asked even when already enabled; settings need not be
+     * complete, since an incomplete connection is never usable.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -379,17 +298,8 @@ final readonly class ConnectionService
     }
 
     /**
-     * Merge the changes into the locked connection, validate the result, and
-     * write and report what changed: what `update()` does once it has found the
-     * connection, locked, and refused an unavailable protocol.
-     *
-     * `Connections\SubjectMigration` alone passes the violations of its relinks
-     * (none when every relink is valid). They are reported after the change's
-     * own; freshness is asked with `sso.connection.trust` and `sso.link.remove`
-     * besides what the change asks; and a change to a subject setting is not
-     * refused for the connection's links, which the migration relinks or
-     * removes in the same transaction. The caller holds the connection's lock
-     * in its transaction on the storage connection.
+     * The body of `update()` under the caller's lock; non-null
+     * `$relinkViolations` marks a subject migration.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  array<string, mixed>  $changes
@@ -492,8 +402,7 @@ final readonly class ConnectionService
 
     /**
      * Why a connection cannot be created over the protocol with the preset, or
-     * `null` when it can: the protocol is unavailable, or the preset is unknown
-     * or of another protocol.
+     * `null`.
      *
      * @param  string  $protocol
      * @param  ?string  $preset
@@ -519,8 +428,7 @@ final readonly class ConnectionService
     }
 
     /**
-     * The refusal of a caller whose authentication is not fresh enough for
-     * every operation, or `null` when it is, or none is given.
+     * `freshness_required` unless the caller is fresh for every operation.
      *
      * @param  list<\SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation>  $operations
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -535,11 +443,8 @@ final readonly class ConnectionService
     }
 
     /**
-     * The refusal of a change to a subject setting of a connection that has
-     * links, or `null` when the change alters no subject, is a subject
-     * migration's, which relinks or removes the links, or the connection has
-     * none: an active link, or a reserved one whose reservation expires after
-     * now, found by a locking read on the write connection.
+     * `connection_has_links` for a subject setting change outside a migration
+     * while any held or unexpired reserved link exists.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\ProtocolSettings  $settings
      * @param  list<string>  $changedSettings
@@ -600,8 +505,7 @@ final readonly class ConnectionService
     }
 
     /**
-     * Refuse a tenant id the connections table cannot hold: the application's
-     * mistake.
+     * Refuse a tenant id the connections table cannot hold.
      *
      * @param  string  $tenantId
      * @return void
@@ -616,8 +520,7 @@ final readonly class ConnectionService
     }
 
     /**
-     * Why the trimmed display name is refused, or `null` when it is not: it is
-     * 1 to 255 characters of valid UTF-8 with no control character.
+     * Why the trimmed display name is refused, or `null`.
      *
      * @param  string  $name
      * @return ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode
@@ -633,9 +536,7 @@ final readonly class ConnectionService
     }
 
     /**
-     * The problems with the keys of an update: a fixed key is `immutable`, a
-     * key that is not a change `unknown`, and a change of the wrong type
-     * `invalid_type`.
+     * The problems with the keys of an update and their types.
      *
      * @param  array<array-key, mixed>  $changes
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
@@ -659,10 +560,8 @@ final readonly class ConnectionService
     }
 
     /**
-     * The names of the settings whose stored value changes, presence included,
-     * in the order the protocol names its settings. A map is compared whatever
-     * its key order, so one given again in another order, or read back from a
-     * native JSON column that orders keys its own way, is not a change.
+     * The settings whose stored value or presence changes, in the protocol's
+     * setting order.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\ProtocolSettings  $settings
      * @param  array<string, mixed>  $before
@@ -688,8 +587,8 @@ final readonly class ConnectionService
     }
 
     /**
-     * The operations whose freshness a change to the names needs, with those
-     * given, each once, in the order `FreshnessOperation` lists them.
+     * The operations the named changes need plus those given, deduplicated in
+     * `FreshnessOperation` order.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\ProtocolSettings  $settings
      * @param  list<int|string>  $names
@@ -706,8 +605,7 @@ final readonly class ConnectionService
     }
 
     /**
-     * The stored values with the changes merged in: a value given replaces the
-     * stored one, and `null` removes it.
+     * The stored values with the changes merged in; `null` removes one.
      *
      * @param  array<string, mixed>  $stored
      * @param  array<string, mixed>  $changes
@@ -729,8 +627,7 @@ final readonly class ConnectionService
     }
 
     /**
-     * The map the value gives, keyed by name, leaving out each entry given as
-     * `null` when asked to; none when the value is not a map.
+     * The value as a string-keyed map, empty when it is not an array.
      *
      * @param  mixed  $values
      * @param  bool  $withoutNulls

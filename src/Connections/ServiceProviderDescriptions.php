@@ -11,36 +11,10 @@ use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 
 /**
- * What an administrator registers at a connection's identity provider
- * (SSO-5.9), for an application to serve or show: a SAML connection's service
- * provider metadata, or what its protocol's driver describes for any other
- * protocol, as a `Protocols\ServiceProviderDescription`.
+ * Describes what an administrator registers at a connection's identity
+ * provider, for the application to serve or show.
  *
- * - A connection the tenant does not have, unknown or another tenant's, is
- *   `connection_unavailable`, the same answer for both, so the helper never
- *   reveals another tenant's connection (`ConnectionFinder`).
- * - A connection whose protocol is not available (no driver is registered under
- *   it, or its feature is off) is `protocol_unavailable`.
- * - Any other connection is described by its protocol's driver, whatever it
- *   holds: a disabled connection, or one whose identity provider settings are
- *   not yet complete, is described too, so an administrator can register it at
- *   the identity provider before enabling it.
- *
- * An OIDC connection using `private_key_jwt` is described naming its public
- * JWKS URL (`jwks_uri`), so a rotation needs no re-registration; a provider
- * that requires uploaded keys is given `describeWithInlineKeys()` instead, the
- * same document with the keys in it, never both in one document, and must be
- * given it again whenever a next key is added or made current. `publicKeys()`
- * answers the body the application serves at that URL: its current and next
- * public keys, named by the connection's id alone, of any tenant, since the
- * provider that fetches the URL names no tenant, and a connection with nothing
- * to serve is answered as an unknown one. The package adds no route. Each of
- * these answers `connection_unavailable` for a protocol that has no such keys.
- *
- * It reads public data and changes nothing, so it asks for no fresh
- * authentication. The connection is read from the write connection (SSO-11.3);
- * a database error propagates (SSO-11.4), and an empty or overlong tenant id is
- * an `InvalidArgumentException`. Nothing is kept between calls (SSO-11.2).
+ * Reads public data only, so it asks for no fresh authentication.
  *
  * @api
  *
@@ -49,7 +23,7 @@ use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
  */
 final readonly class ServiceProviderDescriptions
 {
-    /** @var int The length of a connection's id, a ULID: a longer one names no connection. */
+    /** @var int The length of a connection's id, a ULID. */
     private const int CONNECTION_ID_LENGTH = 26;
 
     /**
@@ -68,7 +42,8 @@ final readonly class ServiceProviderDescriptions
     ) {}
 
     /**
-     * Describe the service provider side of the tenant's connection.
+     * Describes disabled and incomplete connections too, so they can be
+     * registered before they are enabled.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -90,8 +65,8 @@ final readonly class ServiceProviderDescriptions
     }
 
     /**
-     * Describe the tenant's OIDC connection with its public keys in the
-     * document, for a provider that requires uploaded keys.
+     * Describe the OIDC connection with its public keys inline, for a provider
+     * that requires uploaded keys; give it again after each key rotation.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -109,8 +84,8 @@ final readonly class ServiceProviderDescriptions
     }
 
     /**
-     * The body the application serves at the connection's public JWKS URL,
-     * whichever tenant it belongs to: its current and next public keys.
+     * The body served at the connection's public JWKS URL, looked up by id
+     * alone since the fetching provider names no tenant.
      *
      * @param  string  $connectionId
      * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription
@@ -127,8 +102,7 @@ final readonly class ServiceProviderDescriptions
     }
 
     /**
-     * Why the connection cannot be described at all, or `null`: it is gone, or
-     * its protocol is not available.
+     * Why the connection cannot be described at all, or `null`.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
@@ -165,9 +139,7 @@ final readonly class ServiceProviderDescriptions
     }
 
     /**
-     * The answer for a connection with no OIDC driver available: why it cannot
-     * be described, or `connection_unavailable` for a protocol that has no such
-     * keys.
+     * The refusal, or `connection_unavailable` for a protocol without keys.
      *
      * @param  ?\SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription
@@ -180,10 +152,8 @@ final readonly class ServiceProviderDescriptions
     }
 
     /**
-     * The connection with exactly the id, of any tenant, from the write
-     * connection; `null` when there is none. An id longer than a ULID, or
-     * empty, names none and is not looked up; a row the column's collation
-     * merely counts as equal is not found.
+     * The connection with exactly the id, of any tenant, ignoring rows the
+     * collation merely counts as equal.
      *
      * @param  string  $connectionId
      * @return ?\SineMacula\Laravel\Sso\Models\Connection

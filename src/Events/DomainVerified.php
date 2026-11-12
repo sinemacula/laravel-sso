@@ -8,16 +8,8 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * A claimed domain was verified for a connection (SSO-3.2, SSO-10.3): its TXT
- * record carried the claim's token, and the domain is verified for this
- * connection and no other, from `verifiedAt`. A domain verified again after it
- * lapsed counts from its new verification time.
- *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol, and the acting identity as the application passed it (SSO-10.4). It
- * reports only, and never holds the verification token or a record's value; it
- * crosses a queue as it is.
+ * A claimed domain's TXT record carried its token, so the domain is verified
+ * for this connection and no other.
  *
  * @api
  *

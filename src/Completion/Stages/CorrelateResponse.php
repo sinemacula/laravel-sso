@@ -15,21 +15,8 @@ use SineMacula\Laravel\Sso\Protocols\Enums\CorrelationKind;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 
 /**
- * The `correlation` step (SSO-5.6): the connection's driver reads which
- * authorisation request the response answers, and validates nothing, outside
- * any transaction.
- *
- * A solicited response goes on with its correlation. A response nothing in it
- * correlates is refused with `request_unknown`, with no trusted redirect target
- * (SSO-5.7). An unsolicited response is handed, with its correlation, to
- * IdP-initiated re-initiation (SSO-5.8, `Completion\UnsolicitedReinitiation`)
- * when the connection's driver re-initiates (`Contracts\ReinitiatingDriver`,
- * the SAML driver): it consumes no request and runs no further step. A driver
- * that does not re-initiate has its unsolicited response refused with
- * `request_unknown`, as an uncorrelated one.
- *
- * It holds the drivers' registry, which keeps nothing of one completion for the
- * next (SSO-11.2).
+ * The `correlation` step: the driver reads which request the response answers,
+ * validating nothing.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,9 +59,8 @@ final readonly class CorrelateResponse implements CompletionStage
     }
 
     /**
-     * Hand an unsolicited response to re-initiation, with its correlation, when
-     * the driver re-initiates; refuse it with `request_unknown`, from the state
-     * it arrived in, otherwise.
+     * Hand an unsolicited response to re-initiation when the driver supports
+     * it, else refuse it as `request_unknown`.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation

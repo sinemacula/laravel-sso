@@ -13,12 +13,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\TimeClaims;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for the package's own time checks of a JWT (SSO-7.4, SSO-11.13):
- * `exp` refused at and after `exp` plus the skew (never the library's
- * off-by-one boundary), `iat` and `nbf` not after now plus the skew, `iat`
- * within its maximum age plus the skew, typed NumericDates only, full
- * precision, and two checks in a row with different clocks and skews each
- * seeing their own.
+ * Unit tests for the package's own JWT time checks, which avoid the library's
+ * off-by-one `exp` boundary.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

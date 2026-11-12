@@ -29,12 +29,8 @@ use SineMacula\Laravel\Sso\Testing\Saml\SignatureWrapping;
 use Tests\TestCase;
 
 /**
- * Feature tests for the SAML adapter (SSO-6.1 to SSO-6.3, SSO-6.7, SSO-6.8,
- * SSO-6.11), with responses from the fake identity provider: the caps, each at,
- * under and over its limit; the envelope read before validation; every value of
- * a verified response and assertion; the four profiles; the signature policy
- * and the pinned certificates; every wrapping variant; the structure rules; and
- * decryption, with its one indistinguishable failure and its ordering.
+ * Feature tests for the SAML adapter, with responses from the fake identity
+ * provider.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -176,8 +172,7 @@ final class SamlAdapterTest extends TestCase
 
     /**
      * A response signed in its envelope alone is read from the verified
-     * response: the envelope is signed content, the assertion is not signed
-     * itself.
+     * response.
      *
      * @return void
      */
@@ -202,10 +197,8 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * A response signature must verify even when the assertion's own trusted
-     * signature is the one relied on (SAML 2.0 Profiles §4.1.4.3): an envelope
-     * signed by a key the policy does not trust, or changed after a trusted key
-     * signed it, is refused, though the assertion inside verifies.
+     * A response signature must verify even when the trusted assertion
+     * signature is relied on (SAML Profiles 4.1.4.3).
      *
      * @return void
      *
@@ -225,9 +218,7 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * A response with no signature covering its assertion is refused, and one
-     * signed by a key the policy does not trust, its certificate in the
-     * message, is refused too.
+     * A response with no trusted signature covering its assertion is refused.
      *
      * @return void
      */
@@ -576,11 +567,7 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * A decrypted assertion's signature is verified exactly as a plain one's:
-     * inside an unsigned response, an encrypted assertion signed by a key the
-     * policy does not trust (its certificate carried in the assertion), one
-     * changed after the trusted key signed it, and an unsigned one are each
-     * refused.
+     * A decrypted assertion's signature is verified exactly as a plain one's.
      *
      * @return void
      *
@@ -679,9 +666,7 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * A decrypted assertion is held to the structure of a plain one: one
-     * assertion at its root, its own signature its only one, an `ID` not the
-     * response's, and valid against the assertion schema.
+     * A decrypted assertion is held to the structure of a plain one.
      *
      * @return void
      *
@@ -729,9 +714,8 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * The envelope holds the encoded value to the response cap before it is
-     * decoded, as a full read does: one under the cap and at it are read, one
-     * over is not.
+     * The envelope caps the encoded value before decoding it, as a full read
+     * does.
      *
      * @param  int  $length
      * @param  bool  $parsed
@@ -747,9 +731,8 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * The envelope holds the decoded document to the XML cap before it is
-     * parsed, as a full read does: one under the cap and at it are read, one
-     * over is not.
+     * The envelope caps the decoded document before parsing it, as a full read
+     * does.
      *
      * @param  int  $offset
      * @param  bool  $refused
@@ -945,9 +928,8 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * Read the encoded response under the default policy, with the trusted
-     * certificates, algorithms, key transports, data algorithms and keys given
-     * in place of the defaults.
+     * Read the encoded response under the default policy, with any policy parts
+     * given replacing the defaults.
      *
      * @param  string  $encoded
      * @param  array{certificates?: list<string>, algorithms?: list<string>, transports?: list<string>, data?: list<string>, keys?: list<string>}  $policy

@@ -101,11 +101,11 @@ and selects among them, is `jose-adapter.md`.
 - Saving an endpoint with `metadata_refresh` off clears `metadata_fetched_at` and `metadata_valid_until`
   (`ProviderKeys::resetFor()`): the administrator has taken the endpoints over, with freshness, and the connection
   follows no document from then on. Turning the setting off alone clears nothing, so it never means unlimited trust.
-- Its snapshot, the claim's and under
-  the lock alike, is the JWKS version and the `issuer`, the endpoints, `returns_iss`, `id_token_algorithms` and
-  `fetch_userinfo`, in a fixed order, read from the row, so it costs no query. It fetches as an import does, pinned to
-  the saved issuer, under the connection's own allow-list. An allow-list that cannot be built from what is stored is
-  contained: `settings_invalid`, logged by the exception's class alone, so a run goes on to the next connection.
+- `OidcMetadataSource`'s snapshot, the claim's and under the lock alike, is the JWKS version and the `issuer`, the
+  endpoints, `returns_iss`, `id_token_algorithms` and `fetch_userinfo`, in a fixed order, read from the row, so it costs
+  no query. It fetches as an import does, pinned to the saved issuer, under the connection's own allow-list. An
+  allow-list that cannot be built from what is stored is contained: `settings_invalid`, logged by the exception's class
+  alone, so a run goes on to the next connection.
 - Under the lock (`RefreshWriter::locked()`), a document whose endpoint would not be a valid setting, or with no
   `userinfo_endpoint` while `fetch_userinfo` is on, is `discovery_invalid`. A document or JWKS validated a stale limit
   or longer before the commit is `metadata_expired` (`MetadataExpiry::hasExpired()`), each from its own moment. Either
@@ -113,9 +113,9 @@ and selects among them, is `jose-adapter.md`.
 - A refresh may change only `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `userinfo_endpoint` (set or changed,
   never removed) and `returns_iss` (false to true only), and replaces the JWKS exactly. It never writes the issuer, the
   client id or authentication, a secret, the scopes, the algorithms, the mapping, what a subject means or enforcement.
-  `returns_iss` is outside SSO-2.8's list of what a refresh changes, and the recommended default (2026-11-03,
-  [RD-32](requirements.md#recorded-decisions)) is that a refresh may still turn it on: it only tightens what a callback
-  must carry, and it voids what is in flight as a trust change. Any of those settings changing, or a key removed or
+  `returns_iss` is outside SSO-2.8's list of what a refresh changes, but a refresh may still turn it on
+  ([RD-32](requirements.md#recorded-decisions)): it only tightens what a callback must carry, and it voids what is in
+  flight as a trust change. Any of those settings changing, or a key removed or
   replaced under the same `kid`, calls `voidFor()` exactly once. Additions alone void nothing and leave the trust
   version as it was.
 - `metadata_fetched_at` is the moment the document validated and `jwks_fetched_at` the moment the JWKS did, each carried

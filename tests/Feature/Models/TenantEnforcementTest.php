@@ -15,10 +15,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the enforcement model (SSO-4.1, SSO-4.6, SSO-11.10): its
- * table and casts, its key and clock stamps, its tenant hash set from the
- * tenant id as the row is created, one row per tenant kept by the hash whatever
- * the collation, and a tenant fixed once the row exists.
+ * Feature tests for the tenant enforcement model.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,8 +63,8 @@ final class TenantEnforcementTest extends TestCase
     }
 
     /**
-     * Tenants whose ids differ only in case or trailing space have rows of
-     * their own; a second row for one tenant is refused.
+     * Tenant ids differing only in case or trailing space get rows of their
+     * own.
      *
      * @return void
      */
@@ -96,8 +93,7 @@ final class TenantEnforcementTest extends TestCase
     }
 
     /**
-     * The tenant and its hash are fixed once the row exists; whether it is on
-     * is not.
+     * The tenant and its hash are fixed once the row exists.
      *
      * @param  string  $column
      * @param  string  $value

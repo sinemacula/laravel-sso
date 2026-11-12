@@ -127,8 +127,8 @@ A `metadata_url` alone refreshes nothing, and `metadata_refresh` set `false` sta
 ### Large federation metadata
 
 A federation (InCommon, eduGAIN, a national research network) may publish one signed aggregate of every member, tens
-of MiB. The package reads it out of the box, but the cap is 1 MiB by default (`sso.metadata.max_bytes`, up to 256 MiB),
-in place of the fetcher's own cap, which every other request keeps:
+of MiB. The package can read it once you raise the cap, which is 1 MiB by default (`sso.metadata.max_bytes`, up to 256
+MiB) and applies to metadata in place of the fetcher's own cap, which every other request keeps:
 
 ```dotenv
 SSO_METADATA_MAX_BYTES=67108864

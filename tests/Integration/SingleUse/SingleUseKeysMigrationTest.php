@@ -14,12 +14,8 @@ use SineMacula\Laravel\Sso\Database\TableAlreadyExistsException;
 use Tests\TestCase;
 
 /**
- * Integration tests for the shipped single-use keys migration, on whichever
- * engine the suite runs against: the table's shape, its unique index, the guard
- * against an existing table, the rollback, and the connection it runs on.
- *
- * Marked `#[CoversNothing]` because a migration is an anonymous class PHPUnit
- * cannot attribute coverage to.
+ * Integration tests for the single-use keys migration. `#[CoversNothing]`:
+ * PHPUnit cannot cover an anonymous migration class.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -39,10 +35,8 @@ final class SingleUseKeysMigrationTest extends TestCase
     private const string STORE = 'package_store';
 
     /**
-     * Drop the tables an earlier test kept, then run the shipped migration,
-     * with the schema builder's default time precision raised to microseconds
-     * while it runs, so the whole-second precision is what the migration itself
-     * declares.
+     * Drop the tables, then run the migration with microsecond default
+     * precision so its own precision shows.
      *
      * @return void
      */
@@ -81,8 +75,8 @@ final class SingleUseKeysMigrationTest extends TestCase
     }
 
     /**
-     * The table has exactly the id, the namespace, the digest and the expiry,
-     * none of them nullable, with the id as its primary key.
+     * The table has exactly the id, namespace, digest and expiry, none
+     * nullable, keyed by the id.
      *
      * @return void
      */
@@ -101,9 +95,8 @@ final class SingleUseKeysMigrationTest extends TestCase
     }
 
     /**
-     * The secondary indexes are the unique index on the namespace and the
-     * digest, which answers `seen`, and the index on the expiry and the id, in
-     * the order pruning pages by keyset.
+     * The secondary indexes are the unique key and the expiry in pruning's
+     * keyset order.
      *
      * @return void
      */
@@ -122,8 +115,7 @@ final class SingleUseKeysMigrationTest extends TestCase
     }
 
     /**
-     * A second row with the same namespace and digest is refused by the index;
-     * the same digest in another namespace is not.
+     * A duplicate digest is refused within its namespace only.
      *
      * @return void
      */
@@ -156,8 +148,8 @@ final class SingleUseKeysMigrationTest extends TestCase
     }
 
     /**
-     * The digest column is exactly as long as a SHA-256 hex digest, and the
-     * namespace as long as the longest one allowed.
+     * The digest column fits a SHA-256 hex digest and the namespace the longest
+     * allowed.
      *
      * @return void
      */
@@ -174,8 +166,8 @@ final class SingleUseKeysMigrationTest extends TestCase
     }
 
     /**
-     * Running the migration again finds its table and stops before changing it,
-     * naming the setting that renames it.
+     * Running the migration again stops before changing anything, naming the
+     * setting.
      *
      * @return void
      */
@@ -237,8 +229,8 @@ final class SingleUseKeysMigrationTest extends TestCase
     }
 
     /**
-     * With the storage on a second connection, the migration creates and drops
-     * the table there, and only there.
+     * With the storage on a second connection, the migration uses only that
+     * one.
      *
      * @return void
      */
@@ -267,8 +259,7 @@ final class SingleUseKeysMigrationTest extends TestCase
     }
 
     /**
-     * A storage connection that is not a name is refused, as the model refuses
-     * it, rather than creating the table on the default connection.
+     * A storage connection that is not a name is refused.
      *
      * @return void
      */

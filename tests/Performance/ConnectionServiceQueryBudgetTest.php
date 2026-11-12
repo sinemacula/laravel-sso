@@ -17,26 +17,8 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Freshness\RecordingFreshness;
 
 /**
- * Query budgets for the management helpers. Each change runs in one
- * transaction, whose `BEGIN` and `COMMIT` are not statements a query sends:
- *
- * - `create()` reads nothing and writes once, the insert; refused, it sends
- *   nothing;
- * - `update()` reads once, the connection locked for update, and writes once,
- *   the update, when something changed; nothing changed, it writes nothing. A
- *   change to a subject setting (the issuer) also reads the connection's links
- *   with a locking read, a change of `client_assertion_algorithm` also reads
- *   the connection's published keys with a locking read, and a trust change
- *   also voids the connection's requests and handoff codes in flight and raises
- *   its trust version, one update each;
- * - `enable()` reads once and writes once, or writes nothing for an enabled
- *   connection;
- * - `ImportSaver::save()` reads as `update()` does and writes one more, the
- *   stamp of its fetch; a save that changed nothing writes the stamp alone;
- * - `get()` and `list()` read once, and write nothing.
- *
- * Masking the secrets and judging whether the connection is usable read nothing
- * more: the secrets are read from the row already loaded.
+ * Query budgets for the management helpers. Masking secrets and judging
+ * usability read nothing more.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,7 +46,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     private RecordingFreshness $freshness;
 
     /**
-     * Turn OIDC on and bind a fresh freshness contract.
+     * Turn OIDC on and answer `fresh` to every freshness check.
      *
      * @return void
      */
@@ -107,12 +89,12 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An update that changes the issuer is the locked read, the locking read of
-     * the links, the update, the two voiding updates and the trust version.
+     * The locked read and the links' locking read, the update and the voiding's
+     * four writes: requests, codes, trust version and reservations.
      *
      * @return void
      */
-    public function testAnIssuerChangeIsTwoReadsAndFourUpdates(): void
+    public function testAnIssuerChangeIsTwoReadsAndFiveWrites(): void
     {
         $id = $this->createdId();
 
@@ -125,13 +107,12 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An update that changes the client assertion algorithm is the locked read,
-     * the locking read of the keys, the update, the two voiding updates and the
-     * trust version.
+     * The locked read and the keys' locking read, the update and the voiding's
+     * four writes.
      *
      * @return void
      */
-    public function testAClientAssertionAlgorithmChangeIsTwoReadsAndFourUpdates(): void
+    public function testAClientAssertionAlgorithmChangeIsTwoReadsAndFiveWrites(): void
     {
         $id = $this->createdId();
 
@@ -145,8 +126,8 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A fetched import's save that changes a setting asking no freshness is the
-     * locked read, the update and the stamp.
+     * A fetched import changing a setting that asks no freshness is the locked
+     * read, the update and the fetch stamp.
      *
      * @return void
      */
@@ -160,8 +141,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A fetched import's save that changes nothing is the locked read and the
-     * stamp.
+     * An unchanged fetched import is the locked read and the fetch stamp.
      *
      * @return void
      */
@@ -205,8 +185,8 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Enabling is the locked read and one update; enabling an enabled
-     * connection is the read alone.
+     * The locked read and one update; for an enabled connection, the read
+     * alone.
      *
      * @return void
      */
@@ -236,7 +216,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Listing a tenant's connections is one read, however many there are.
+     * One read, however many connections the tenant has.
      *
      * @return void
      */
@@ -262,7 +242,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Create the connection, outside any budget, and return its id.
+     * Create the connection outside any budget and return its id.
      *
      * @return string
      */
@@ -276,7 +256,7 @@ final class ConnectionServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Save a fetched import of the display name given to the connection.
+     * Save a fetched import with the display name given.
      *
      * @param  string  $id
      * @param  string  $name

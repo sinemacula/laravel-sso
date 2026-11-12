@@ -8,23 +8,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\NameId;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute;
 
 /**
- * The subject a SAML assertion's verified identifier is stored and compared as
- * (SSO-6.9): a versioned, length-prefixed tuple, so no choice of values makes
- * two different identifiers one subject.
- *
- * The encoding is `v1`, then, for each part in order, `|` and either the part's
- * length in bytes, `:` and the part itself, or `-` for a part that is absent,
- * so an absent part and an empty one (`0:`) are told apart.
- *
- * - A `NameID` is (`name_id`, its `Format`, its `NameQualifier`, its
- *   `SPNameQualifier`, its value), so a persistent `alice` with neither
- *   qualifier is `v1|7:name_id|52:urn:…:persistent|-|-|5:alice`.
- * - An attribute is (`attribute`, its `Name`, its `NameFormat`, its one value).
- *
- * Every part is kept exactly as the adapter read it from the verified element:
- * never trimmed, case-folded or normalised. A qualifier or format that appears,
- * disappears or changes therefore makes a different subject, and a link made
- * for one never matches the other. The caller caps the whole encoding.
+ * Encodes a verified SAML identifier as a stored subject: a versioned,
+ * length-prefixed tuple, unnormalised. The caller caps its length.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -33,7 +18,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute;
  */
 final class SubjectEncoding
 {
-    /** @var string The version the encoding starts with, naming its layout. */
+    /** @var string The version prefix naming the layout. */
     public const string VERSION = 'v1';
 
     /** @var string The kind of a subject taken from a `NameID`. */
@@ -42,7 +27,7 @@ final class SubjectEncoding
     /** @var string The kind of a subject taken from an attribute. */
     public const string ATTRIBUTE = 'attribute';
 
-    /** @var string What an absent part is written as. */
+    /** @var string An absent part, distinct from an empty one (`0:`). */
     private const string ABSENT = '-';
 
     /**
@@ -51,7 +36,8 @@ final class SubjectEncoding
     private function __construct() {}
 
     /**
-     * The subject of a `NameID`: its kind, format, qualifiers and value.
+     * The subject of a `NameID`, e.g.
+     * `v1|7:name_id|52:urn:...:persistent|-|-|5:alice`.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\NameId  $nameId
      * @return string
@@ -62,8 +48,7 @@ final class SubjectEncoding
     }
 
     /**
-     * The subject of an attribute's value: its kind, the attribute's name and
-     * name format, and the value.
+     * The subject of an attribute's value.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute  $attribute
      * @param  string  $value

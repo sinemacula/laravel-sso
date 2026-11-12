@@ -13,13 +13,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * What a purpose's branch of a redemption judges (SSO-9.9): the verified
- * result, what the code was bound to, the locks held, the connection as locked,
- * the client the redemption is made for, and the caller the application has
- * authenticated, with its session as given, which a `link` needs; and, for an
- * admission, the provenance of the link its judgement found
- * (`Judgement::$linkProvenance`). It lives only for the transaction its locks
- * were taken in.
+ * What a purpose's branch of a redemption judges; valid only in the transaction
+ * its locks were taken in.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

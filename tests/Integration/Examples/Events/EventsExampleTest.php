@@ -30,16 +30,7 @@ use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 
 /**
- * The examples of `docs/guides/events.md` (SSO-9.6, SSO-10.4, SSO-12.5), on the
- * shared example harness: one listener on the `SsoEvent` contract writing every
- * event's context record to a log channel, an administrator passed to a
- * management helper as the acting identity, and an audit trail storing the
- * connection and key administration events in the application's own table. Each
- * runs the real flow or change and asserts what was recorded; a refused change
- * records and reports nothing.
- *
- * The guide's `laravel-audit-log` mapper runs in `AuditLogMapperExampleTest`,
- * against the examples' stand-ins for that sibling's API.
+ * Runs the examples of `docs/guides/events.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,7 +54,7 @@ final class EventsExampleTest extends ExampleTestCase
     private User $administrator;
 
     /**
-     * Make the administrator, and create the application's audit table.
+     * Make the administrator and create the application's audit table.
      *
      * @return void
      */
@@ -101,14 +92,7 @@ final class EventsExampleTest extends ExampleTestCase
     }
 
     /**
-     * One listener on the contract receives every event the package dispatches:
-     * the connection's creation and enabling, a link flow from its start to its
-     * redemption, and a second flow's start and failure, each logged under its
-     * name with its context's record of strings, which correlates the second
-     * flow's two by the request's reference and names the connection's tenant,
-     * the tenant a mapper falls back to when the event names no active tenant.
-     * The first flow fetches the provider's keys, so the second token's
-     * signature verifies and its audience is what refuses it.
+     * One listener on the contract logs every event with its context record.
      *
      * @return void
      *
@@ -123,6 +107,7 @@ final class EventsExampleTest extends ExampleTestCase
         $provider     = new FakeOpenIdProvider(clock: $this->clock);
         $connectionId = $this->makeOidcConnection($provider);
 
+        // Fetches the keys, so only the audience refuses the next flow
         $this->linkThroughFlow($provider, $connectionId, new IdentityReference(User::class, 'person-1'));
 
         $start     = $this->startFlow(Purpose::LINK, $connectionId, new IdentityReference(User::class, 'person-1'));
@@ -157,9 +142,8 @@ final class EventsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The administrator passed to `update()` as its caller is the acting
-     * identity of the change's event, by the user's morph class and key, beside
-     * the setting that changed; the session the caller is on is not carried.
+     * The caller given to `update()` is the event's acting identity, without
+     * its session.
      *
      * @return void
      */
@@ -194,8 +178,7 @@ final class EventsExampleTest extends ExampleTestCase
     }
 
     /**
-     * Another tenant's connection is not found, so nothing is changed or
-     * reported whoever acts.
+     * A change to another tenant's connection reports nothing.
      *
      * @return void
      */
@@ -219,11 +202,8 @@ final class EventsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The audit trail keeps one entry per administration change, in order: each
-     * by its event's name, the connection's tenant, the connection and the
-     * administrator, with what the event adds and the context's record; the
-     * first key of a use is made current as it is added, replacing none. A
-     * refused change in the middle keeps nothing.
+     * The audit trail keeps one entry per administration change, and none for a
+     * refusal.
      *
      * @return void
      */
@@ -285,8 +265,7 @@ final class EventsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The connection updates the package reports from now on, as they are
-     * dispatched.
+     * Collect the connection updates reported from now on.
      *
      * @return \ArrayObject<int, \SineMacula\Laravel\Sso\Events\ConnectionUpdated>
      */
@@ -303,8 +282,8 @@ final class EventsExampleTest extends ExampleTestCase
     }
 
     /**
-     * The values of the entry's details by the keys given, in their order, once
-     * the details are found to hold those keys and no other, in any order.
+     * The entry's detail values by key, once its details hold exactly those
+     * keys.
      *
      * @param  \Tests\Integration\Examples\Events\AuditEntry  $entry
      * @param  string  ...$keys
@@ -318,8 +297,8 @@ final class EventsExampleTest extends ExampleTestCase
     }
 
     /**
-     * What the `audit` log channel was written, in order: each event's name and
-     * its context's record.
+     * What the `audit` channel was written: each event's name and context
+     * record.
      *
      * @return list<array{event: string, context: array<string, mixed>}>
      */

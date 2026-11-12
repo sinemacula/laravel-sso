@@ -27,11 +27,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests, on a real database, that the domain recheck writes and
- * reports together (SSO-10.5): a recheck run inside a transaction the
- * application opened on the storage connection reports nothing until it
- * commits, and writes (its leases included) and reports nothing when it rolls
- * back, though the run reported what it did.
+ * Integration tests that the domain recheck reports only after the storage
+ * transaction commits.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -78,8 +75,8 @@ final class DomainRecheckAfterCommitTest extends TestCase
     }
 
     /**
-     * A suspension inside a transaction that rolls back leaves the claim as it
-     * was, unleased, and reports nothing.
+     * A suspension rolled back leaves the claim as it was, unleased, and
+     * reports nothing.
      *
      * @return void
      */
@@ -107,8 +104,7 @@ final class DomainRecheckAfterCommitTest extends TestCase
     }
 
     /**
-     * A lapse and a suspension inside a transaction that commits report nothing
-     * until the commit, then each, in the order the claims were checked.
+     * A lapse and a suspension report only after the commit, in check order.
      *
      * @return void
      */

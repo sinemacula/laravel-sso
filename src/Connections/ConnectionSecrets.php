@@ -15,26 +15,8 @@ use SineMacula\Laravel\Sso\Secrets\MaskedSecret;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * A connection's secrets (SSO-2.5), as its `secrets` column holds them: a JSON
- * object of each secret's name and its ciphertext from
- * `Contracts\SecretEncrypter`, each secret encrypted on its own, or `null` when
- * none is set.
- *
- * Which secrets are set is read from the names alone, so a read masks them
- * without decrypting one. Only `reveal()` decrypts, for the flow that must send
- * the secret, and hands it on as a `Secrets\Secret`, which never shows it in a
- * dump, a log or a serialisation. `isSet()` and `revealFor()` answer the same
- * for a connection a protocol driver holds only through its contract, reading
- * its row again on the write connection when it is not one already. Nothing
- * here logs a secret, echoes one or puts one in an exception, and every
- * parameter that carries a secret given in plaintext is
- * `#[\SensitiveParameter]`, so a trace shows it redacted: a column that is not
- * such an object is an `UnexpectedValueException` that names neither its
- * content nor a secret, and the encrypter's own failure propagates as a server
- * error (SSO-11.4).
- *
- * It also judges the secrets a change gives and names those the change alters,
- * so every management helper treats a secret alike.
+ * A connection's secrets, stored as a JSON object of ciphertexts by name, each
+ * encrypted on its own so a read can mask them without decrypting.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -61,8 +43,7 @@ final readonly class ConnectionSecrets
     ) {}
 
     /**
-     * The names of the secrets the connection has set, as stored, without
-     * decrypting one.
+     * The names of the secrets the connection has set.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return list<string>
@@ -96,8 +77,7 @@ final readonly class ConnectionSecrets
     }
 
     /**
-     * The secret under the name, decrypted for the flow that must send it, or
-     * `null` when it is not set.
+     * The decrypted secret, or `null` when it is not set.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  string  $name
@@ -118,9 +98,8 @@ final readonly class ConnectionSecrets
     }
 
     /**
-     * Whether the secret under the name is set on the connection, read from
-     * its row on the write connection when it is given only through its
-     * contract; never for a connection that is gone.
+     * Whether the secret is set, for a connection given through its contract;
+     * `false` when the connection is gone.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  string  $name
@@ -136,9 +115,8 @@ final readonly class ConnectionSecrets
     }
 
     /**
-     * The secret under the name, decrypted for the flow that must send it, of a
-     * connection given through its contract; `null` when it is not set or the
-     * connection is gone.
+     * The decrypted secret of a connection given through its contract; `null`
+     * when it is not set or the connection is gone.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  string  $name
@@ -155,9 +133,8 @@ final readonly class ConnectionSecrets
     }
 
     /**
-     * The column after the changes: a secret given sets or replaces the one
-     * under its name, `null` removes it, and a name not given keeps what is
-     * stored. `null` when no secret remains.
+     * The column after the changes, where `null` removes a secret; `null` when
+     * none remains.
      *
      * @param  ?string  $stored
      * @param  array<string, ?\SineMacula\Laravel\Sso\Secrets\Secret>  $changes
@@ -185,11 +162,8 @@ final readonly class ConnectionSecrets
     }
 
     /**
-     * The problems with the secrets given, in the order the protocol declares
-     * them: each a string of 1 to 1024 bytes with no control character, and,
-     * over OIDC, no client secret for a client that authenticates with
-     * `private_key_jwt`. A secret given as `null` is cleared, never refused,
-     * and no violation holds the value.
+     * The problems with the secrets given, in declared order; a `null` secret
+     * is a clear and never refused.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\ProtocolSettings  $settings
      * @param  list<string>  $names
@@ -217,9 +191,8 @@ final readonly class ConnectionSecrets
     }
 
     /**
-     * The names of the secrets a change alters, in the order the protocol
-     * declares them: each given as a string, and each given as `null` that is
-     * stored.
+     * The names a change alters, in declared order; clearing an unset secret
+     * alters nothing.
      *
      * @param  list<string>  $names
      * @param  array<string, mixed>  $given
@@ -232,8 +205,7 @@ final readonly class ConnectionSecrets
     }
 
     /**
-     * The secrets given, validated, as the changes `apply()` takes: a string
-     * sets the secret, and `null` clears it.
+     * The validated secrets given, as the changes `apply()` takes.
      *
      * @param  array<string, mixed>  $given
      * @return array<string, ?\SineMacula\Laravel\Sso\Secrets\Secret>
@@ -246,8 +218,7 @@ final readonly class ConnectionSecrets
     }
 
     /**
-     * Whether the secret cannot be used with the settings: a client secret for
-     * an OIDC client that authenticates with `private_key_jwt`.
+     * Whether it is a client secret for an OIDC client using `private_key_jwt`.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\ProtocolSettings  $settings
      * @param  string  $name
@@ -316,8 +287,8 @@ final readonly class ConnectionSecrets
     }
 
     /**
-     * The connection's row: the connection itself when it is one, or read again
-     * by its id on the write connection; `null` when it is gone.
+     * The connection's row, read again on the write connection unless it is one
+     * already; `null` when it is gone.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @return ?\SineMacula\Laravel\Sso\Models\Connection

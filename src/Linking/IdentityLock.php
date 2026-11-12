@@ -13,45 +13,11 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\IdentityGuard;
 
 /**
- * The lock on an identity's linking changes (SSO-8.8,
- * `docs/design/linking.md`): the first lock of the package's order, which a
- * principal widening, a reservation, an activation and a confirmation each
- * take, so no two of them for one identity ever overlap. A change to the
- * identity's principals cannot slip between what a reservation or an activation
- * judged and what it wrote, whichever connections and tenants are involved, and
- * a row that does not exist yet is protected too, since whatever would insert
- * it holds this lock first.
+ * The lock on an identity's linking changes, the first lock of the package's
+ * order.
  *
- * `acquire()` runs one statement, on the storage connection, inside the
- * transaction the caller has open there: an insert of the identity's row unless
- * it has one, keyed by the digest of its type and id, which writes an existing
- * row. The statement locks the row exclusively until that transaction ends
- * (`ON DUPLICATE KEY UPDATE`, `ON CONFLICT ... DO UPDATE`), and racing first
- * lockers queue on it. It is a current read, so a caller's older
- * `REPEATABLE READ` snapshot never answers. On PostgreSQL under
- * `REPEATABLE READ`, a locker whose snapshot predates another locker's commit
- * fails to serialise, and the error propagates for the caller to retry its
- * whole transaction: a locker therefore never goes on from a snapshot that
- * misses what another locker did.
- *
- * A transaction holds the lock of one identity. One that changes several takes
- * them in ascending order of `digest()`, or the database aborts one of two such
- * transactions. The cost falls only on flows that touch linking: an ordinary
- * linked sign-in never takes it.
- *
- * The row also remembers that the identity has held an active link by a
- * verified domain: `recordDomainLink()` stamps `domain_linked_at` when a
- * reservation is activated, the one place such a link is made (a subject
- * migration keeps the provenance of a link that already had it), and nothing
- * ever clears it. `hasHeldDomainLink()` reads it by a locking read under the
- * lock, for `Linking\LinkConfirmationGate`: a link removed or confirmed since
- * does not make the session it established independent.
- *
- * The row names nobody, holds no subject or email, and is never deleted, since
- * another transaction may be waiting on it. Called with no transaction open on
- * the storage connection it is a `LogicException`, since the lock would end
- * with its statement; a database error propagates (SSO-11.4). It holds the
- * clock, which keeps nothing of one call for the next (SSO-11.2).
+ * Several identities are locked in ascending `digest()` order. A guard row is
+ * never deleted, since another transaction may be waiting on it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,8 +41,8 @@ final readonly class IdentityLock
     ) {}
 
     /**
-     * The digest of the identity's type and id: the length of the type keeps
-     * `ab` and `c` apart from `a` and `bc`, whatever the bytes.
+     * The digest of the identity's type and id, length-prefixed so no two pairs
+     * collide.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return string
@@ -87,8 +53,8 @@ final readonly class IdentityLock
     }
 
     /**
-     * Lock the identity's guard until the caller's transaction ends, inserting
-     * it first when the identity has none.
+     * Lock the identity's guard by an upsert until the caller's transaction
+     * ends; it is a current read, never a stale snapshot.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return void
@@ -111,8 +77,8 @@ final readonly class IdentityLock
     }
 
     /**
-     * Record, on the identity's guard its caller holds, that the identity has
-     * held an active link by a verified domain, unless it is recorded already.
+     * Record on the held guard that the identity has held a domain-made link;
+     * never cleared.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return void
@@ -129,8 +95,8 @@ final readonly class IdentityLock
     }
 
     /**
-     * Whether the identity has ever held an active link by a verified domain,
-     * read by a locking read of the guard its caller holds.
+     * Whether the identity has ever held a domain-made link, by a locking read
+     * of the held guard.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return bool

@@ -26,19 +26,8 @@ use Tests\Fixtures\Clients;
 use Tests\Fixtures\Keys\Certificates;
 
 /**
- * Query budgets for the expiry report (SSO-2.6, SSO-11.12):
- *
- * - a page is one select, and its connections one more when it holds a row, so
- *   an empty report is one select and a page already notified two, with no
- *   write and no lock; the next page's select follows a full page, and one that
- *   finds nothing reads no connections;
- * - a key warned of adds the claim's transaction, the connection's lock, the
- *   key's lock and the claim's update, and after the dispatch the marker's
- *   update and the release's: two reads and three writes;
- * - a key another reporter holds adds the two locks and no write; a dispatch
- *   that throws adds the claim and the release alone, recording nothing;
- * - a key whose connection is gone, and one in the window that has reached no
- *   threshold, read no lock.
+ * Query budgets for the expiry report: a select per page, and one for its
+ * connections when it holds a row.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,7 +53,7 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     private CarbonImmutable $ends;
 
     /**
-     * Send the report's log lines nowhere, and make a connection.
+     * Silence the report's log and make a connection.
      *
      * @return void
      */
@@ -80,7 +69,7 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An empty report is one select, and no read of any connection.
+     * An empty report is one select and reads no connection.
      *
      * @return void
      */
@@ -92,8 +81,8 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A page already notified is the page's select and its connections' select,
-     * across any number of connections, with no lock and no write.
+     * The page and its connections, across any number of connections, with no
+     * lock or write.
      *
      * @return void
      */
@@ -111,9 +100,8 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A key warned of is the page's two selects, then the claim's transaction,
-     * then the marker's statement and the release's, in that order, with the
-     * marker recorded and the claim released.
+     * The page's two selects, the claim's transaction (two locks and an
+     * update), then the marker's update and the release, in that order.
      *
      * @return void
      */
@@ -138,8 +126,7 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A key warned of a less urgent threshold is warned of again, at the same
-     * cost.
+     * A key warned of a less urgent threshold is warned again at the same cost.
      *
      * @return void
      */
@@ -153,8 +140,8 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A key another reporter holds is the page's two selects and the two
-     * locking reads, with no write.
+     * A key another reporter holds is the two selects and the two locking
+     * reads.
      *
      * @return void
      */
@@ -169,8 +156,8 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A dispatch that throws is the page's two selects, the claim's transaction
-     * and the release, and records no marker.
+     * A throwing dispatch is the two selects, the claim's transaction and the
+     * release, with no marker.
      *
      * @return void
      */
@@ -192,8 +179,8 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A key whose connection is gone is the page's two selects, and is neither
-     * listed nor locked.
+     * A key whose connection is gone is the two selects, neither listed nor
+     * locked.
      *
      * @return void
      */
@@ -209,8 +196,7 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A key in the window asked for that has reached no threshold is the page's
-     * two selects, with no lock.
+     * A key in the window that has reached no threshold is the two selects.
      *
      * @return void
      */
@@ -225,8 +211,8 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Rows of `[keys, reads]`: a full page is followed by the next page's
-     * select, and only a page that holds a row reads its connections.
+     * Rows of `[keys, reads]`: a full page is followed by another select, and
+     * only a page with rows reads its connections.
      *
      * @return iterable<string, array{0: int, 1: int}>
      */
@@ -271,8 +257,8 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Store a trusted certificate of the connection, ending within a threshold
-     * and warned of nothing, unless the attributes given say otherwise.
+     * Store a trusted certificate ending within a threshold and warned of
+     * nothing, unless the attributes say otherwise.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array<string, mixed>  $attributes
@@ -296,8 +282,8 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * Insert that many certificates of the connection in one statement per
-     * hundred, each already warned of the threshold it has reached.
+     * Insert that many certificates, a hundred per statement, each warned of
+     * the threshold it has reached.
      *
      * @param  int  $keys
      * @return void
@@ -328,8 +314,7 @@ final class ExpiryReportQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A real public key, since the report reads the summary of each key it
-     * lists.
+     * A real public key, since the report summarises each key it lists.
      *
      * @return string
      */

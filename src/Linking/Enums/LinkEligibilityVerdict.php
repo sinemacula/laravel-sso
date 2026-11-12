@@ -5,9 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Linking\Enums;
 
 /**
- * Whether an identity may link through a connection (SSO-8.5).
- *
- * Backed, and stable once released: a value is never renamed or reused.
+ * Whether an identity may link through a connection.
  *
  * @api
  *

@@ -3,16 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The create endpoint of `docs/guides/managing-connections.md` (SSO-2.11,
- * SSO-2.12, SSO-12.5), as the application's administration screen runs it once
- * its own authorisation has let the signed-in user manage the tenant's
- * connections, given the connection service, the tenant, that user and the
- * request: the package creates a disabled Google Workspace connection from the
- * `google` preset and the client the form names, for the user on their session
- * as the caller: freshness judges that caller, and the event it reports names
- * the user as the acting identity. An invalid form goes back with each
- * violation under the setting it names; any other result is answered for the
- * endpoint to turn into its response.
+ * The create endpoint of `docs/guides/managing-connections.md`, run after the
+ * application's own authorisation.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

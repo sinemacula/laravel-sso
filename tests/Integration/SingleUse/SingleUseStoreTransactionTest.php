@@ -15,12 +15,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests, on whichever engine the suite runs against, of how the
- * default single-use store behaves inside a caller's transaction on the storage
- * connection: a `seen` key leaves the transaction usable (each statement is a
- * savepoint, which PostgreSQL needs), a record is undone with a transaction
- * that rolls back and kept with one that commits, and a record made outside a
- * transaction is kept whatever that transaction does.
+ * Integration tests of the single-use store inside a caller's transaction.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -57,9 +52,8 @@ final class SingleUseStoreTransactionTest extends TestCase
     }
 
     /**
-     * Inside a transaction on the storage connection, a `seen` key leaves the
-     * transaction usable: the refused insert is rolled back to its savepoint,
-     * so the statements after it run and commit with the transaction.
+     * A `seen` key leaves the caller's transaction usable, its insert rolled
+     * back to a savepoint.
      *
      * @return void
      */
@@ -88,8 +82,7 @@ final class SingleUseStoreTransactionTest extends TestCase
     }
 
     /**
-     * An expired key released and recorded again inside a transaction leaves it
-     * usable too.
+     * Releasing an expired key leaves the caller's transaction usable.
      *
      * @return void
      */
@@ -117,8 +110,7 @@ final class SingleUseStoreTransactionTest extends TestCase
     }
 
     /**
-     * A key recorded inside a transaction that rolls back is not held: it can
-     * be recorded again afterwards.
+     * A record is undone with a transaction that rolls back.
      *
      * @return void
      */
@@ -137,8 +129,7 @@ final class SingleUseStoreTransactionTest extends TestCase
     }
 
     /**
-     * A release of an expired key inside a transaction that rolls back is
-     * undone with it, and the key can be recorded again afterwards.
+     * A release is undone with a transaction that rolls back.
      *
      * @return void
      */
@@ -177,9 +168,7 @@ final class SingleUseStoreTransactionTest extends TestCase
     }
 
     /**
-     * A caller that must keep a consumption whatever happens records outside
-     * the transaction it may roll back: the key stays held when that
-     * transaction rolls back.
+     * A record made outside the transaction survives its rollback.
      *
      * @return void
      *

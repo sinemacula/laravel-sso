@@ -15,10 +15,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the one projection that builds an event's context: the time
- * from the package's clock, the client from the client context each call is
- * given, never from the request being served, and each field cleaned and
- * capped, with the client context and strings the only input it admits.
+ * Feature tests for the projection that builds an event's context.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,10 +60,7 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * The client comes from the context given: its IP address, and its user
-     * agent as the context cleaned it: control characters (C0, DEL, C1),
-     * bidirectional controls and invalid UTF-8 are removed before the cut, so
-     * all 512 characters kept are ones that survived.
+     * The client's address and cleaned user agent come from the context given.
      *
      * @return void
      */
@@ -81,8 +75,7 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * A user agent the client context keeps whole keeps its length here too:
-     * 512 characters, none of them removed.
+     * A user agent kept whole by the client context keeps its 512 characters.
      *
      * @return void
      */
@@ -104,8 +97,7 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * An address that is not a valid IPv4 or IPv6 address is not kept, and a
-     * user agent that is empty once cleaned, or not sent, is none.
+     * An invalid address is dropped, and an empty user agent is none.
      *
      * @return void
      */
@@ -119,8 +111,7 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * Work with no client gives none: the context of background work holds no
-     * IP address and no user agent.
+     * Background work gives no address or user agent.
      *
      * @return void
      */
@@ -134,9 +125,7 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * The request being served is never read: a context built while one is
-     * bound holds the client given, and one built with no request bound at all
-     * holds it too.
+     * The request being served is never read.
      *
      * @return void
      */
@@ -228,9 +217,8 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * Each named field has its control and bidirectional characters removed,
-     * invalid UTF-8 replaced, and is cut to 255 characters, so an id can never
-     * smuggle a payload; one that is empty once cleaned is none.
+     * Each named field is cleaned and cut to 255 characters; an empty one is
+     * none.
      *
      * @return void
      */
@@ -252,9 +240,7 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * A named field keeps the bidirectional marks (U+061C, U+200E, U+200F)
-     * right-to-left text uses, while the client context removes them from a
-     * user agent.
+     * A named field keeps the bidirectional marks right-to-left text needs.
      *
      * @return void
      */
@@ -270,8 +256,7 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * Each call takes its own client, and the projection holds none: one
-     * projection reports each call's client.
+     * Each call reports its own client.
      *
      * @return void
      */
@@ -287,11 +272,8 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * The parameter list is the admission control: the client context first,
-     * required, then every other parameter a nullable string, defaulting to
-     * none, and together they are the context's fields but its time and client,
-     * in the context's order. No array or other object can be passed, so a
-     * verified result never reaches an event whole.
+     * Only the client context and nullable strings can be passed, in the
+     * context's field order.
      *
      * @return void
      */
@@ -321,8 +303,7 @@ final class EventContextsTest extends TestCase
     }
 
     /**
-     * Bind a request from the address with the user agent as the one being
-     * served, which the projection must never read.
+     * Bind a request being served, which the projection must never read.
      *
      * @param  string  $ip
      * @param  string  $userAgent

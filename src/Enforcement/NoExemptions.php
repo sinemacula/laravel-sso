@@ -9,11 +9,7 @@ use SineMacula\Laravel\Sso\Enforcement\Enums\ExemptionOutcome;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * The default exemption contract (SSO-4.4): nobody is exempt from a tenant's
- * enforcement. An application that keeps a break-glass administrator binds its
- * own contract.
- *
- * It holds nothing, so it is bound as a singleton.
+ * Default exemption contract: nobody is exempt from a tenant's enforcement.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

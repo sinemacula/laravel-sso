@@ -26,13 +26,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for starting an OIDC authorisation code request (SSO-5.4,
- * SSO-5.5, SSO-7.1): the fields of the `Start` the start pipeline stores (the
- * expected issuer exactly, whether the provider must return `iss` both ways, no
- * SAML request id), the callback as the endpoint resolver built it and never
- * from the request, an endpoint whose query names a parameter the request sets
- * refused, a start without its values the pipeline's bug, and a navigation
- * whose every dump redacts every query value, with nothing logged.
+ * Feature tests for starting an OIDC authorisation code request.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -82,9 +76,8 @@ final class AuthorizationRequestsTest extends TestCase
     }
 
     /**
-     * A start is a redirect to the authorisation endpoint with the request's
-     * query, carrying the connection's callback as `redirect_uri`, and no SAML
-     * request id.
+     * A start redirects to the authorisation endpoint with the connection's
+     * callback as `redirect_uri` and no SAML request id.
      *
      * @return void
      */
@@ -150,8 +143,8 @@ final class AuthorizationRequestsTest extends TestCase
     }
 
     /**
-     * The `redirect_uri` is exactly what the endpoint resolver answers for the
-     * connection, whatever the request says its host is (SSO-5.5).
+     * The `redirect_uri` is what the endpoint resolver answers, whatever host
+     * the request claims.
      *
      * @return void
      */
@@ -295,9 +288,8 @@ final class AuthorizationRequestsTest extends TestCase
     }
 
     /**
-     * Every dump of the navigation, and of the `Start` holding it, shows the
-     * endpoint and the parameters' names, never a value, and the debug view is
-     * exactly that URL. A start logs nothing.
+     * Every dump of the navigation and its `Start` shows parameter names but no
+     * value, and a start logs nothing.
      *
      * @return void
      */

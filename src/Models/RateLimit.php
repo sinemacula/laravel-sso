@@ -11,19 +11,10 @@ use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 
 /**
- * One attempt counter of the default attempt limiter (SSO-11.8): how many
- * attempts a key (a keyed digest of what it counts, see
- * `RateLimiting\CounterKeys`) has made in the window that ends at
- * `window_ends_at`.
+ * An attempt counter of the default attempt limiter, modelled only for
+ * `model:prune`.
  *
- * The table comes from `sso.rate_limits.table`, the connection from
- * `sso.rate_limits.connection`, or the storage connection when that names none
- * (see `Models\SsoModel`). The limiter writes the counters with single
- * statements of its own; the model exists so `model:prune` can delete counters
- * whose window has ended.
- *
- * Only the class name is public, for applications to schedule that pruning
- * with; its columns and behaviour belong to the attempt limiter.
+ * Only the class name is public API; the columns belong to the limiter.
  *
  * @api
  *
@@ -38,7 +29,7 @@ final class RateLimit extends SsoModel
 {
     use MassPrunable;
 
-    /** @var string The key, under `sso.`, of the setting that names the model's table. */
+    /** @var string The `sso.` setting that names the table. */
     protected const string TABLE = 'rate_limits.table';
 
     /** @var bool Indicates if the model should be timestamped. */
@@ -57,9 +48,7 @@ final class RateLimit extends SsoModel
     protected $guarded = ['*'];
 
     /**
-     * Counters whose window has ended by the package's clock, from the second
-     * it names: the limiter starts a new window on the next attempt anyway, so
-     * they are safe to delete.
+     * Counters whose window has ended by the package's clock.
      *
      * @return \Illuminate\Database\Eloquent\Builder<self>
      */

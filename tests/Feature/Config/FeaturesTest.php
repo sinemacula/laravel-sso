@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Config\Features;
 use Tests\TestCase;
 
 /**
- * Feature tests for the feature switches: every feature off by default, read on
- * each call, a malformed switch failing closed for a flow and counting as on
- * for the checks, and the package in use only while a protocol is on, as the
- * repository given says.
+ * Feature tests for the feature switches.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,8 +38,7 @@ final class FeaturesTest extends TestCase
     }
 
     /**
-     * A switch removed from the configuration reads as its default, the
-     * scheduled refresh's being on.
+     * An absent switch reads as its default.
      *
      * @return void
      */
@@ -78,8 +74,8 @@ final class FeaturesTest extends TestCase
     }
 
     /**
-     * A malformed switch fails closed for a flow, naming its key, and counts as
-     * on for the checks.
+     * A malformed switch fails closed for a flow and counts as on for the
+     * checks.
      *
      * @return void
      */
@@ -96,8 +92,7 @@ final class FeaturesTest extends TestCase
     }
 
     /**
-     * The package is in use while either protocol is on, or its switch is
-     * malformed; no other feature puts it in use.
+     * The package is in use only while a protocol switch is on or malformed.
      *
      * @return void
      */
@@ -125,8 +120,7 @@ final class FeaturesTest extends TestCase
     }
 
     /**
-     * `requested()` and `isInUse()` read the repository they are given, not the
-     * application's configuration.
+     * `requested()` and `isInUse()` read the repository they are given.
      *
      * @return void
      */

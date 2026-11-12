@@ -3,11 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The audit trail of `docs/guides/events.md` (SSO-10.4, SSO-12.5), as an
- * application's service provider registers it in `boot()`: one listener on the
- * connection and key administration events, which stores each as one of the
- * application's own `AuditEntry` rows, with the tenant, the connection, who
- * acted, what the event adds to its context, and the context's whole record.
+ * The audit trail listener of `docs/guides/events.md`, as a service provider
+ * registers it in `boot()`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

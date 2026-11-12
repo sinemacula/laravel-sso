@@ -11,22 +11,8 @@ use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use Tests\Concerns\ScansLibraryNames;
 
 /**
- * Holds the package to what stays the application's (SSO-1.2, FEATURES "Useful
- * alone"): who may administer is the application's authorisation, so nothing
- * the package ships names Laravel's gate or its authorisation contracts, or
- * asks `can()`, `cannot()` or `authorize()`; and the package never signs a
- * person in, keeps a session or issues a token, so nothing names Laravel's
- * authentication, its guards, its session or its cookies, calls the `auth()`,
- * `session()` or `cookie()` helpers (by their plain or fully qualified name),
- * reaches them through a request or the container with `session()`, `cookie()`,
- * `guard()` or `user()`, or asks a guard to `login()`, `loginUsingId()`,
- * `logout()` or `createToken()`. A redemption answers a verified result; what
- * the application makes of it is its own.
- *
- * Names are read as `ScansLibraryNames` reads them, and calls from the source's
- * tokens, so a comment that mentions a guard is not one that uses it. The scan
- * is a backstop: `Integration\Standalone\DefaultBindingsFlowsTest` redeems a
- * `sign_in` alone and gets a result, with no session or token.
+ * Architecture tests keeping authorisation, sign-in, sessions and tokens the
+ * application's.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,16 +24,16 @@ final class ApplicationBoundaryTest extends TestCase
 {
     use ScansLibraryNames;
 
-    /** @var string A name of Laravel's authorisation: the gate's facade (imported or by its root alias) and the access contracts and classes. */
+    /** @var string A name of Laravel's authorisation: the gate's facade and the access classes. */
     private const string AUTHORIZATION_NAME = '/^\\\?(?:Illuminate\\\(?:Contracts\\\)?Auth\\\Access\\\|(?:Illuminate\\\Support\\\Facades\\\)?Gate$)/';
 
-    /** @var string A name of Laravel's authentication, sessions or cookies: their facades (imported or by their root aliases), contracts and classes. */
+    /** @var string A name of Laravel's authentication, sessions or cookies. */
     private const string SESSION_NAME = '/^\\\?(?:Illuminate\\\(?:Contracts\\\)?(?:Auth|Session|Cookie)\\\|(?:Illuminate\\\Support\\\Facades\\\)?(?:Auth|Session|Cookie)$)/';
 
     /** @var list<string> The methods that check a permission. */
     private const array AUTHORIZATION_METHODS = ['can', 'cannot', 'authorize'];
 
-    /** @var list<string> The methods that sign a person in or out, issue a token, or reach a session, a cookie, a guard or its user. */
+    /** @var list<string> The methods that sign in or out, issue a token, or reach a session or guard. */
     private const array SESSION_METHODS = ['login', 'loginusingid', 'logout', 'createtoken', 'session', 'cookie', 'guard', 'user'];
 
     /** @var list<string> The helpers that reach the application's authentication, session or cookies. */
@@ -81,8 +67,8 @@ final class ApplicationBoundaryTest extends TestCase
     }
 
     /**
-     * Nothing names Laravel's authentication, sessions or cookies, signs a
-     * person in or out, or issues a token.
+     * Nothing names Laravel's authentication, sessions or cookies, signs anyone
+     * in or out, or issues a token.
      *
      * @param  string  $path
      * @return void
@@ -97,9 +83,8 @@ final class ApplicationBoundaryTest extends TestCase
     }
 
     /**
-     * The scans catch each facade, contract and helper, a permission check and
-     * a sign-in, and pass over a comment, a declared function, a method of the
-     * package's own and a name that only starts like Laravel's.
+     * The scans catch each forbidden name and call, and skip comments,
+     * declarations, the package's own methods and lookalike names.
      *
      * @return void
      */
@@ -141,9 +126,7 @@ final class ApplicationBoundaryTest extends TestCase
     }
 
     /**
-     * The methods and helpers of the lists the source calls, in order, by their
-     * lower-case name: a method on an object or a class, and a helper called
-     * alone, never a function being declared.
+     * The listed methods and helpers the source calls, in order.
      *
      * @param  string  $source
      * @param  list<string>  $methods
@@ -174,9 +157,7 @@ final class ApplicationBoundaryTest extends TestCase
     }
 
     /**
-     * The lower-case name the token calls, or `null` when it is no name
-     * followed by an opening parenthesis: a plain name, or a fully qualified
-     * one in the global namespace, without its leading backslash.
+     * The lower-case name the token calls, without its leading backslash.
      *
      * @param  array{0: int, 1: string, 2: int}|string  $token
      * @param  array{0: int, 1: string, 2: int}|string|null  $next
@@ -194,9 +175,8 @@ final class ApplicationBoundaryTest extends TestCase
     }
 
     /**
-     * Whether the name called after a token of the kind is one of the lists': a
-     * method on an object or a class, or a helper called alone and not being
-     * declared.
+     * Whether the call after a token of the kind is a listed method or helper,
+     * and not a declaration.
      *
      * @param  string  $name
      * @param  ?int  $kind

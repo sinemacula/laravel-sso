@@ -11,10 +11,8 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Linking\Enums\LinkEligibilityVerdict;
 
 /**
- * The example application's link eligibility (SSO-8.5): an identity may link
- * through a connection only as a member of the connection's tenant. It reads
- * the membership from the write connection, locked on the package's storage
- * connection, so a membership that exists stays until the redemption commits.
+ * The example application's link eligibility: only members of the connection's
+ * tenant may link.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

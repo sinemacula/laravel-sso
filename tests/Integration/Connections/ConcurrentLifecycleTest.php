@@ -47,29 +47,9 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Races a disable and a trust change against the flows in flight through the
- * connection, across processes, each with its own database connection, on
- * PostgreSQL and MySQL (SSO-2.11, SSO-2.13, SSO-9.2):
- *
- * - a disable racing a completion that has consumed its request: either the
- *   completion commits a code first and the disable voids it, or the disable
- *   commits first and the completion fails with `connection_unavailable`;
- * - a disable racing a redemption: either the code is redeemed before the
- *   disable, which then leaves it, or the disable voids it first and the
- *   redemption is refused (`handoff_unknown` or `connection_unavailable`);
- * - a trust change racing a completion: as a disable does.
- *
- * However the racers interleave, no code is left neither redeemed nor voided
- * once both finish, and none is redeemed after a disable committed. Each race
- * runs with every process plain, and again with each inside a transaction of
- * its own that read the connection, its requests and its codes before the race
- * began, so a locking read must see what another process committed rather than
- * its transaction's snapshot (MySQL's `REPEATABLE READ`). A completion runs
- * outside any transaction on the storage connection, so a completing process is
- * always plain, and only the change it races runs inside one.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Races a disable or trust change against completions and redemptions across
+ * processes, plainly and inside transactions that read first. Skipped on SQLite
+ * and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -111,11 +91,8 @@ final class ConcurrentLifecycleTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock, a
-     * fresh caller, a limiter that allows every attempt and a linker that links
-     * every result to one identity, register the application and the driver,
-     * create the tables and the connection, and make the directory the
-     * processes report in.
+     * Skip where processes cannot share the database, bind the collaborators,
+     * and seed the connection.
      *
      * @return void
      *
@@ -270,9 +247,8 @@ final class ConcurrentLifecycleTest extends TestCase
     }
 
     /**
-     * Start a request, then race its completion, whose driver validates slowly,
-     * against the change, begun while the completion validates, plain or inside
-     * a transaction of its own; the completion is always plain.
+     * Start a request, then race its slow completion against the change, plain
+     * or in a transaction.
      *
      * @param  \Closure(): string  $change
      * @param  bool  $inTransaction
@@ -294,10 +270,8 @@ final class ConcurrentLifecycleTest extends TestCase
     }
 
     /**
-     * Assert the completion and the change ended in one of the two orders the
-     * connection's lock allows, and no code is left neither redeemed nor
-     * voided: a code issued first is voided by the change; a change made first
-     * fails the completion and issues none.
+     * Assert the race ended in an order the lock allows, with no code left
+     * unredeemed and unvoided.
      *
      * @param  list<string>  $outcomes
      * @param  string  $changed
@@ -314,10 +288,8 @@ final class ConcurrentLifecycleTest extends TestCase
     }
 
     /**
-     * Issue a code, then race its redemption against a disable begun at the
-     * same moment, and assert the code ended either redeemed and not voided,
-     * the redemption having succeeded before the disable, or voided and not
-     * redeemed, the redemption refused.
+     * Race a redemption against a disable; the code ends redeemed or voided,
+     * never both or neither.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -339,8 +311,7 @@ final class ConcurrentLifecycleTest extends TestCase
     }
 
     /**
-     * What a completing process does: complete at the callback with the state
-     * and report how it ended.
+     * Complete at the callback with the state and report how it ended.
      *
      * @return \Closure(): string
      */
@@ -380,8 +351,7 @@ final class ConcurrentLifecycleTest extends TestCase
     }
 
     /**
-     * What a disabling process does: disable the connection and report the
-     * outcome.
+     * Disable the connection and report the outcome.
      *
      * @return \Closure(): string
      */
@@ -393,8 +363,7 @@ final class ConcurrentLifecycleTest extends TestCase
     }
 
     /**
-     * What a process changing the connection's trust does: change its issuer
-     * and report the outcome.
+     * Change the connection's issuer and report the outcome.
      *
      * @return \Closure(): string
      */
@@ -411,9 +380,8 @@ final class ConcurrentLifecycleTest extends TestCase
     }
 
     /**
-     * Fork a process for each racer, have each start its work at the start plus
-     * its delay on a connection of its own, plain or inside a transaction of
-     * its own, and collect what each reported, in the racers' order.
+     * Fork a process per racer, each starting after its delay, and collect what
+     * each reported.
      *
      * @param  list<array{0: float, 1: \Closure(): string, 2: bool}>  $racers
      * @return list<string>
@@ -450,14 +418,8 @@ final class ConcurrentLifecycleTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, wait for its start, do
-     * its work, report the outcome, and end without running the parent's
-     * shutdown.
-     *
-     * Racing inside a transaction, the process opens one and reads the
-     * connection, its requests and its codes before the start, so the
-     * transaction's snapshot predates every other process's work, and commits
-     * after its own.
+     * In a child: run the work at its start time and report; in a transaction,
+     * read first so its snapshot predates the race.
      *
      * @param  int  $process
      * @param  float  $start

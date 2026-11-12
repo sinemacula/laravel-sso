@@ -15,11 +15,8 @@ use Tests\Integration\Examples\Routes\Application\Answers;
 use Tests\Integration\Examples\Routes\Application\Caller;
 
 /**
- * The example application's connection management routes (SSO-2.11, SSO-12.5),
- * behind its authentication and its `manage-sso` authorisation. Every call is
- * scoped to the tenant the caller is active in, so another tenant's connection
- * answers exactly as an unknown one; the package asks freshness of each change
- * that needs it, which is no substitute for that authorisation.
+ * The example application's connection management routes, each scoped to the
+ * caller's active tenant.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

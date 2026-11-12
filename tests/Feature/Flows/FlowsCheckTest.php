@@ -11,9 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for the flows' settings and `[flows]`: the authorisation
- * request's lifetime and the least time a discovery start takes, each with its
- * default and its range, checked while the package is in use.
+ * Feature tests for the flow settings and the `[flows]` check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -85,8 +83,8 @@ final class FlowsCheckTest extends TestCase
     }
 
     /**
-     * Not checked while the package is not in use, however malformed; checked
-     * and passing with the defaults once it is.
+     * Not checked while the package is not in use; the defaults pass once it
+     * is.
      *
      * @return void
      */

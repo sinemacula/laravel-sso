@@ -8,17 +8,8 @@ use Carbon\CarbonImmutable;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 
 /**
- * A clock for tests that holds one instant until the test moves it, so a test
- * of skew, expiry or a maximum age neither waits nor depends on the time it
- * runs at (SSO-11.13).
- *
- * Bind it in place of the package's clock with
- * `$app->instance(Clock::class, new FrozenClock('2026-10-31T12:00:00Z'))`, then
- * move it with `advance()` or `setTo()`. It reads nothing from Laravel's test
- * clock once built, so freezing or travelling Laravel's clock does not move it;
- * the package's default clock follows Laravel's instead. An instant given as a
- * string is parsed as `CarbonImmutable::parse()` parses it, and one Carbon
- * cannot parse throws an `InvalidArgumentException`.
+ * A test clock that holds one instant until moved. Laravel's test clock does
+ * not move it, unlike the package's default clock.
  *
  * @api
  *
@@ -52,7 +43,7 @@ final class FrozenClock implements Clock
     }
 
     /**
-     * Move the clock by the seconds given, backwards when negative.
+     * Move the clock by the seconds, backwards when negative.
      *
      * @param  int  $seconds
      * @return void
@@ -63,7 +54,7 @@ final class FrozenClock implements Clock
     }
 
     /**
-     * Move the clock to the instant given.
+     * Move the clock to the instant.
      *
      * @param  \DateTimeInterface|string  $instant
      * @return void
@@ -74,7 +65,7 @@ final class FrozenClock implements Clock
     }
 
     /**
-     * The instant given, as a `CarbonImmutable`.
+     * Convert the instant to a `CarbonImmutable`.
      *
      * @param  \DateTimeInterface|string  $instant
      * @return \Carbon\CarbonImmutable

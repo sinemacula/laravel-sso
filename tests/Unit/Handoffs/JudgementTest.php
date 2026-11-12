@@ -11,10 +11,7 @@ use SineMacula\Laravel\Sso\Handoffs\Redemption\Judgement;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 
 /**
- * Pins the shape of what a purpose's rules came to at redemption: the outcome,
- * the provenance of the link judged and the version of the enforcement judged,
- * exactly these three parts, in this order; `of()` names neither, and `under()`
- * changes the version alone.
+ * Unit tests for the shape of a redemption judgement.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,8 +35,7 @@ final class JudgementTest extends TestCase
     }
 
     /**
-     * Judged under an enforcement version, a judgement keeps its outcome and
-     * provenance and takes that version, whatever it had.
+     * `under()` changes the enforcement version alone.
      *
      * @return void
      */
@@ -59,8 +55,7 @@ final class JudgementTest extends TestCase
     }
 
     /**
-     * An outcome alone names no link provenance, by default and through `of()`,
-     * for every outcome.
+     * An outcome alone names no link provenance.
      *
      * @return void
      */

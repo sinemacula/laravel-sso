@@ -17,12 +17,8 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for reading which request a SAML response answers (SSO-5.3,
- * SSO-5.8), validating nothing: HTTP-POST only, with a non-empty string
- * `SAMLResponse`; an unreadable envelope uncorrelated; no `InResponseTo`
- * anywhere unsolicited; `InResponseTo` values that disagree, or an id that is
- * empty or too long, uncorrelated; and otherwise solicited by the one id, with
- * a `RelayState` of at most 80 bytes as its state, and none otherwise.
+ * Feature tests for reading which request a SAML response answers, validating
+ * nothing.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -151,9 +147,8 @@ final class ResponseCorrelatorTest extends TestCase
     }
 
     /**
-     * Only a `RelayState` that is a string of at most 80 bytes is carried; any
-     * other leaves the response solicited by its id alone, so the consumed
-     * request refuses it.
+     * Only a string `RelayState` of at most 80 bytes is carried; otherwise the
+     * consumed request refuses the response.
      *
      * @param  mixed  $relayState
      * @param  ?string  $digest
@@ -219,9 +214,8 @@ final class ResponseCorrelatorTest extends TestCase
     }
 
     /**
-     * An encrypted assertion's `InResponseTo` cannot be seen: the response's
-     * own correlates it, and one that names none is unsolicited until it is
-     * validated.
+     * An encrypted response is correlated by its own `InResponseTo`, and with
+     * none is unsolicited until validated.
      *
      * @return void
      */

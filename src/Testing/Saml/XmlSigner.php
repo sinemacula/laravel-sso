@@ -5,16 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Testing\Saml;
 
 /**
- * The enveloped XML signature the fake SAML identity provider signs its test
- * input with (SSO-12.4), seeded from the library spike's fixture generator.
- *
- * It is a minimal test tool that writes what a test needs, the hostile cases
- * included: exclusive canonicalisation with or without comments, RSA with
- * SHA-1, SHA-256, SHA-384 or SHA-512, a digest of any of those, a reference to
- * another element or to the whole document (`URI=""`), and a key and
- * certificate other than the provider's. The package never signs or verifies
- * with it: its own flows sign and verify only through its SAML adapter and the
- * maintained library behind it (SSO-6.1).
+ * A minimal enveloped XML signer for the fake identity provider, able to write
+ * hostile signatures. The package's own flows never use it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -44,7 +36,7 @@ final readonly class XmlSigner
         'exc-c14n-comments' => self::EXC_C14N_COMMENTS,
     ];
 
-    /** @var array<string, int> The OpenSSL hash of each signature algorithm but SHA-256, by short name. */
+    /** @var array<string, int> OpenSSL hashes by algorithm; SHA-256 is the fallback. */
     private const array HASHES = ['rsa-sha1' => OPENSSL_ALGO_SHA1, 'rsa-sha384' => OPENSSL_ALGO_SHA384, 'rsa-sha512' => OPENSSL_ALGO_SHA512];
 
     /** @var string The XML signature namespace. */
@@ -76,18 +68,8 @@ final readonly class XmlSigner
     ) {}
 
     /**
-     * Sign the element with an enveloped signature, placed after its `Issuer`
-     * (or first, when it has none), and answer the signature element.
-     *
-     * Options: `algorithm` (`rsa-sha256` by default, a key of
-     * `SIGNATURE_ALGORITHMS`), `digest` (`sha256`, a key of
-     * `DIGEST_ALGORITHMS`), `comments` (canonicalise `SignedInfo` with
-     * comments), `target` (the element the reference names and digests, the
-     * element itself by default), `uri` (the reference, `#` and the target's
-     * `ID` by default; `''` digests the whole document) and `transforms` (the
-     * keys of `TRANSFORMS` the reference lists, in order: `enveloped` then
-     * `exc-c14n` by default). The digest is always of the exclusive canonical
-     * bytes without comments, whatever the transforms say.
+     * Sign the element after its `Issuer` and return the signature. The digest
+     * is always exclusive c14n without comments, whatever the transforms say.
      *
      * @param  \DOMElement  $element
      * @param  array{algorithm?: string, digest?: string, comments?: bool, target?: \DOMElement, uri?: string, transforms?: list<string>}  $options
@@ -105,8 +87,7 @@ final readonly class XmlSigner
     }
 
     /**
-     * The RSA signature of the data with the algorithm, base64 encoded, as an
-     * HTTP-Redirect query string or a signed `SignedInfo` carries it.
+     * The base64 RSA signature of the data.
      *
      * @param  string  $data
      * @param  string  $algorithm
@@ -126,7 +107,7 @@ final readonly class XmlSigner
     }
 
     /**
-     * What `sign()` answers, a DOM failure let through.
+     * The signature `sign()` returns, letting a DOM failure through.
      *
      * @param  \DOMElement  $element
      * @param  array{algorithm?: string, digest?: string, comments?: bool, target?: \DOMElement, uri?: string, transforms?: list<string>}  $options
@@ -137,11 +118,11 @@ final readonly class XmlSigner
      */
     private function signed(\DOMElement $element, array $options = []): \DOMElement
     {
-        $document  = self::documentOf($element);
-        $target    = $options['target']    ?? $element;
-        $uri       = $options['uri']       ?? '#' . $target->getAttribute('ID');
-        $digest    = $options['digest']    ?? 'sha256';
-        $algorithm = $options['algorithm'] ?? 'rsa-sha256';
+        $document  = $element->ownerDocument ?? throw new \LogicException('The element to sign belongs to a document.');
+        $target    = $options['target']      ?? $element;
+        $uri       = $options['uri']         ?? '#' . $target->getAttribute('ID');
+        $digest    = $options['digest']      ?? 'sha256';
+        $algorithm = $options['algorithm']   ?? 'rsa-sha256';
         $digested  = ($uri === '' ? $document : $target)->C14N(true, false);
 
         $signature = $document->createElementNS(self::NS_DS, 'ds:Signature');
@@ -155,8 +136,7 @@ final readonly class XmlSigner
         $signature->appendChild($this->keyInfo($document));
         $element->insertBefore($signature, self::anchor($element));
 
-        // The SignedInfo holds no comment, so it canonicalises the same with or
-        // without them
+        // SignedInfo holds no comment, so either canonicalisation is the same
         $value->appendChild($document->createTextNode($this->signatureValue((string) $info->C14N(true), $algorithm)));
 
         return $signature;
@@ -183,8 +163,7 @@ final readonly class XmlSigner
     }
 
     /**
-     * The `Reference` to the URI, with the transforms named and the digest of
-     * the canonical bytes.
+     * The `Reference` to the URI, with its transforms and digest.
      *
      * @param  \DOMDocument  $document
      * @param  array{0: string, 1: string, 2: string}  $digest
@@ -232,21 +211,8 @@ final readonly class XmlSigner
     }
 
     /**
-     * The document the element belongs to.
-     *
-     * @param  \DOMElement  $element
-     * @return \DOMDocument
-     *
-     * @throws \LogicException
-     */
-    private static function documentOf(\DOMElement $element): \DOMDocument
-    {
-        return $element->ownerDocument ?? throw new \LogicException('The element to sign belongs to a document.');
-    }
-
-    /**
-     * The child the signature goes before: the one after the element's
-     * `Issuer`, or its first child when it has none.
+     * The child the signature goes before: the one after `Issuer`, else the
+     * first.
      *
      * @param  \DOMElement  $element
      * @return ?\DOMNode

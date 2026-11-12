@@ -15,42 +15,8 @@ use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse;
 
 /**
- * Completes an OpenID Connect callback against the request the pipeline
- * consumed for it (SSO-5.4, SSO-7.1, SSO-7.2): the response's `iss` and its
- * code or error, the token request, then the ID token's validation
- * (`IdTokenValidator`) and the claims (`ClaimsAssembler`).
- *
- * In this order, each refusal a value that leaves the request consumed:
- *
- * 1. the raw query is read again by `CallbackParameters`; a refusal now is
- *    `response_invalid`, though the correlator has read it once;
- * 2. RFC 9207: an `iss` present must equal the issuer the request pinned, byte
- *    for byte, and one absent is refused when the request says the provider
- *    returns it; either is `issuer_mismatch`, before the response is handled as
- *    a success or an error. Without `iss`, a response is accepted only at the
- *    callback of the request's own connection, which the consumption has
- *    checked (`connection_mismatch`): the mix-up defence of RFC 9700 §4.4.2;
- * 3. `error` and `code` both present, neither present, or an empty `code` is
- *    `response_invalid`; `error` alone is `provider_error`;
- * 4. the token request (`TokenExchange`, one attempt), with no credential being
- *    `connection_unavailable`, and its answer (`TokenResponseReader`);
- * 5. the ID token's validation, and the claims assembled from it; the verified
- *    completion carries the `Protocols\TransitionReceipt` of a key rotation the
- *    token's own refetch made, which only the validation of the whole token
- *    under the keys it left, and UserInfo when fetched, hands on.
- *
- * The code alone of a provider's error is logged, through the sanitising
- * logger, under `sso.oidc.callback_error` or `sso.oidc.token_error` and only
- * when it has the shape of a code, so prose put in `error` is not logged
- * either; an `error_description` and `error_uri` are never read, so they reach
- * no log, event or result (SSO-5.7). The tokens are never logged or kept
- * (SSO-7.6).
- *
- * The completion runs outside any transaction (`CompletionService`), so the
- * token request never holds a lock. The pipeline refuses under its lock a
- * connection or a trust version changed meanwhile. A database error and a
- * ciphertext no key decrypts propagate (SSO-11.4). It holds nothing between
- * calls (SSO-11.2).
+ * Completes an OpenID Connect callback: checks `iss` and the code or error,
+ * exchanges the code, then validates the ID token and assembles the claims.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -65,7 +31,7 @@ final readonly class CallbackCompletion
     /** @var string The log message of an `error` the token endpoint answered. */
     private const string TOKEN_ERROR = 'sso.oidc.token_error';
 
-    /** @var string The shape of an OAuth error code; anything else is not logged. */
+    /** @var string The shape of an OAuth error code; prose in `error` is not logged. */
     private const string ERROR_CODE = '/^[A-Za-z0-9_.:\-]{1,64}$/D';
 
     /** @var string What is logged for an `error` that is not shaped as a code. */
@@ -103,7 +69,8 @@ final readonly class CallbackCompletion
     ) {}
 
     /**
-     * Complete the callback, or refuse it.
+     * Complete the callback, or refuse it; every refusal leaves the request
+     * consumed.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -129,9 +96,8 @@ final readonly class CallbackCompletion
     }
 
     /**
-     * Why the response's `iss` refuses it (RFC 9207), or `null`: one present
-     * must be the request's pinned issuer, byte for byte, and one absent is
-     * accepted only when the request does not require it.
+     * Why the response's RFC 9207 `iss` refuses it, or `null`. Checked before
+     * the response is read as a success or an error.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\CallbackParameters  $parameters
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
@@ -146,8 +112,8 @@ final readonly class CallbackCompletion
     }
 
     /**
-     * Why the response's `error` and `code` refuse it, or `null` when it holds
-     * exactly a code; an `error` alone is logged by its code.
+     * Why the `error` and `code` refuse the response, or `null` when it holds
+     * exactly a code.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\CallbackParameters  $parameters
@@ -171,7 +137,7 @@ final readonly class CallbackCompletion
     }
 
     /**
-     * Exchange the code, once, and judge what came back.
+     * Exchange the code once and judge the answer.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\OidcOptions  $options
@@ -202,8 +168,7 @@ final readonly class CallbackCompletion
     }
 
     /**
-     * Refuse the token endpoint's answer, logging the code of a provider's
-     * error.
+     * Refuse the token endpoint's answer, logging any provider error code.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Protocols\ConsumedRequest  $consumed
@@ -244,8 +209,7 @@ final readonly class CallbackCompletion
     }
 
     /**
-     * Log a provider's error by its code alone, naming the request by its
-     * public reference.
+     * Log a provider's error code alone, with the request's public reference.
      *
      * @param  string  $message
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection

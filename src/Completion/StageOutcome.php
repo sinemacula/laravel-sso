@@ -7,23 +7,8 @@ namespace SineMacula\Laravel\Sso\Completion;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 
 /**
- * What a completion stage decided (SSO-5.6): proceed to the next step with the
- * state as it left it, or refuse the completion with a reason, with the state
- * as far as the completion got, so the refusal is reported with what was
- * established (the connection, the request's reference, the identity) and
- * redirected to the application's URI once a request was found.
- *
- * The correlation step alone may instead hand the completion to re-initiation
- * (SSO-5.8): an unsolicited SAML response, with its correlation on the state,
- * at a connection whose driver re-initiates. Such an outcome neither proceeds
- * nor is refused; the pipeline runs no further step and answers it through
- * `Completion\UnsolicitedReinitiation`.
- *
- * The provisioning step alone may instead stop at the provisioning boundary
- * (SSO-8.6): a genuinely unlinked `sign_in` result holding no reservation. Such
- * an outcome neither proceeds nor is refused: the pipeline commits what the
- * completion has so far and offers the result to the unlinked-result event's
- * listeners, with no package transaction open, before its final continuation.
+ * What a completion stage decided: proceed, refuse, hand over to re-initiation
+ * (correlation only) or stop at the provisioning boundary (provisioning only).
  *
  * @api
  *
@@ -79,8 +64,7 @@ final readonly class StageOutcome
     }
 
     /**
-     * Hand the completion of an unsolicited response to re-initiation, with no
-     * further step run.
+     * Hand an unsolicited response to re-initiation.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return self

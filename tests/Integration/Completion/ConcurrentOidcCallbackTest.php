@@ -55,27 +55,8 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
 /**
- * Races the OpenID Connect callback (SSO-5.1, SSO-7.2, SSO-2.13), the barrier
- * in the fake token endpoint's closure, so the token request is in flight,
- * outside any transaction, for the whole race:
- *
- * - The same callback submitted twice at once: exactly one consumes the request
- *   and sends exactly one token request, while the other is `request_unknown`.
- * - An administrator rotating the client secret or changing `jwks_uri` while
- *   the token request is in flight voids the request and raises the trust
- *   version, so the completion, taking its locks, is refused
- *   `connection_unavailable` with no handoff.
- *
- * In this process the change runs at the barrier, so the order is exact on
- * every database. Across processes, on MySQL and PostgreSQL, the change runs
- * plainly, and inside the administrator's own already-open `REPEATABLE READ`
- * transaction that read first, and the completion starts only once that read is
- * signalled, so the administrator's snapshot is older than the consumed
- * request. On PostgreSQL that transaction therefore fails to serialise
- * (SQLSTATE `40001`), which changes nothing, so the completion then completes.
- * The cross-process races are skipped on SQLite and without `pcntl`. A barrier
- * that times out fails the racer loudly, so racers that ran one after the other
- * never pass as racers that overlapped.
+ * Integration tests racing the OIDC callback while its token request is in
+ * flight.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -117,11 +98,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     private int $racer = 0;
 
     /**
-     * Bind a fixed clock, fresh authentication, a limiter that allows every
-     * attempt, the recording issuer, the fake fetcher and the doubles,
-     * configure the endpoints and the application, create the tables, the
-     * connection, its request and what the browser sends, and make the
-     * directory the processes report in.
+     * Bind the doubles and fake fetcher, and create the connection, its request
+     * and the callback.
      *
      * @return void
      *
@@ -212,8 +190,7 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * Rows of `[changes]`: a change an administrator makes that is a trust
-     * change.
+     * Rows of `[changes]`: an administrator change that is a trust change.
      *
      * @return iterable<string, array{0: array<string, string>}>
      */
@@ -226,9 +203,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * In this process: the change committing while the token request is in
-     * flight refuses the completion under its lock, with no handoff, and it
-     * raises the trust version and voids the request.
+     * A trust change during the token request refuses the completion under its
+     * lock.
      *
      * @param  array<string, string>  $changes
      * @return void
@@ -253,8 +229,7 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * The same callback twice at once: exactly one consumes the request and
-     * sends exactly one token request, held open until the other has answered
+     * The same callback twice at once sends one token request; the other is
      * `request_unknown`.
      *
      * @return void
@@ -284,8 +259,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * Across processes, the change committing while the token request is in
-     * flight refuses the completion under its lock.
+     * A trust change in another process during the token request refuses the
+     * completion.
      *
      * @param  array<string, string>  $changes
      * @return void
@@ -297,9 +272,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * The same race, the change inside the administrator's own `REPEATABLE
-     * READ` transaction that read the connection and the request before the
-     * race began.
+     * The same race, the change inside a `REPEATABLE READ` transaction that
+     * read first.
      *
      * @param  array<string, string>  $changes
      * @return void
@@ -311,10 +285,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * Race the completion against the change in another process, plain or in
-     * its own transaction, and assert the completion was refused under the
-     * lock, or, in a transaction on PostgreSQL, that the change failed to
-     * serialise and the completion completed.
+     * Race the completion against the change and assert it was refused, or the
+     * change failed to serialise.
      *
      * @param  array<string, string>  $changes
      * @param  bool  $inTransaction
@@ -382,8 +354,7 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * Have the token endpoint run the closure when a token request arrives,
-     * then answer with tokens.
+     * Run the closure when a token request arrives, then answer with tokens.
      *
      * @param  \Closure(): void  $barrier
      * @return void
@@ -421,8 +392,7 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * How the completion ended, how many token requests this process sent, and
-     * how many codes it issued.
+     * How the completion ended, with its token request and code counts.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @return string
@@ -439,9 +409,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * Fork a process for each racer, have each start its work at the same
-     * moment on a connection of its own, plain or inside a transaction of its
-     * own, and collect what each reported, in the racers' order.
+     * Fork a process per racer, start them together and collect their reports
+     * in order.
      *
      * @param  list<array{0: \Closure(): string, 1: bool}>  $racers
      * @return list<string>
@@ -478,11 +447,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, signal it has read,
-     * wait for its start, do its work, report the outcome, and end without
-     * running the parent's shutdown. Racing inside a transaction, the process
-     * opens one at `REPEATABLE READ` and reads the connection and the request
-     * before it signals, and commits after its work.
+     * Run the racer on its own connection, reading first in a transaction so
+     * its snapshot predates the race.
      *
      * @param  int  $process
      * @param  float  $start
@@ -533,8 +499,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * The statement that makes this session's transactions `REPEATABLE READ`,
-     * which on PostgreSQL pins the snapshot at the first read.
+     * The session's `REPEATABLE READ` statement; PostgreSQL pins the snapshot
+     * at the first read.
      *
      * @param  string  $driver
      * @return string
@@ -551,8 +517,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`, and fail loudly
-     * when it never appears: the racer then reports an error.
+     * Wait up to `SIGNAL_SECONDS` for the signal file, and fail when it never
+     * appears.
      *
      * @param  string  $signal
      * @return void
@@ -567,8 +533,7 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * Wait for the signal file, for at most `SIGNAL_SECONDS`; whether it
-     * appeared.
+     * Wait up to `SIGNAL_SECONDS` for the signal file; whether it appeared.
      *
      * @param  string  $signal
      * @return bool
@@ -591,8 +556,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * Whether the error, or one it was thrown for, is PostgreSQL's
-     * serialisation failure (SQLSTATE 40001), accepted only there.
+     * Whether the error, or its cause, is a PostgreSQL serialisation failure
+     * (SQLSTATE 40001).
      *
      * @param  \Throwable  $exception
      * @return bool
@@ -609,8 +574,8 @@ final class ConcurrentOidcCallbackTest extends TestCase
     }
 
     /**
-     * Bind doubles of the ID token's validation and the claims' assembly, which
-     * validate and verify every token.
+     * Bind doubles of ID token validation and claims assembly that accept every
+     * token.
      *
      * @return void
      */

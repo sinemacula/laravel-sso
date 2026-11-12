@@ -10,24 +10,9 @@ use SineMacula\Laravel\Sso\Contracts\RedirectUriResolver;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
 
 /**
- * The one way the flows reach an application (SSO-5.1, SSO-5.5, SSO-9.2):
- * admitting the application a request names, and resolving the exact redirect
- * URI a completion for it redirects to.
+ * Admits the application a request names and resolves its redirect URI.
  *
- * An application is admitted only when it is registered under exactly the name
- * given and the bound `Contracts\ApplicationPolicy` answers `allowed`; an
- * unknown application and one that does not allow external sign-in are both
- * refused with `application_not_allowed`, and the policy is never asked about a
- * name no application is registered under.
- *
- * The redirect URI is answered by the bound `Contracts\RedirectUriResolver`
- * from the registered application and the connection alone, and checked as
- * exactly what a redirect URI may be (`Config\UrlSetting::redirect()`): an
- * answer that is not fails closed with a `LogicException`, a misconfigured
- * binding, naming the application but never the answer.
- *
- * It holds the registry, the policy and the resolver, none of which keeps
- * anything of one request for the next (SSO-11.2); resolve it per request.
+ * Resolve it per request.
  *
  * @api
  *
@@ -56,8 +41,8 @@ final readonly class ApplicationGate
     ) {}
 
     /**
-     * Admit the application registered under exactly the name, once the policy
-     * allows it sign-in through an external provider.
+     * Admit the application registered under exactly the name, if the policy
+     * allows external sign-in.
      *
      * @param  string  $name
      * @return \SineMacula\Laravel\Sso\Applications\ApplicationAdmission
@@ -76,7 +61,8 @@ final readonly class ApplicationGate
     }
 
     /**
-     * The exact redirect URI of the application, through the connection.
+     * The resolver's redirect URI, refused as a misconfigured binding if
+     * invalid.
      *
      * @param  \SineMacula\Laravel\Sso\Applications\Application  $application
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection

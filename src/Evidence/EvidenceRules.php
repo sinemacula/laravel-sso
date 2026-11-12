@@ -10,45 +10,8 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Driver;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 
 /**
- * A connection's evidence policy (SSO-8.7): which authentication methods and
- * context classes it accepts, and which combinations of them count. Stored as
- * an array, by these names:
- *
- * - `amr`: the accepted OIDC methods, each an RFC 8176 value;
- * - `acr`: the accepted OIDC context classes;
- * - `authn_context_class_ref`: the accepted SAML context classes;
- * - `combinations`: what counts, at least one. Each names `amr`, a list of
- *   accepted methods every one of which the assertion must state, and `acr` or
- *   `authn_context_class_ref`, the one accepted class it must state, or both of
- *   the first two. A result satisfying any one combination counts. A
- *   combination naming nothing is refused, since it would count anything;
- * - `max_age_seconds`: optional, how long after the provider's authentication
- *   this connection accepts evidence, a whole number of at least one, which may
- *   only tighten the ceiling `sso.linking.evidence_max_age_seconds`.
- *
- * `amr` and `acr` belong to every protocol but SAML, and
- * `authn_context_class_ref` to SAML alone; the other's is `unsupported`. A
- * driver an application registered is read as OIDC is: the methods and class of
- * its `AuthenticationContext` are its normalised evidence contract, populated
- * only from its own authenticated response, whatever its wire protocol. A
- * result stating a provider's own `amr` value may also state accepted standard
- * ones: only those enter the accepted methods, and no accepted combination at
- * all is insufficient evidence.
- *
- * `violations()` judges a policy to be written, with every violation named by
- * path and code and never by value; a policy of nothing is valid and accepts
- * nothing. A `max_age_seconds` above the ceiling it is given is `not_allowed`.
- * `parse()` judges a stored one by the very same rules, the ceiling apart,
- * since lowering the ceiling later must not turn a policy malformed, and
- * answers `null` for anything they refuse, so a malformed policy is
- * insufficient rather than an exception. `maxAgeSeconds()` clamps a stored
- * value to the ceiling as it is when asked, so that lowering wins.
- * `acceptedMethods()` compares exactly, whatever the case: it answers the
- * asserted methods the policy accepts, in their asserted order and each once,
- * when a combination is satisfied, and `null` when none is. An asserted method
- * the policy does not list never enters them, and judges nothing.
- *
- * It holds nothing but one policy, for one call.
+ * A connection's evidence policy: the accepted methods and context classes, and
+ * which combinations of them count.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -110,9 +73,8 @@ final readonly class EvidenceRules
     ) {}
 
     /**
-     * Every violation of the policy on the protocol, by path and code: unknown
-     * names first, then the accepted lists, then the combinations, then the
-     * maximum age, judged against the ceiling when one is given.
+     * Every violation of the policy on the protocol, by path and code, never by
+     * value; an empty policy is valid.
      *
      * @param  array<array-key, mixed>  $policy
      * @param  string  $protocol
@@ -134,8 +96,11 @@ final readonly class EvidenceRules
     }
 
     /**
-     * The rules of a stored policy on the protocol, or `null` when it accepts
-     * nothing or is malformed.
+     * The rules of a stored policy, or `null` when it accepts nothing or is
+     * malformed.
+     *
+     * The ceiling is not checked here, so lowering it later never makes a
+     * stored policy malformed.
      *
      * @param  mixed  $stored
      * @param  string  $protocol
@@ -160,8 +125,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * How long this connection accepts evidence now: its own value, clamped to
-     * the ceiling as it is when asked, or the ceiling.
+     * The connection's maximum age, clamped to the current ceiling.
      *
      * @param  int  $ceiling
      * @return int
@@ -172,8 +136,8 @@ final readonly class EvidenceRules
     }
 
     /**
-     * The asserted methods the policy accepts, when the context satisfies a
-     * combination; `null` when it satisfies none.
+     * The asserted methods the policy accepts, in asserted order, or `null`
+     * when no combination is satisfied.
      *
      * @param  \SineMacula\Laravel\Sso\Results\AuthenticationContext  $context
      * @return ?list<string>
@@ -193,8 +157,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * Whether what was accepted holds every method the combination requires,
-     * and what was stated the class it requires, if any.
+     * Whether the accepted methods and stated class satisfy one combination.
      *
      * @param  list<string>  $required
      * @param  ?string  $class
@@ -208,8 +171,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * The code of the policy's maximum age, or `null` when it names none or an
-     * acceptable one: a whole number of at least one, never above the ceiling.
+     * The maximum age's violation code, or `null` when absent or valid.
      *
      * @param  array<array-key, mixed>  $policy
      * @param  ?int  $ceiling
@@ -254,7 +216,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * What the policy names that no policy has.
+     * The policy's unknown names.
      *
      * @param  array<array-key, mixed>  $policy
      * @return list<\SineMacula\Laravel\Sso\Connections\SettingViolation>
@@ -303,7 +265,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * The code of what should be a list of at most the entries given.
+     * The violation code of a list bounded by `$max` entries.
      *
      * @param  mixed  $value
      * @param  int  $max
@@ -335,8 +297,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * The problems with a bounded list of context classes, each as a result
-     * could state it and each once.
+     * The problems with a bounded list of unique context classes.
      *
      * @param  string  $path
      * @param  mixed  $value
@@ -366,8 +327,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * Every violation of what the policy says counts: at least one combination,
-     * and at most `MAX_COMBINATIONS`.
+     * Every violation of the combinations: one to `MAX_COMBINATIONS` of them.
      *
      * @param  array<array-key, mixed>  $policy
      * @param  string  $protocol
@@ -392,7 +352,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * Every violation of one combination: a map naming at least one part.
+     * Every violation of one combination, a map naming at least one part.
      *
      * @param  string  $path
      * @param  mixed  $combination
@@ -420,7 +380,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * The problems with one part of a combination, which may only name what the
+     * The problems with one combination part, which may name only what the
      * policy accepts.
      *
      * @param  string  $path
@@ -441,8 +401,7 @@ final readonly class EvidenceRules
     }
 
     /**
-     * What the policy lists under the name: only a string can ever be chosen
-     * from it.
+     * What the policy lists under the name, or an empty list.
      *
      * @param  array<array-key, mixed>  $policy
      * @param  string  $name

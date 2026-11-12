@@ -14,9 +14,7 @@ use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 
 /**
- * Unit tests for the scope of a session revocation (SSO-4.5, SSO-8.8): the four
- * scopes, each with its reason and only the fields it needs, the reasons a
- * connection's sessions may be revoked for, and the stable enum values.
+ * Unit tests for session revocation scopes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,8 +27,7 @@ use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 final class RevocationScopeTest extends TestCase
 {
     /**
-     * The tenant scope carries the policy now in force, for its enforcing
-     * tenant, and nothing else.
+     * The tenant scope carries only the policy in force.
      *
      * @return void
      */
@@ -69,8 +66,7 @@ final class RevocationScopeTest extends TestCase
     }
 
     /**
-     * The identity scope names the identity, the connection and the link that
-     * was removed, so an adapter can revoke exactly that link's sessions.
+     * The identity scope names the identity, connection and removed link.
      *
      * @return void
      */
@@ -89,8 +85,7 @@ final class RevocationScopeTest extends TestCase
     }
 
     /**
-     * The link scope names the identity, the connection and the one link, for a
-     * widened scope.
+     * The link scope names the identity, the connection and the one link.
      *
      * @return void
      */
@@ -138,8 +133,7 @@ final class RevocationScopeTest extends TestCase
     }
 
     /**
-     * Rows of `[build]`: each connection scope with an empty tenant, and with
-     * an empty connection.
+     * Rows of `[build]`: a connection scope missing its tenant or connection.
      *
      * @return iterable<string, array{\Closure(): \SineMacula\Laravel\Sso\Revocation\RevocationScope}>
      */
@@ -161,8 +155,7 @@ final class RevocationScopeTest extends TestCase
     }
 
     /**
-     * A connection scope names its tenant and connection: either one empty is
-     * refused, by both constructors.
+     * A connection scope refuses an empty tenant or connection.
      *
      * @param  \Closure(): \SineMacula\Laravel\Sso\Revocation\RevocationScope  $build
      * @return void

@@ -67,14 +67,15 @@ the verified result is built from the claims is `completion.md`.
 - `EmailPairing::of()` takes the pair from the ID token when it carries `email`, even when UserInfo has its own;
   otherwise from UserInfo when it was fetched and carries `email`; otherwise there is none.
 - `email_verified` is read from that source alone, so another source's flag never vouches for an email: an ID token with
-  an `email` and no flag is `null`, whatever UserInfo says. The owner decided how it reads: only JSON `true` is evidence
-  of verification, JSON `false` stays `false`, and anything else (a string such as `"true"`, a number, an object, an
-  array or `null`) gives no evidence and does not refuse the sign-in. Nothing is coerced. It is carried as `true`,
+  an `email` and no flag is `null`, whatever UserInfo says. Only JSON `true` is evidence of verification, JSON `false`
+  stays `false`, and anything else (a string such as `"true"`, a number, an object, an array or `null`) gives no
+  evidence and does not refuse the sign-in. Nothing is coerced. It is carried as `true`,
   `false` or `null` (unknown) in `Results\AssertedEmail` with its source (SSO-7.7), which the verified result keeps
   apart from the mapped attributes and stores with the handoff (`completion.md`).
 - `EmailPairing::linkingEmail()` gives a `Results\LinkingEmail` only when the pair's `email_verified` is exactly `true`
   and the email has one `@` between a local part and a domain, by `LinkingEmail`'s own rule, with the pair's source and
-  the organisation claim the connection names, read from that same source. Nothing is ever read from the mapped
+  the organisation claim the connection names, read from that same source. While `Feature::DOMAIN_LINKING` or the
+  connection's linking is off, `ClaimsAssembler` asks for none. Nothing is ever read from the mapped
   attributes (SSO-8.8). Whether a link is then made is `linking.md`'s.
 
 ### Provider tokens are never kept

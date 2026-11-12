@@ -7,14 +7,7 @@ namespace SineMacula\Laravel\Sso\Events;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 
 /**
- * A connection was created (SSO-2.11, SSO-10.3), disabled, with the settings
- * and attribute mapping it was given.
- *
- * Dispatched after the transaction that made the change commits, and never when
- * it rolls back (SSO-10.5). Its context names the connection, its tenant and
- * protocol, and the acting identity as the application passed it (SSO-10.4). It
- * reports only, and holds no secret, private key or setting value; it crosses a
- * queue as it is.
+ * A connection was created, disabled.
  *
  * @api
  *

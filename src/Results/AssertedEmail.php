@@ -7,23 +7,8 @@ namespace SineMacula\Laravel\Sso\Results;
 use SineMacula\Laravel\Sso\Results\Enums\LinkingEmailSource;
 
 /**
- * The email a provider asserted with its `email_verified`, carried together
- * from the one source they came from (SSO-7.7): the validated ID token or a
- * validated UserInfo response whose `sub` matched it, never one from each.
- *
- * `email_verified` is carried exactly as asserted when it is a JSON boolean:
- * `true` or `false`. It is `null` when the source gave no boolean (absent,
- * `null`, a string such as `"true"`, a number, an object or an array), which is
- * unknown, never coerced and never read as false. It is informational: only a
- * `LinkingEmail` lets a link be made by email (SSO-8.8).
- *
- * The email is 1 to 320 bytes and kept exactly as asserted, never trimmed or
- * normalised, and need not be well formed. It is a provider's value, so it is
- * held in a `\SensitiveParameterValue` behind `email()`: a dump shows it as
- * `[redacted]`, `json_encode()`, and a logger's normaliser that falls back to
- * it, write only the source and `email_verified`, and it refuses to be
- * serialised or unserialised. `toArray()` is the stored form, holding the
- * email, for the verified result's encrypted handoff (SSO-8.1).
+ * An OIDC email and its `email_verified`, both from one source; informational
+ * only, since only a `LinkingEmail` can link by email.
  *
  * @api
  *
@@ -49,11 +34,11 @@ final readonly class AssertedEmail implements \JsonSerializable
      */
     public function __construct(
 
-        // The email, exactly as asserted; held wrapped
+        // Held wrapped, so dumps and traces never show it
         #[\SensitiveParameter]
         string $email,
 
-        /** The source's `email_verified`, when it is a JSON boolean; `null` when it stated none. */
+        /** `email_verified` if a JSON boolean, never coerced; else `null`. */
         public ?bool $verified,
 
         /** The source of the email and of `email_verified`. */
@@ -65,7 +50,7 @@ final readonly class AssertedEmail implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: `email_verified` and the source, never the email.
+     * A dump without the email.
      *
      * @return array{email: string, verified: ?bool, source: string}
      */
@@ -75,8 +60,7 @@ final readonly class AssertedEmail implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: only the verified result stores it, through
-     * `toArray()`.
+     * Refuse to be serialised; only the verified result stores it.
      *
      * @return array<string, mixed>
      *
@@ -117,7 +101,7 @@ final readonly class AssertedEmail implements \JsonSerializable
     }
 
     /**
-     * The asserted email as stored, with snake_case keys.
+     * The stored form, holding the email.
      *
      * @return array{email: string, verified: ?bool, source: string}
      */
@@ -127,8 +111,7 @@ final readonly class AssertedEmail implements \JsonSerializable
     }
 
     /**
-     * What `json_encode()` writes: the source and `email_verified`, never the
-     * email.
+     * The source and `email_verified`, never the email.
      *
      * @return array{source: string, verified: ?bool}
      */
@@ -139,8 +122,7 @@ final readonly class AssertedEmail implements \JsonSerializable
     }
 
     /**
-     * The asserted email `toArray()` stored, read back from the package's own
-     * storage; never from client input.
+     * Restore `toArray()` output from package storage, never client input.
      *
      * @param  array<array-key, mixed>  $stored
      * @return self

@@ -11,8 +11,7 @@ use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 
 /**
- * Unit tests for a caller: the identity it is given and, when given, a session
- * id of 1 to 255 bytes, kept as given; no session is none, never another.
+ * Unit tests for a caller.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -23,8 +22,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 final class CallerTest extends TestCase
 {
     /**
-     * A caller keeps the identity and the session given, and no session when
-     * none is given.
+     * A caller keeps the given identity and session.
      *
      * @return void
      */
@@ -57,8 +55,7 @@ final class CallerTest extends TestCase
     }
 
     /**
-     * Rows of `[session id]`: an empty one, and ones a byte and many bytes too
-     * long, multibyte characters counted in bytes.
+     * Rows of `[session id]`: empty, and over 255 bytes counting multibyte.
      *
      * @return iterable<string, array{0: string}>
      */
@@ -71,8 +68,7 @@ final class CallerTest extends TestCase
     }
 
     /**
-     * A session id that is empty or longer than 255 bytes is the caller's
-     * mistake.
+     * A session id that is empty or over 255 bytes is refused.
      *
      * @param  string  $sessionId
      * @return void

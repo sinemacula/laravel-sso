@@ -12,9 +12,7 @@ use SineMacula\Laravel\Sso\Applications\Enums\HandoffDelivery;
 use Tests\TestCase;
 
 /**
- * Feature tests for one registered application: every setting read as
- * configured, each default, the name's form, and every malformed setting
- * refused naming its key and never its value.
+ * Feature tests for one registered application's settings.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -94,8 +92,8 @@ final class ApplicationTest extends TestCase
     }
 
     /**
-     * A fallback URL is kept whenever it is given, offered or not, and is
-     * required only while discovery is offered and the feature is on.
+     * A fallback URL is kept whenever given and required only while discovery
+     * runs.
      *
      * @return void
      */
@@ -119,8 +117,7 @@ final class ApplicationTest extends TestCase
     }
 
     /**
-     * Whether the `discovery` feature is on is read from the repository given,
-     * not the application's configuration.
+     * The `discovery` feature is read from the repository given.
      *
      * @return void
      */
@@ -136,8 +133,8 @@ final class ApplicationTest extends TestCase
     }
 
     /**
-     * Rows of `[name, settings, message]`: malformed applications and the
-     * message each fails with.
+     * Rows of `[name, settings, message]`: malformed applications and their
+     * messages.
      *
      * @return iterable<string, array{0: string, 1: mixed, 2: string}>
      */
@@ -213,8 +210,7 @@ final class ApplicationTest extends TestCase
     }
 
     /**
-     * A name is a lower-case letter, then up to 63 lower-case letters, digits,
-     * `_` and `-`.
+     * A name is a lower-case letter then up to 63 of `a-z`, `0-9`, `_` and `-`.
      *
      * @return void
      */

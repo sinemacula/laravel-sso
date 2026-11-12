@@ -10,9 +10,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Enums\OidcSetting;
 
 /**
- * Unit tests for the names of an OIDC connection's settings and how a change to
- * each is classified: the freshness it needs, whether it may change what
- * existing subjects mean, and which is a secret.
+ * Unit tests for the OIDC settings and how a change to each is classified.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -8,17 +8,10 @@ use SineMacula\Laravel\Sso\Domains\Enums\DnsLookupStatus;
 use SineMacula\Laravel\Sso\Secrets\ConstantTime;
 
 /**
- * What a TXT lookup through the `Contracts\DnsResolver` answered (SSO-3.2,
- * SSO-3.3, decision D3): `found`, with every record at the name; `absent`; or
- * `lookup_failed`, which is never read as either.
+ * What a TXT lookup through the `Contracts\DnsResolver` answered.
  *
- * The records are whatever the domain's DNS holds, so they are
- * attacker-supplied and kept raw only behind `records()`: held in a
- * `\SensitiveParameterValue`, shown in no dump (PHP's own, or Laravel's, which
- * also lists private properties), written by `json_encode()` as the status
- * alone, and never serialised or unserialised, so they cannot reach a log, an
- * exception, a queue or an event. `contains()` compares a value with each
- * record exactly, byte for byte, in constant time.
+ * The records are attacker-supplied, so they are held wrapped and never dumped,
+ * encoded or serialised.
  *
  * @api
  *
@@ -89,9 +82,7 @@ final readonly class DnsLookup implements \JsonSerializable
     }
 
     /**
-     * The name has these TXT records, at least one; each record's
-     * character-strings joined into one value. A value that is not a string is
-     * a `TypeError`.
+     * The name has these TXT records, each its character-strings joined.
      *
      * @param  list<string>  $records
      * @return self
@@ -169,8 +160,8 @@ final readonly class DnsLookup implements \JsonSerializable
     }
 
     /**
-     * Whether one of the records found is exactly the value, compared in
-     * constant time; never when nothing was found or the value is empty.
+     * Whether a record is exactly the value, in constant time; never for an
+     * empty value.
      *
      * @param  string  $value
      * @return bool

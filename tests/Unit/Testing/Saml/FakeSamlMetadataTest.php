@@ -12,10 +12,7 @@ use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use SineMacula\Laravel\Sso\Testing\Saml\XmlSigner;
 
 /**
- * Unit tests for the fake SAML identity provider's metadata: its defaults, the
- * entity and the aggregate byte for byte (each part in its schema position, the
- * entities in order, every value escaped and every instant in UTC), and the
- * signature algorithms it signs with.
+ * Unit tests for the fake SAML identity provider's metadata.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -64,10 +61,8 @@ final class FakeSamlMetadataTest extends TestCase
     }
 
     /**
-     * An entity with every part writes its identifier from the entity id's
-     * hash, its attributes in order, the signing then the encryption key
-     * descriptors, the formats, then the services, every value escaped and the
-     * instant in UTC.
+     * An entity with every part is written byte for byte in schema order, every
+     * value escaped and the instant in UTC.
      *
      * @return void
      */

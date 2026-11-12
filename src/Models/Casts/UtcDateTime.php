@@ -9,16 +9,8 @@ use Illuminate\Contracts\Database\Eloquent\CastsAttributes;
 use Illuminate\Database\Eloquent\Model;
 
 /**
- * A time column held as UTC wall-clock seconds, whatever the application
- * timezone: written in UTC, and read back as the instant it names in UTC.
- *
- * The package's time columns hold no offset. Written in a timezone with
- * daylight saving, the hour a fall-back repeats would name two instants with
- * one value, so a live key or counter could read as already ended. In UTC every
- * value names one instant, and comparing two values compares the instants.
- *
- * `format()` is what the stores bind and compare with, so a statement the query
- * builder writes and a value the model reads agree.
+ * A time column held as UTC seconds whatever the application timezone, since
+ * the columns hold no offset and a DST fall-back would make values ambiguous.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -36,13 +28,12 @@ final readonly class UtcDateTime implements CastsAttributes
      */
     public function __construct(
 
-        /** Whether Eloquent reads the stored value again rather than hand back the instant it was given: always, so a read is the `CarbonImmutable` in UTC that `get()` answers, whatever kind of instant was set. */
+        /** Always re-read, so a read is always the UTC `CarbonImmutable` from `get()`. */
         public bool $withoutObjectCaching = true,
     ) {}
 
     /**
-     * The instant, or the Unix time, as the model's connection stores times, in
-     * UTC, to the whole second.
+     * The instant in the connection's date format, in UTC; stores bind with it.
      *
      * @param  \Illuminate\Database\Eloquent\Model  $model
      * @param  \DateTimeInterface|int  $instant
@@ -56,8 +47,7 @@ final readonly class UtcDateTime implements CastsAttributes
     }
 
     /**
-     * The stored value as the instant it names in UTC, or `null` when there is
-     * none.
+     * The stored value as a UTC instant.
      *
      * @param  \Illuminate\Database\Eloquent\Model  $model
      * @param  string  $key
@@ -82,7 +72,7 @@ final readonly class UtcDateTime implements CastsAttributes
     }
 
     /**
-     * The instant, or the Unix time, as it is stored; `null` for none.
+     * The instant or Unix time as stored.
      *
      * @param  \Illuminate\Database\Eloquent\Model  $model
      * @param  string  $key

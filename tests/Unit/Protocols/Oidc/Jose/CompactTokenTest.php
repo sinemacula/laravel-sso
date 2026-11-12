@@ -13,11 +13,7 @@ use Symfony\Component\VarDumper\Dumper\CliDumper;
 use Tests\Concerns\TreatsWarningsAsErrors;
 
 /**
- * Unit tests for reading a compact JWS (RFC 7515 §7.1, SSO-7.3): three
- * canonical segments within the cap, a header and payload that are each one
- * JSON object without a repeated member, a named algorithm and a non-empty
- * signature, with `crit`, `b64`, `enc` and `zip` refused and `kid` and `typ`
- * typed; and nothing of it shown in a dump or serialised.
+ * Unit tests for reading a compact JWS (RFC 7515 section 7.1).
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -157,9 +153,8 @@ final class CompactTokenTest extends TestCase
     }
 
     /**
-     * A header's digits as a string are its `kid`, and an unknown member that
-     * is too large a number is no refusal here, since only the signature check
-     * reads it.
+     * A header's digits as a string are its `kid`, and an oversized unknown
+     * number is left to the signature check.
      *
      * @return void
      */
@@ -172,8 +167,7 @@ final class CompactTokenTest extends TestCase
     }
 
     /**
-     * The claims keep a number's digits, so a time claim refuses it; the
-     * members, what a token that passed hands on, keep it a number; and the
+     * The claims keep a number's digits, the members keep it a number, and the
      * payload is its JSON text.
      *
      * @return void

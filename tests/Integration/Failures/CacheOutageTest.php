@@ -44,28 +44,11 @@ use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
- * A cache that is down or lies, in three separate questions (SSO-11.6,
- * SSO-11.5):
+ * Integration tests for flows, the scheduler and bound stores with a cache that
+ * is down or lies.
  *
- * - Every flow, end to end, with a cache that throws and with one that answers
- *   falsely in each direction: the store is never called, and the results are
- *   the same as with a healthy one.
- * - The scheduler, by the real `schedule:run`: on the default settings a stuck
- *   or broken cache stops nothing the package's tasks do, and only the
- *   framework's own pause signal, where it has one, asks the cache, which
- *   `Schedule::withoutInterruptionPolling()` turns off. The cache mutexes are
- *   an opt-in: a stuck one stops only the tasks that opted in, until
- *   `mutex_minutes` has passed or the operator clears the cache.
- * - What an application binds as authoritative is another matter: a single-use
- *   store over Redis, or a queue, is the application's choice of a dependency
- *   with its own guarantees (`docs/guides/single-use-store.md`). A store that
- *   throws refuses the flow with a server error, and one that refuses refuses;
- *   neither ever passes it. A queue that is down fails the command that queues.
- *
- * A scheduled command runs in this process, from its event's `before` callback,
- * and the event's own process is a no-op, since the Testbench skeleton's
- * `artisan` has no package registered: the schedule, its filters and its
- * mutexes are the real ones, and the command is the real one.
+ * A scheduled command runs here from its event's `before` callback; the event's
+ * own process is a no-op, since Testbench's `artisan` has no package.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -115,7 +98,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * Restore Laravel's clock and the schedule's polling, remove the mutex
+     * Restore Laravel's clock and the schedule's polling, and remove the mutex
      * cache.
      *
      * @return void
@@ -135,9 +118,8 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * Rows of `[broken, answer, locks free]`: a cache that is down, one that
-     * loses everything, and one that answers what it was never told, each lock
-     * free or stuck.
+     * Rows of `[broken, answer, locks free]`: a cache down, forgetting or
+     * inventing, locks free or stuck.
      *
      * @return iterable<string, array{0: bool, 1: mixed, 2: bool}>
      */
@@ -151,8 +133,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * Every flow comes to the same result with the cache healthy and with it
-     * down or lying, and the store is never called.
+     * Every flow ends the same with the cache healthy, down or lying.
      *
      * @param  bool  $broken
      * @param  mixed  $answer
@@ -194,9 +175,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * With the schedule's polling off, `schedule:run` on the default settings
-     * touches no cache at all: down or lying, every command runs and passes,
-     * and the store is never called.
+     * With polling off, `schedule:run` on the defaults touches no cache.
      *
      * @param  bool  $broken
      * @param  mixed  $answer
@@ -225,11 +204,8 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * With the framework's own polling left as it is, `schedule:run` stops for
-     * its pause signal alone, as `operations.md` says of a framework that has
-     * one: the cache down stops it before any task, one answering anything
-     * truthy reads as paused, and one that answers nothing runs every command,
-     * its locks free or stuck. A framework with no signal runs every command.
+     * With the framework's polling on, `schedule:run` stops only for its pause
+     * signal.
      *
      * @param  bool  $broken
      * @param  mixed  $answer
@@ -283,8 +259,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * With the opt-in, a mutex a dead process left stops the task that holds it
-     * and no other.
+     * With the opt-in, a dead process's mutex stops only its own task.
      *
      * @return void
      *
@@ -304,8 +279,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * With the opt-in, a stuck mutex holds for exactly `mutex_minutes`: the
-     * task is stopped a minute short of it and runs once it has passed.
+     * With the opt-in, a stuck mutex holds for exactly `mutex_minutes`.
      *
      * @return void
      *
@@ -357,8 +331,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * With the opt-in, a cache whose locks are never free stops every task: a
-     * cost the application chose, which the default never has.
+     * With the opt-in, a cache whose locks are never free stops every task.
      *
      * @return void
      *
@@ -383,9 +356,8 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * A bound store that throws at the consumption refuses the flow with a
-     * server error: the request is unconsumed, no code is issued, and with the
-     * store back the same answer completes.
+     * A bound store that throws at consumption is a server error and retries
+     * cleanly.
      *
      * @return void
      *
@@ -412,8 +384,8 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * A bound store that throws at the redemption refuses it with a server
-     * error: the code is unspent, and with the store back it redeems.
+     * A bound store that throws at redemption is a server error and retries
+     * cleanly.
      *
      * @return void
      */
@@ -437,8 +409,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * A bound store that throws recording an assertion refuses it with a server
-     * error, never as a pass, with no code issued.
+     * A bound store that throws recording an assertion is a server error.
      *
      * @return void
      */
@@ -462,8 +433,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * A bound store that answers `seen` refuses: it never passes a flow, even
-     * when it is wrong.
+     * A bound store that answers `seen` refuses, even when wrong.
      *
      * @return void
      */
@@ -480,10 +450,8 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * A store an application builds over its cache is a dependency it chose: it
-     * alone reaches the cache, through it a flow completes and a replay is
-     * refused, and with that cache down the flow is a server error rather than
-     * a pass.
+     * A store over the application's cache refuses replays, and fails closed
+     * when the cache is down.
      *
      * @return void
      */
@@ -525,8 +493,8 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * A queue that is down fails the command that queues on it, by the class of
-     * what it threw, and leaves the connection due. A flow never needs it.
+     * A queue that is down fails the queueing command and leaves the connection
+     * due.
      *
      * @return void
      */
@@ -587,8 +555,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * Every flow, end to end, as a list of what each came to, with nothing in
-     * it of a run's own connections.
+     * What every flow came to, without a run's own connection ids.
      *
      * @param  string  $run
      * @return array<string, mixed>
@@ -726,8 +693,8 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * Bind a single-use store over the database one, that throws while `down`
-     * answers true, and answers what `answer` gives when it gives anything.
+     * Bind a single-use store that throws while `down` and answers `answer`
+     * when set.
      *
      * @param  \Closure(): bool  $down
      * @param  \Closure(): ?\SineMacula\Laravel\Sso\SingleUse\Enums\SingleUseOutcome  $answer
@@ -778,8 +745,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * Keep the mutexes in a cache of files, whose locks run out by the time
-     * Laravel's clock reads, as a shared store's do.
+     * Keep the mutexes in a file cache whose locks expire by Laravel's clock.
      *
      * @return void
      */
@@ -826,9 +792,10 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * A schedule as an application's holds it, each event running its real
-     * command here when it starts, and a no-op as its own process. The no-op
-     * names the task, since an event's mutex is named from its command.
+     * A schedule whose events run the real command here and a named no-op as
+     * their process.
+     *
+     * An event's mutex is named from its command, so the no-op names the task.
      *
      * @return \Illuminate\Console\Scheduling\Schedule
      */
@@ -867,8 +834,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * Run the real `schedule:run`, a new command each time, as a new process
-     * is, over the schedule.
+     * Run the real `schedule:run` with a new command each time.
      *
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
      * @return void
@@ -893,7 +859,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * A queue that refuses every job, as a client whose server has gone does.
+     * A queue that refuses every job, as when its server has gone.
      *
      * @return \Illuminate\Contracts\Queue\Queue
      */
@@ -921,8 +887,7 @@ final class CacheOutageTest extends TestCase
     }
 
     /**
-     * Turn the schedule's polling back on, as the framework leaves it, so no
-     * test leaks into the next.
+     * Turn the schedule's polling back on, so no test leaks into the next.
      *
      * @return void
      */

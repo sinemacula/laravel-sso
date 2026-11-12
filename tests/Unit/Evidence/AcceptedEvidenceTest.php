@@ -11,11 +11,7 @@ use SineMacula\Laravel\Sso\Evidence\AcceptedEvidence;
 use Tests\Concerns\DumpsValues;
 
 /**
- * Pins what the evidence contract accepted (SSO-8.7): the connection as the
- * credential reference, the provider's authentication time, the accepted
- * methods and the raw context as data, read only through their accessors; no
- * dump or JSON of it shows a provider value, whatever the time zone it was made
- * in, and it refuses to be serialised or unserialised.
+ * Unit tests for accepted evidence, which never shows a provider value.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -63,8 +59,7 @@ final class AcceptedEvidenceTest extends TestCase
     }
 
     /**
-     * JSON writes the whole of what may be shown, in UTC, with how many methods
-     * and that a raw context was stated.
+     * JSON shows only the safe fields, in UTC, with counts in place of values.
      *
      * @return void
      */
@@ -116,8 +111,7 @@ final class AcceptedEvidenceTest extends TestCase
     }
 
     /**
-     * Neither a method nor the raw context can reach an exception's trace from
-     * the constructor.
+     * The provider values are hidden from exception traces.
      *
      * @return void
      */

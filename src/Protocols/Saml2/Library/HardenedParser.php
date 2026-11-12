@@ -10,26 +10,8 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind;
 
 /**
- * The hardened parsing every SAML document goes through (SSO-6.1, SSO-6.11): a
- * posted value's size is capped before it is decoded, and a document's before
- * it is parsed; it is parsed by the library's
- * `DOMDocumentFactory::fromString()`, which refuses a document type declaration
- * before and after parsing (so no entity is declared, resolved or expanded),
- * with `LIBXML_NONET`; it must be valid against the SAML 2.0 schema of its
- * kind, given by its absolute path, while an entity loader refuses everything
- * but the library's own schema files, so validation makes no network request;
- * and no two `ID`, `Id` or `xml:id` attributes anywhere in it share a value.
- * Metadata is the exception to whole-document validation: an aggregate is held
- * to the unique identifiers alone (`loadUnique()`), and only the entity the
- * reader chooses is validated against the schema (`validateElement()`), copied
- * into a document of its own with every namespace in scope where it stood, so
- * one invalid member of a federation never refuses the rest.
- *
- * Values are read from a parsed document as text content, so a comment or a
- * processing instruction inside an element cannot change or truncate what is
- * read. A refusal is a `ReadFailure` with `response_invalid` (or the reason
- * given) naming the rule; the libxml error state and the entity loader are
- * restored however it ends. It holds nothing between calls (SSO-11.2).
+ * The size-capped, DTD-free, schema-validated parsing every SAML document goes
+ * through, with no `ID` repeated and no network access.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -38,12 +20,11 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind;
  */
 final readonly class HardenedParser
 {
-    /** @var string The attributes that carry an element's identity, as an XPath union. */
+    /** @var string `ID`, `Id`, `id` and `xml:id` attributes, as an XPath union. */
     private const string ID_ATTRIBUTES = '//@ID | //@Id | //@id | //@*[local-name() = "id" and namespace-uri() = "http://www.w3.org/XML/1998/namespace"]';
 
     /**
-     * Decode a posted base64 value of at most the cap, whitespace ignored, or
-     * refuse one longer or not base64.
+     * Decode a posted base64 value, capped before decoding.
      *
      * @param  string  $encoded
      * @param  int  $maxBytes
@@ -68,8 +49,7 @@ final readonly class HardenedParser
     }
 
     /**
-     * Parse a document of at most the cap, valid against the schema of its
-     * kind, with no `ID` repeated.
+     * Parse a capped document, valid against its schema, with no `ID` repeated.
      *
      * @param  string  $xml
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind  $kind
@@ -90,8 +70,8 @@ final readonly class HardenedParser
     }
 
     /**
-     * Parse a document of at most the cap with no `ID` repeated, leaving schema
-     * validation to the element read from it (`validateElement()`).
+     * Parse a capped document with no `ID` repeated, leaving the schema to
+     * `validateElement()` so one invalid federation member spoils no other.
      *
      * @param  string  $xml
      * @param  int  $maxBytes
@@ -110,9 +90,8 @@ final readonly class HardenedParser
     }
 
     /**
-     * Validate one element against the schema of its kind, copied into a
-     * document of its own with every namespace in scope where it stood, so a
-     * prefix an attribute value names still resolves.
+     * Validate one element against its schema, re-rooted with its in-scope
+     * namespaces so a prefix in an attribute value still resolves.
      *
      * @param  \DOMElement  $element
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind  $kind
@@ -127,8 +106,8 @@ final readonly class HardenedParser
     }
 
     /**
-     * Parse a document of at most the cap, with no schema validation: for
-     * reading what correlates a response, which validates nothing.
+     * Parse a capped document without schema validation. The factory refuses
+     * any DTD and parses with `LIBXML_NONET`.
      *
      * @param  string  $xml
      * @param  int  $maxBytes
@@ -164,9 +143,8 @@ final readonly class HardenedParser
     }
 
     /**
-     * Whether the entity loader lets a schema validation load the resource: a
-     * file in the library's schema directory, by its real path, and nothing
-     * else, so validation reaches no network.
+     * The real path of a resource inside the library's schema directory, or
+     * `null`, so validation reaches no network.
      *
      * @param  ?string  $system
      * @return ?string
@@ -183,8 +161,7 @@ final readonly class HardenedParser
     }
 
     /**
-     * Validate the document against the schema of its kind, with the entity
-     * loader held to the library's schema files.
+     * Validate against the schema, restoring libxml state however it ends.
      *
      * @param  \DOMDocument  $document
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind  $kind
@@ -211,9 +188,7 @@ final readonly class HardenedParser
     }
 
     /**
-     * The element copied into a document of its own, every namespace in scope
-     * where it stood declared on the copy unless the copy already binds its
-     * prefix.
+     * The element copied into its own document with its in-scope namespaces.
      *
      * @param  \DOMElement  $element
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -246,8 +221,7 @@ final readonly class HardenedParser
     }
 
     /**
-     * Declare the namespace on the copy, unless it is no namespace node, the
-     * `xml` namespace, or one whose prefix the copy already binds.
+     * Declare the namespace on the copy unless it is `xml` or already bound.
      *
      * @param  \DOMElement  $copy
      * @param  \DOMNameSpaceNode|\DOMNode  $namespace

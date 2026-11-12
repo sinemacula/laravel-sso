@@ -12,11 +12,7 @@ use SineMacula\Laravel\Sso\Models\IdentityGuard;
 use Tests\Concerns\RecordsLockOrder;
 
 /**
- * Feature tests of the identity's guard (SSO-8.8, `docs/design/linking.md`): it
- * is taken only inside a transaction, by one statement that materialises its
- * row unless it exists and leaves an existing one as it was, keyed by a digest
- * that tells identities apart byte for byte; and of what plain reads hand a
- * completion so it can take it first.
+ * Feature tests of the identity's guard.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -77,10 +73,8 @@ final class IdentityLockTest extends LinkingTestCase
     }
 
     /**
-     * The mark that the identity has held a domain link is stamped once, from
-     * the clock, on the guard's row alone, and never moved or cleared by a
-     * later stamp or lock; it is read by a locking read, `false` with no row or
-     * an unmarked one, and another identity's mark never answers for it.
+     * The domain link mark is stamped once on the guard's row and never moved
+     * or cleared.
      *
      * @return void
      */
@@ -129,9 +123,8 @@ final class IdentityLockTest extends LinkingTestCase
     }
 
     /**
-     * The digest is a full-width lower-case SHA-256, the same for equal
-     * identities, and different for any byte that differs, the boundary between
-     * type and id included.
+     * The digest is lower-case SHA-256 and differs for any differing byte, the
+     * type and id boundary included.
      *
      * @return void
      */

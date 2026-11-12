@@ -48,13 +48,7 @@ use Tests\Fixtures\Protocols\StartingDriver;
 use Tests\TestCase;
 
 /**
- * Feature tests for starting a flow (SSO-5.1, SSO-5.2, SSO-5.12, SSO-3.5,
- * SSO-5.10, SSO-2.12, SSO-11.8): each step's refusal with its exact reason and
- * no request written, in the fixed order; the stored request's columns exactly,
- * with the digests and never the protocol state, the PKCE verifier encrypted,
- * and the client's challenge or the generated verifier's; the expiry and its
- * bounds; the navigations; the answer's body and headers; the discovery
- * fallback; and the binding of each purpose.
+ * Feature tests for starting a flow through the authorisation request service.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -92,9 +86,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock, a freshness contract that answers `fresh` and a
-     * request from the IP address, register the applications and the driver,
-     * create the tables and a usable connection.
+     * Bind a fixed clock, fresh freshness and a client request, register the
+     * applications and driver, and seed a usable connection.
      *
      * @return void
      */
@@ -132,9 +125,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A `sign_in` with no challenge is started: the driver is given the
-     * purpose, the application, the reference and fresh protocol state, outside
-     * any transaction, and the request is stored exactly.
+     * A `sign_in` without a challenge is started outside any transaction and
+     * stored exactly.
      *
      * @return void
      */
@@ -201,8 +193,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * The answer to a start with no challenge: the reference, the redirect and
-     * the generated verifier in the body, once, with `Cache-Control: no-store`.
+     * The answer carries the reference, redirect and generated verifier once,
+     * with `Cache-Control: no-store`.
      *
      * @return void
      */
@@ -246,8 +238,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A driver that posts a form is answered with the post navigation, and its
-     * SAML request id, expected issuer and `iss` requirement are stored.
+     * A posted form navigation is answered, and the driver's SAML id, issuer
+     * and `iss` requirement are stored.
      *
      * @return void
      */
@@ -286,8 +278,7 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * The request lives the configured lifetime: by default ten minutes, and at
-     * each bound.
+     * The request lives the configured lifetime, ten minutes by default.
      *
      * @param  ?int  $ttl
      * @param  string  $expiresAt
@@ -317,8 +308,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A lifetime outside its bounds fails closed, naming its key and its
-     * bounds, and stores nothing.
+     * A lifetime outside its bounds fails closed, naming its key and bounds,
+     * and stores nothing.
      *
      * @param  int  $ttl
      * @return void
@@ -357,8 +348,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A caller that does not fit the purpose is application code's mistake,
-     * refused before anything is counted or asked.
+     * A caller that does not fit the purpose is the application's mistake,
+     * refused before anything is counted.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -384,8 +375,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A full limit refuses the start with its wait, before the application is
-     * admitted, and writes no request; another IP address still starts.
+     * A full limit refuses the start with its wait before admission; another IP
+     * address still starts.
      *
      * @return void
      */
@@ -412,8 +403,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * Rows of `[application, connection, limited, reason]`: each way a start
-     * reports, `null` reason for a start that stores its request.
+     * Rows of `[application, connection, limited, reason]`; a `null` reason
+     * means the request is stored.
      *
      * @return iterable<string, array{0: string, 1: ?string, 2: bool, 3: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -426,10 +417,7 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * What a start reports carries the IP address and user agent of the client
-     * it was given, never the request's being served:
-     * `AuthorizationRequestStarted` for a stored request, and exactly one
-     * `FlowFailed` for a refusal.
+     * A start reports the client it was given, never the served request's.
      *
      * @param  string  $application
      * @param  ?string  $connectionId
@@ -479,8 +467,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * An unknown application and one that does not allow external sign-in are
-     * refused alike, before the challenge is judged.
+     * Unknown applications and those without external sign-in are refused
+     * before the challenge is judged.
      *
      * @return void
      */
@@ -508,8 +496,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A challenge that is not an S256 challenge is refused, before the
-     * connection is looked for.
+     * A challenge that is not S256 is refused before the connection is looked
+     * up.
      *
      * @param  string  $challenge
      * @return void
@@ -524,8 +512,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * An unknown, disabled or incomplete connection, and an id the collation
-     * would fold, are refused for an application that offers no discovery.
+     * Unusable connections, including a collation-folded id, are refused
+     * without discovery.
      *
      * @return void
      */
@@ -541,8 +529,7 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * An application that offers discovery, with the feature off, refuses an
-     * unusable connection too.
+     * With discovery offered but off, an unusable connection is refused too.
      *
      * @return void
      */
@@ -556,9 +543,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * An application that offers discovery, with the feature on, is answered an
-     * unusable connection with its fallback, in a start's shape, with a fresh
-     * reference and a verifier, and nothing stored.
+     * With discovery on, an unusable connection gets the fallback, a fresh
+     * reference and verifier, and nothing stored.
      *
      * @return void
      *
@@ -595,8 +581,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A `link` from a stale caller is refused, the freshness contract asked
-     * `sso.link.create` once, for the caller, and the driver never asked.
+     * A stale `link` is refused after one `sso.link.create` check, without
+     * asking the driver.
      *
      * @return void
      */
@@ -614,8 +600,7 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A `link` from a fresh caller is started and stores its identity; a
-     * `sign_in` never asks the freshness contract.
+     * A fresh `link` stores its identity; a `sign_in` never asks freshness.
      *
      * @return void
      */
@@ -636,9 +621,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A `link` caller on a session gives that session to the freshness
-     * contract, as given, and the request binds the caller's identity alone:
-     * the session is not stored; stale for that session, the start is refused.
+     * A `link` passes its session to freshness only; the request stores the
+     * identity alone.
      *
      * @return void
      */
@@ -672,9 +656,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A bound session contract decides a `reauthenticate`, asked with exactly
-     * the identity, the session, the application and the connection:
-     * `not_signed_in` refuses, `signed_in` starts and stores both.
+     * A bound session contract decides a `reauthenticate`, asked with identity,
+     * session, application and connection.
      *
      * @return void
      */
@@ -760,8 +743,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * The session contract is asked about the application the flow is started
-     * for, so a session of another application is `session_ineligible`.
+     * The session contract is asked about the starting application, so another
+     * application's session is ineligible.
      *
      * @return void
      */
@@ -809,11 +792,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A connection disabled, changed in its settings or its secrets, deleted,
-     * or whose trust version was raised (a certificate removed, which voided
-     * only the requests already stored) while the driver started is unavailable
-     * once the start locks it: nothing is stored, and the answer is the
-     * refusal, or the fallback where discovery is offered.
+     * A connection changed or deleted while the driver started is unavailable
+     * once the start locks it.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\Connection): mixed  $change
      * @return void
@@ -849,9 +829,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * The request keeps the connection's trust version as the start read it,
-     * whatever it is, and an additive change that raises nothing while the
-     * driver starts leaves the start to store it.
+     * The request keeps the trust version the start read; an additive change
+     * does not stop the store.
      *
      * @return void
      */
@@ -864,8 +843,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A change to the connection's name alone while the driver started changes
-     * nothing the request depends on.
+     * Renaming the connection while the driver started changes nothing the
+     * request depends on.
      *
      * @return void
      */
@@ -882,9 +861,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * Each request stored raises its connection's flows version by exactly one,
-     * and no other connection's; a start refused before or at the store writes
-     * nothing, and raises nothing.
+     * Each stored request raises only its connection's flows version, by one; a
+     * refusal raises nothing.
      *
      * @return void
      */
@@ -918,10 +896,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * The connection a start began with is compared with its locked row as
-     * cast, its maps whatever their key order, at any depth: a list given in
-     * another order is another connection, a map given in another order is the
-     * same one.
+     * Maps compare whatever their key order at any depth; a reordered list is a
+     * different connection.
      *
      * @return void
      *
@@ -947,9 +923,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A driver that answers a SAML request id the connection already holds is a
-     * driver's bug: the unique violation propagates, and nothing more is
-     * stored.
+     * A duplicate SAML request id from the driver is a bug: the unique
+     * violation propagates.
      *
      * @return void
      */
@@ -968,8 +943,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * `begin()` checks the binding and the challenge itself, for discovery, and
-     * starts through a connection already found.
+     * `begin()` checks the binding and challenge itself and starts through a
+     * connection already found.
      *
      * @return void
      *
@@ -1023,9 +998,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * Assert the start was refused with the reason, wrote no request, leaving
-     * the requests stored before, and answers the error with `Cache-Control:
-     * no-store`.
+     * Assert the start was refused with the reason, stored nothing new, and
+     * answered with `no-store`.
      *
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $result
@@ -1110,8 +1084,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * The ids of an unknown connection, a disabled one, an incomplete one, and
-     * the usable connection's id in upper case.
+     * The ids of unknown, disabled and incomplete connections, and the usable
+     * one's id in upper case.
      *
      * @return list<string>
      */
@@ -1136,8 +1110,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * The request's columns but its key and its encrypted verifier, each time
-     * as an ISO 8601 string.
+     * The request's columns except its key and encrypted verifier, times as ISO
+     * 8601.
      *
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $row
      * @return array<string, mixed>

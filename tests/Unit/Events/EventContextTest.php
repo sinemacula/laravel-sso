@@ -10,8 +10,7 @@ use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Events\EventContext;
 
 /**
- * Unit tests for the shared event context: every field it holds, as the
- * snake_case record an audit sink keeps, with nothing left unset but `null`.
+ * Unit tests for the shared event context.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -22,8 +21,7 @@ use SineMacula\Laravel\Sso\Events\EventContext;
 final class EventContextTest extends TestCase
 {
     /**
-     * Every field reaches the record under its name, and the time is an ISO
-     * 8601 UTC string to the microsecond, whatever its zone.
+     * Every field reaches the record, with the time as UTC to the microsecond.
      *
      * @return void
      */
@@ -73,8 +71,7 @@ final class EventContextTest extends TestCase
     }
 
     /**
-     * A context given only its time holds `null` for everything else, and
-     * survives serialisation unchanged.
+     * A context with only its time holds nulls and survives serialisation.
      *
      * @return void
      */

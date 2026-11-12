@@ -15,23 +15,9 @@ use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Reports a refetch of an OIDC connection's JWKS on an unknown `kid` (SSO-7.3,
- * SSO-10.3): each method builds the event's context through the one projection
- * (`Events\EventContexts`), from the connection's id, tenant and protocol, and
- * hands the event to `Events\AfterCommitDispatcher`, so it reaches listeners
- * once the refetch's transaction commits and never when it rolls back
- * (SSO-10.5). A refetch is the completion's, never an administrator's, so no
- * acting identity is named.
+ * Dispatches the events for a JWKS refetch on an unknown `kid`.
  *
- * The refetch calls it inside the transaction that wrote the keys or the
- * failure, after the write. No event it builds holds a key, a URL or any value
- * of the JWKS.
- *
- * Every method takes the client the action is taken for (`Http\ClientContext`),
- * whose IP address and user agent the event's context carries; nothing reads
- * the request being served. It holds the projection and the dispatcher, which
- * read the clock and the transaction from the container on each call, so
- * nothing of one refetch is kept for the next (SSO-11.2).
+ * Call inside the refetch's transaction, after the write.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,8 +42,7 @@ final readonly class JwksEvents
     ) {}
 
     /**
-     * Report the connection's JWKS refetched: its version after, the keys added
-     * and removed, and whether its trust changed.
+     * Report the connection's JWKS refetched.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  int  $keysAdded
@@ -74,8 +59,7 @@ final readonly class JwksEvents
     }
 
     /**
-     * Report a refetch of the connection's JWKS failed: why, and when the next
-     * may start.
+     * Report a failed JWKS refetch.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -91,7 +75,7 @@ final readonly class JwksEvents
     }
 
     /**
-     * The context of a refetch of the connection's keys.
+     * The context of a refetch, which never has an acting identity.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client

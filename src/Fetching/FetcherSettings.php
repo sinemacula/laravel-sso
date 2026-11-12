@@ -8,15 +8,8 @@ use Illuminate\Contracts\Config\Repository;
 use SineMacula\Laravel\Sso\Config\IntegerSetting;
 
 /**
- * The outbound fetcher's settings (SSO-2.9), under `sso.fetcher`: its time
- * caps, its response size cap, how many redirects a request without a
- * credential may follow, and the CIDR ranges the application refuses on top of
- * the ones always refused.
- *
- * Each value is read on each call, so nothing is kept across requests
- * (SSO-11.2). A value that is malformed or outside its range fails closed with
- * an `InvalidArgumentException` naming its key and what it must be, never the
- * value, rather than falling back to a default or clamping to the range.
+ * The `sso.fetcher` settings, read on each call. A malformed or out-of-range
+ * value throws rather than falling back or clamping.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,7 +46,7 @@ final readonly class FetcherSettings
     /** @var string The key the added refused ranges are configured under. */
     private const string REFUSED_RANGES_KEY = 'sso.fetcher.refused_ranges';
 
-    /** @var string The message of a refused range that is not a CIDR range, given the key and the index. */
+    /** @var string The message for an entry that is not a CIDR range. */
     private const string NOT_A_RANGE = '%s.%d must be a CIDR range: an IPv4 address with /0 to /32, or an IPv6 address with /0 to /128.';
 
     /** @var string A CIDR range: an address, a slash and a prefix length with no leading zero. */
@@ -71,8 +64,7 @@ final readonly class FetcherSettings
     ) {}
 
     /**
-     * The time a request may take, from connecting to the last byte of its
-     * response, in seconds: 1 to 60, 10 by default.
+     * The whole request time in seconds: 1 to 60, 10 by default.
      *
      * @return int
      *
@@ -96,8 +88,7 @@ final readonly class FetcherSettings
     }
 
     /**
-     * The largest response body accepted, in bytes: 1024 to 10485760 (10 MiB),
-     * 1048576 (1 MiB) by default.
+     * The largest response body in bytes: 1 KiB to 10 MiB, 1 MiB by default.
      *
      * @return int
      *
@@ -109,7 +100,7 @@ final readonly class FetcherSettings
     }
 
     /**
-     * The redirects a request without a credential may follow: 0 to 10, 3 by
+     * The redirects an uncredentialed request may follow: 0 to 10, 3 by
      * default.
      *
      * @return int
@@ -122,11 +113,7 @@ final readonly class FetcherSettings
     }
 
     /**
-     * The CIDR ranges the application refuses on top of the ones always
-     * refused, `[]` by default: a list of IPv4 ranges (`/0` to `/32`) or IPv6
-     * ranges (`/0` to `/128`). A list that is not a list of strings, or an
-     * entry that is not such a range, fails closed, naming the key or the
-     * entry's key.
+     * The CIDR ranges refused on top of the built-in ones, `[]` by default.
      *
      * @return list<string>
      *
@@ -151,8 +138,7 @@ final readonly class FetcherSettings
     }
 
     /**
-     * Read every setting, failing on the first that is malformed, then require
-     * the connect timeout to be no longer than the timeout.
+     * Read every setting, failing on the first that is malformed.
      *
      * @return void
      *
@@ -167,8 +153,7 @@ final readonly class FetcherSettings
     }
 
     /**
-     * Require the connect timeout to be no longer than the timeout, reading
-     * both.
+     * Require the connect timeout to be no longer than the timeout.
      *
      * @return void
      *
@@ -184,8 +169,7 @@ final readonly class FetcherSettings
     }
 
     /**
-     * Whether the string is a CIDR range: a canonical IPv4 address with a
-     * prefix of 0 to 32, or an IPv6 address with a prefix of 0 to 128.
+     * Whether the string is an IPv4 or IPv6 CIDR range.
      *
      * @param  string  $range
      * @return bool

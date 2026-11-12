@@ -3,12 +3,7 @@
 declare(strict_types = 1);
 
 /*
- * The start route of `docs/guides/starting-a-flow.md` (SSO-5.1, SSO-5.12,
- * SSO-11.8, SSO-12.5), as an application's routes file holds it: a `sign_in`
- * for the application and through the connection the client names, with the
- * client's challenge when it sends one, answered with the start's body and
- * headers, `200` when the client is sent on to the provider, `429` when its IP
- * address has used its starts and `400` for any other refusal.
+ * The start route of `docs/guides/starting-a-flow.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

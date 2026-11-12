@@ -11,10 +11,7 @@ use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
 /**
- * Feature tests for `[applications]`: checked while the package is in use, each
- * application named in lower case with exactly one redirect URI, every other
- * setting well formed, no setting the package does not have, and a fallback URL
- * while it offers discovery.
+ * Feature tests for the `[applications]` configuration check.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -30,8 +27,7 @@ final class ApplicationsCheckTest extends TestCase
     private const string REDIRECT = 'https://app.example.com/auth/sso/complete';
 
     /**
-     * Not checked while the package is not in use, however malformed; an
-     * application with only its redirect URI passes once it is.
+     * Applications are checked only while the package is in use.
      *
      * @return void
      */
@@ -48,8 +44,7 @@ final class ApplicationsCheckTest extends TestCase
     }
 
     /**
-     * Rows of `[applications, problems]`: application configurations and what
-     * each reports.
+     * Rows of `[applications, problems]`: configurations and their problems.
      *
      * @return iterable<string, array{0: mixed, 1: list<string>}>
      */
@@ -136,8 +131,7 @@ final class ApplicationsCheckTest extends TestCase
     }
 
     /**
-     * An application that offers discovery while the feature is on needs a
-     * fallback URL, which a native application may give as its own scheme.
+     * Discovery needs a fallback URL while the feature is on.
      *
      * @return void
      */

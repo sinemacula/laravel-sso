@@ -17,12 +17,7 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Feature tests for the domain model (SSO-3.1 to SSO-3.3, SSO-11.10): its table
- * and casts, its key and clock stamps, its fixed connection and domain, its
- * token hidden from serialisation, and the predicates every later reader judges
- * a domain by: an expired claim, discovery routing until the end of a grace
- * period, and linking only with a recent successful check, never older than a
- * day, and never while suspended.
+ * Feature tests for the domain model.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,9 +51,7 @@ final class DomainTest extends TestCase
     }
 
     /**
-     * A claim is keyed by a lower-case ULID, stamped by the package's clock,
-     * read back with its state and times cast, and its lookup name is the
-     * record name under the domain.
+     * A claim is keyed by a ULID, clock-stamped and cast, with its lookup name.
      *
      * @return void
      */
@@ -101,8 +94,7 @@ final class DomainTest extends TestCase
     }
 
     /**
-     * A claim's connection and domain are fixed once it exists; its state is
-     * not.
+     * A claim's connection and domain are fixed once it exists.
      *
      * @param  string  $column
      * @param  string  $value
@@ -144,8 +136,7 @@ final class DomainTest extends TestCase
     }
 
     /**
-     * Only a verified domain routes discovery, and only until the end of a
-     * grace period, even before a recheck marks it lapsed.
+     * Only a verified domain within its grace period routes discovery.
      *
      * @return void
      */
@@ -166,9 +157,7 @@ final class DomainTest extends TestCase
     }
 
     /**
-     * Linking needs a verified domain, not suspended, whose last successful
-     * check is within the maximum age, which is never more than a day, and not
-     * in the future.
+     * Linking needs a verified, unsuspended domain checked within the last day.
      *
      * @return void
      */

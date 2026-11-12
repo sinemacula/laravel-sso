@@ -5,10 +5,7 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Exceptions;
 
 /**
- * Thrown at boot when the configuration of an enabled feature has a problem
- * (SSO-12.3), listing every problem the checks found, each as
- * `[<subject>] <message>`. A message names the setting and what it must be,
- * never a configured value.
+ * Thrown at boot listing every configuration problem, never a configured value.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

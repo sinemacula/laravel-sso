@@ -11,37 +11,9 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation;
 
 /**
- * Chooses the bearer `SubjectConfirmation` a SAML assertion is accepted by
- * (SSO-6.4 to SSO-6.6, SAML 2.0 Profiles §4.1.4.2), and binds the response to
- * the consumed request.
- *
- * First, the response's own `InResponseTo` must be the consumed request's SAML
- * request id, compared exactly, or absent for the unsolicited profile, and no
- * bearer confirmation may name another request (one naming none is judged by
- * the rules below), or the response is `request_mismatch`: correlation is
- * authenticated by the signed `InResponseTo` of a bearer confirmation, and
- * every other one must agree. The envelope's agreement covers a plain assertion
- * before anything is consumed; this covers an encrypted one, whose
- * confirmations the envelope cannot see.
- *
- * Then one bearer confirmation must satisfy every rule on its own, never by
- * combining several, each in this order:
- *
- * 1. it carries `SubjectConfirmationData` whose `Recipient` is the connection's
- *    assertion consumer service URL, compared exactly (`recipient_mismatch`);
- * 2. it carries `NotOnOrAfter`, and now is before it plus the skew
- *    (`assertion_expired`);
- * 3. it carries no `NotBefore` (`assertion_expired`);
- * 4. its `InResponseTo` is the consumed request's SAML request id, or absent
- *    for the unsolicited profile (`request_mismatch`).
- *
- * Of the confirmations that satisfy every rule, the one with the latest
- * `NotOnOrAfter`, compared to the microsecond, is chosen, the first in document
- * order on a tie, so the replay record's expiry covers every confirmation that
- * could be chosen later, even one ending a fraction of a second after. When
- * none does, the refusal is the reason of the rule the confirmation that got
- * furthest broke, the first in document order on a tie; with no bearer
- * confirmation at all it is `recipient_mismatch`. Nothing here keeps anything.
+ * Chooses the bearer confirmation a SAML assertion is accepted by, binding the
+ * response to the consumed request. One confirmation must pass every rule on
+ * its own.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -59,7 +31,8 @@ final class BearerConfirmations
     private function __construct() {}
 
     /**
-     * The bearer confirmation the assertion is accepted by, or why none is.
+     * The bearer confirmation the assertion is accepted by, or why none is. The
+     * check covers an encrypted assertion the envelope could not see into.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
@@ -80,8 +53,8 @@ final class BearerConfirmations
     }
 
     /**
-     * Whether the response's own `InResponseTo` is the consumed request's SAML
-     * request id, or absent for the unsolicited profile.
+     * Whether the response's `InResponseTo` is the expected one, or absent for
+     * the unsolicited profile.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -93,8 +66,7 @@ final class BearerConfirmations
     }
 
     /**
-     * Whether no bearer confirmation names a request other than the consumed
-     * one, compared exactly; one naming none passes.
+     * Whether no bearer confirmation names another request; naming none passes.
      *
      * @param  list<\SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation>  $bearers
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -130,9 +102,8 @@ final class BearerConfirmations
     }
 
     /**
-     * The best candidate and how many rules it satisfied: the furthest, and of
-     * those satisfying every rule the latest to expire, the first on a tie;
-     * none, having satisfied none, when there is no candidate.
+     * The best candidate and its progress: the furthest, then the latest to
+     * expire, the first on a tie; `[null, 0]` with no candidate.
      *
      * @param  list<\SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation>  $candidates
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -164,9 +135,8 @@ final class BearerConfirmations
     }
 
     /**
-     * How the candidate ranks: how many rules it satisfied in order, then, for
-     * one satisfying every rule, when its `NotOnOrAfter` falls, to the
-     * microsecond, so two a fraction of a second apart never tie.
+     * The candidate's progress, then its expiry to the microsecond, so the
+     * replay record covers any confirmation that could be chosen later.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation  $candidate
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -192,7 +162,8 @@ final class BearerConfirmations
     }
 
     /**
-     * How many of the rules the candidate satisfies before it breaks one.
+     * How many rules the candidate passes before breaking one: `Recipient`,
+     * `NotOnOrAfter`, no `NotBefore`, `InResponseTo`.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation  $candidate
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -215,8 +186,7 @@ final class BearerConfirmations
     }
 
     /**
-     * The reason a candidate that satisfied that many rules refuses with: the
-     * reason of the rule it broke.
+     * The reason for the rule a candidate with this progress broke.
      *
      * @param  int  $progress
      * @return \SineMacula\Laravel\Sso\Events\Enums\FailureReason

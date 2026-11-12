@@ -12,23 +12,8 @@ use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant;
 
 /**
- * Offers a genuinely unlinked `sign_in` result to the listeners of
- * `Events\ResultUnlinked` (SSO-8.6, `docs/design/linking.md`): synchronously,
- * with no package transaction open, before any handoff, once for the
- * completion. It issues the grant, registers it to this dispatch, so a grant
- * issued anywhere else opens nothing, and closes it in `finally`, so it is void
- * once the dispatch returns or a listener throws. Every listener is handed the
- * one grant, so together they get one use.
- *
- * A listener's exception propagates: it ends the completion as a server error,
- * and nothing resumes it; the request stays consumed and unfinished. A listener
- * must have committed or rolled back its own transaction before it returns: one
- * left open is rolled back and is a `LogicException`, since it would hold what
- * it locked across the final continuation.
- *
- * It holds the container and the reporter, neither of which keeps anything of
- * one completion for the next (SSO-11.2): what registers a grant is a `WeakMap`
- * in the container, which keeps no grant alive once its dispatch has let go.
+ * Offers a genuinely unlinked `sign_in` result to `ResultUnlinked` listeners,
+ * with no package transaction open and a grant closed once they return.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,8 +41,8 @@ final readonly class ProvisioningOffer
     ) {}
 
     /**
-     * Dispatch the unlinked-result event for the state's result, with its
-     * grant.
+     * Dispatch the unlinked-result event with its grant; a listener that leaves
+     * a transaction open is rolled back and refused.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
      * @return void
@@ -88,7 +73,7 @@ final readonly class ProvisioningOffer
         }
 
         if ($left) {
-            throw new \LogicException('A provisioning listener must commit or roll back its transaction before it returns (SSO-8.6).');
+            throw new \LogicException('A provisioning listener must commit or roll back its transaction before it returns.');
         }
     }
 
@@ -104,8 +89,7 @@ final readonly class ProvisioningOffer
     }
 
     /**
-     * The grants the dispatches issued, each with its request's id, none of
-     * which it keeps alive.
+     * The grants the dispatches issued, by request id, held weakly.
      *
      * @return \WeakMap<\SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant, string>
      */

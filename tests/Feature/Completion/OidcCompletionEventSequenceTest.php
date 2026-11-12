@@ -54,12 +54,7 @@ use Tests\Fixtures\Links\FixedLinker;
 use Tests\TestCase;
 
 /**
- * The whole sequence and context of what an OIDC completion reports (SSO-10.1,
- * SSO-10.2, SSO-10.4, SSO-7.3), through the public path against the fake
- * provider: verified; verified after a refetch; a refetch that failed; each
- * refusal, reporting exactly one `FlowFailed`; and a refusal under the lock,
- * with `ResultVerified` before it. The request's reference is the only flow
- * identifier any of them carries.
+ * Feature tests for the events an OIDC completion reports and their context.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -109,9 +104,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     private string $reference = '';
 
     /**
-     * Bind a fixed clock, the fake fetcher and a request from a client, switch
-     * OIDC on, register the application and the endpoints, create the tables
-     * and serve the provider.
+     * Bind a fixed clock, the fake fetcher and a request; serve the provider.
      *
      * @return void
      */
@@ -137,8 +130,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A verified sign-in reports `ResultVerified` then `HandoffIssued`, each
-     * with the whole context of the flow.
+     * A verified sign-in reports `ResultVerified` then `HandoffIssued`.
      *
      * @return void
      *
@@ -160,8 +152,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A verified `reauthenticate` carries the identity and the session it was
-     * started for.
+     * A verified `reauthenticate` carries its identity and session.
      *
      * @return void
      *
@@ -247,8 +238,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A key added at the provider: `JwksRefreshed`, naming the connection alone
-     * since a refetch is the connection's, then the flow's two events.
+     * A key added reports `JwksRefreshed`, then the flow's two events.
      *
      * @return void
      *
@@ -277,9 +267,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A key removed at the provider: the refetch voids what else is in flight
-     * and spares its own flow, which finishes, with `ResultVerified` before its
-     * `HandoffIssued`.
+     * A refetch that removes a key still finishes its own flow.
      *
      * @return void
      *
@@ -306,9 +294,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A key removed at the provider and a further trust change before the
-     * locks: the token verifies and the completion is refused under the lock,
-     * with `ResultVerified` before its one `FlowFailed`.
+     * A further trust change after the refetch refuses under the lock.
      *
      * @return void
      *
@@ -342,8 +328,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * Rows of `[response, reason]`: what a refetch's JWKS request is answered
-     * with, and why it failed.
+     * Rows of `[response, reason]` for a failed JWKS refetch.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Fetching\FetchResult, 1: \SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
      */
@@ -365,8 +350,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A refetch that failed reports `JwksRefreshFailed`, naming when the next
-     * may start, then the one `FlowFailed`, `signature_invalid`.
+     * A failed refetch reports `JwksRefreshFailed`, then one failure.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $response
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -420,8 +404,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * Each refused token reports one `FlowFailed`, with the flow's whole
-     * context, and nothing else: a result was never verified.
+     * Each refused token reports one `FlowFailed` and nothing else.
      *
      * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): (\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken|string)  $tailor
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -546,8 +529,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * A UserInfo answer refused fails the completion closed, with one
-     * `FlowFailed`: the token verified, the result never did.
+     * A refused UserInfo answer reports one failure.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $answer
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -569,8 +551,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * Assert the flow reported one `FlowFailed` for the reason, with its whole
-     * context, and nothing else.
+     * Assert one `FlowFailed` for the reason with its whole context.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
@@ -637,8 +618,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * Start a sign-in through the connection, have the provider grant it, and
-     * record events from there.
+     * Start a sign-in, have the provider grant it, and record events.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  ?\Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken): (\SineMacula\Laravel\Sso\Testing\Oidc\FakeIdToken|string)  $tailor
@@ -729,8 +709,7 @@ final class OidcCompletionEventSequenceTest extends TestCase
     }
 
     /**
-     * The client every action of the test is taken for: the browser's IP
-     * address and user agent, which its events carry.
+     * The client the test acts for, which its events carry.
      *
      * @return \SineMacula\Laravel\Sso\Http\ClientContext
      */

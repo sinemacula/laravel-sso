@@ -5,10 +5,8 @@ declare(strict_types = 1);
 namespace Tests\Integration\Examples\IntegratingWithLaravelIam;
 
 /**
- * The adapter's refusal of an admitted sign-in that established no identity
- * (`docs/guides/integrating-with-laravel-iam.md`): the adapter always requires
- * a linked identity, so it throws this out of the redemption's transaction,
- * which rolls the consumption back.
+ * Thrown for an admitted sign-in with no linked identity, so the redemption's
+ * transaction rolls back.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

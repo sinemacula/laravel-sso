@@ -23,11 +23,7 @@ use Tests\Fixtures\Results\ExampleResults;
 use Tests\TestCase;
 
 /**
- * Integration tests, on every engine, that a subject is stored and matched byte
- * for byte (SSO-6.9, SSO-8.2): subjects holding invalid UTF-8, a NUL byte, a
- * backslash or what PostgreSQL would read as an escape, a trailing space, and
- * subjects differing only in case are each linked, read back exactly, and
- * resolve to their own identity alone.
+ * Integration tests that subjects are stored and matched byte for byte.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -59,7 +55,7 @@ final class LinkSubjectStorageTest extends TestCase
     private Connection $connection;
 
     /**
-     * Bind a fixed clock and create the tables and a connection.
+     * Bind a fixed clock and create a connection.
      *
      * @return void
      */
@@ -76,8 +72,7 @@ final class LinkSubjectStorageTest extends TestCase
     }
 
     /**
-     * Each subject is linked to its own identity, stored and read back byte for
-     * byte under its own key, and resolves to that identity alone.
+     * Each subject round-trips byte for byte and resolves to its own identity.
      *
      * @return void
      */
@@ -107,8 +102,7 @@ final class LinkSubjectStorageTest extends TestCase
     }
 
     /**
-     * The same subject linked again, byte for byte, is refused, while each of
-     * its near neighbours was made.
+     * An exact duplicate is refused while each near neighbour was linked.
      *
      * @return void
      */

@@ -9,14 +9,10 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 
 /**
- * A key pair `Keys\KeyGenerator` has just generated, with its self-signed
- * certificate (SSO-2.7), on its way to being encrypted and stored.
+ * A key pair `Keys\KeyGenerator` has just generated, on its way to being
+ * encrypted and stored.
  *
- * The private key is held only as a `Secrets\Secret`, so it leaves the object
- * only through `reveal()`, for the encrypter. A dump shows every field but the
- * private key, which it shows as `[redacted]`, and the object refuses to be
- * serialised or unserialised, so the key cannot reach a log, a queue, a cache
- * or an event (SSO-2.5).
+ * A dump redacts the private key and the object refuses to be serialised.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

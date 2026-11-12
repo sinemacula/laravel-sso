@@ -11,29 +11,7 @@ use SineMacula\Laravel\Sso\Localization\Enums\Message;
 use SineMacula\Laravel\Sso\Localization\Messages;
 
 /**
- * Turns how a completion ended into the response the application's controller
- * returns (SSO-5.6, SSO-5.7, SSO-12.1):
- *
- * - `completed`: a redirect to the application's redirect URI with `code` and
- *   `reference`, in the fragment or the query as the application delivers;
- * - `failed`: a redirect to the same URI with `error`, the failure reason's
- *   code, and `reference`, never a reason in prose, the identity provider's
- *   error description or an assertion;
- * - `reinitiated`: a redirect to the connection's start URL, exactly as given;
- * - `rejected`: a `400` with no redirect, since no trusted target is known;
- * - `rate_limited`: a `429` with `Retry-After` and no redirect.
- *
- * A redirect is a `303` after a POST and a `302` after a GET, and a `303` after
- * any other method; never a `307` or a `308`. The body of a redirect and of a
- * refusal is a message read through Laravel's translator in the current locale
- * (SSO-12.6), the same whatever the reason.
- *
- * It catches nothing: a database error never becomes a completion result, since
- * the completion propagates it as a server error (SSO-11.4), and an error here
- * propagates too, so a failure is never turned into a failure redirect.
- *
- * It keeps only the messages it was given, so nothing of one request or job
- * outlives it (SSO-11.2).
+ * Turns a completion result into the response the controller returns.
  *
  * @api
  *
@@ -57,8 +35,7 @@ final readonly class CompletionResponses
     ) {}
 
     /**
-     * The response to a completion that ended as the result says, after it
-     * arrived by the HTTP method given.
+     * The response to the completion result, which arrived by the method given.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @param  string  $method
@@ -94,9 +71,8 @@ final readonly class CompletionResponses
     }
 
     /**
-     * The application's redirect URI, otherwise unchanged, with the parameter
-     * named and then the reference appended: after `#` in the fragment, or in
-     * the query after `?`, or `&` when the URI already has a query.
+     * The redirect URI with the parameter and reference appended in the
+     * fragment or query.
      *
      * The configured URI never has a fragment, so the fragment is the package's
      * alone.
@@ -123,7 +99,7 @@ final readonly class CompletionResponses
     }
 
     /**
-     * The handoff code of a completed result, revealed for its redirect.
+     * The completed result's handoff code, revealed for its redirect.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @return string
@@ -137,7 +113,7 @@ final readonly class CompletionResponses
     }
 
     /**
-     * The failure reason's code of a failed result.
+     * The failed result's reason code.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @return string
@@ -151,7 +127,7 @@ final readonly class CompletionResponses
     }
 
     /**
-     * The connection's start URL of a re-initiated result.
+     * The re-initiated result's start URL.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @return string
@@ -163,7 +139,7 @@ final readonly class CompletionResponses
     }
 
     /**
-     * The seconds a rate limited result waits.
+     * The seconds a rate-limited result waits.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $result
      * @return int

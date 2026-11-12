@@ -28,14 +28,9 @@ use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use Tests\Fixtures\Clients;
 
 /**
- * PHPBench suite for validating an ID token
- * (`Protocols\Oidc\IdTokenValidator::validate()`), valid and rejected, from
- * `Testing\FakeOpenIdProvider`. Keys and tokens are made and signed once,
- * before any revolution, and every token names a key the connection has stored,
- * so no revolution refetches a JWKS. Each revolution validates, so a subject
- * answers what the validator answered, and is timed reading the connection's
- * stored JWKS from a local database but generating nothing and calling no
- * provider.
+ * `IdTokenValidator::validate()` on valid and rejected ID tokens.
+ *
+ * Every token names a stored key, so no revolution refetches the JWKS.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -84,8 +79,7 @@ final class IdTokenValidationBench
     private TokenResponse $expired; // @phpstan-ignore property.uninitialized
 
     /**
-     * Boot the application, store a connection holding the provider's JWKS, and
-     * make and sign every token once.
+     * Store a connection holding the provider's JWKS and sign every token once.
      *
      * @return void
      */
@@ -125,8 +119,7 @@ final class IdTokenValidationBench
     }
 
     /**
-     * The versions of the packages this bench's times depend on, recorded in
-     * the report as its parameter set.
+     * The versions of the packages these times depend on.
      *
      * @return array<string, array<string, string>>
      */

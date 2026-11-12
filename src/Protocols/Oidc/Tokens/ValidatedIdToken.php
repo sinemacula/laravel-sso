@@ -5,17 +5,8 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Oidc\Tokens;
 
 /**
- * An ID token once every check of SSO-7.3 and SSO-7.4 passed: its signature
- * with a key the connection's JWKS holds, its algorithm, its typed claims, its
- * issuer, audience, authorised party, times, nonce, subject, `auth_time` and
- * `at_hash` (`IdTokenValidator`). Only the validator builds it; the claims
- * assembly reads the identity and authentication claims from it alone, never
- * from UserInfo (SSO-7.5).
- *
- * The issuer is the connection's, exactly. The claims are a provider's values,
- * so they are held in a `\SensitiveParameterValue`: a dump and JSON encoding
- * show the issuer and the names of the claims, never the subject or a value,
- * and it refuses to be serialised or unserialised.
+ * An ID token that passed every `IdTokenValidator` check; its claim values are
+ * redacted from dumps and JSON and it is never serialisable.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -41,10 +32,10 @@ final readonly class ValidatedIdToken implements \JsonSerializable
         /** The token's `iss`, which is the connection's issuer. */
         public string $issuer,
 
-        // The token's `sub`, a non-empty string; held with the claims
+        // Not promoted: only checked, then read from the claims
         string $subject,
 
-        // The token's claims, as validated; held wrapped
+        // Not promoted: held wrapped
         #[\SensitiveParameter]
         array $claims,
     ) {
@@ -56,7 +47,7 @@ final readonly class ValidatedIdToken implements \JsonSerializable
     }
 
     /**
-     * What a dump shows: the issuer and the names of the claims, never a value.
+     * Show the issuer and the claim names, never a value.
      *
      * @return array<string, mixed>
      */
@@ -66,7 +57,7 @@ final readonly class ValidatedIdToken implements \JsonSerializable
     }
 
     /**
-     * Refuse to be serialised: the token lives only for its completion.
+     * Refuse to be serialised; the token lives only for its completion.
      *
      * @return array<string, mixed>
      *
@@ -96,7 +87,7 @@ final readonly class ValidatedIdToken implements \JsonSerializable
     }
 
     /**
-     * What JSON encoding shows: the same as a dump, never a value.
+     * Encode the same redacted view as a dump.
      *
      * @return array<string, mixed>
      */
@@ -130,7 +121,7 @@ final readonly class ValidatedIdToken implements \JsonSerializable
     }
 
     /**
-     * One claim, or `null` when the token has none of the name.
+     * One claim, or `null` when absent.
      *
      * @param  string  $name
      * @return mixed

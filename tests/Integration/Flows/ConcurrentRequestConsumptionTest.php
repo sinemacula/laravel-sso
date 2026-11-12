@@ -21,18 +21,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races the consumption of one authorisation request across processes, each
- * with its own database connection, on PostgreSQL and MySQL (SSO-5.1,
- * SSO-11.5): however they interleave, exactly one consumes the request, every
- * other finds it `replayed`, none fails, and the request is marked and recorded
- * in the single-use store once. Each race runs with every process consuming
- * plainly, and again with each inside a transaction of its own that read the
- * request before the race began, so the locking read must see what another
- * process committed rather than its transaction's snapshot (MySQL's `REPEATABLE
- * READ`). Races by the state and by the SAML request id both run.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Races consumption of one request across processes, plainly and inside
+ * transactions that read first. Skipped on SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -66,9 +56,8 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock,
-     * register the application, create the tables, the connection and the
-     * request, and make the directory the processes report in.
+     * Skip where processes cannot share the database, bind the collaborators,
+     * and seed the request.
      *
      * @return void
      *
@@ -124,8 +113,7 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     }
 
     /**
-     * Processes racing to consume the request by its state: exactly one
-     * consumes it.
+     * Processes race to consume the request by its state; exactly one does.
      *
      * @return void
      */
@@ -135,8 +123,7 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     }
 
     /**
-     * The same race, each inside a transaction of its own that read the request
-     * before the race began.
+     * The same race, each inside a transaction that read the request first.
      *
      * @return void
      */
@@ -146,9 +133,8 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     }
 
     /**
-     * Processes racing to consume the request by its SAML request id with no
-     * RelayState: exactly one consumes it, and is refused for the missing
-     * RelayState.
+     * Processes race by SAML id without `RelayState`; one consumes and is
+     * refused for it.
      *
      * @return void
      */
@@ -158,8 +144,7 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     }
 
     /**
-     * The same race, each inside a transaction of its own that read the request
-     * before the race began.
+     * The same race, each inside a transaction that read the request first.
      *
      * @return void
      */
@@ -169,8 +154,7 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     }
 
     /**
-     * Assert exactly one process consumed the request, answered as given, every
-     * other found it replayed, the request is marked consumed, and the store
+     * Assert one process consumed, the rest found it replayed, and the store
      * holds it once.
      *
      * @param  list<string>  $outcomes
@@ -188,8 +172,8 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     }
 
     /**
-     * Fork the processes, have each consume at the same moment on a connection
-     * of its own, and collect what each reported.
+     * Fork the processes, have each consume at the same moment on its own
+     * connection, and collect the results.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Correlation  $correlation
      * @param  bool  $inTransaction
@@ -227,14 +211,8 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own and build the
-     * consumption, so only the consumption runs after the start, wait for the
-     * start, consume, report the outcome, and end without running the parent's
-     * shutdown.
-     *
-     * Racing inside a transaction, the process opens one and reads the request
-     * before the start, so the transaction's snapshot predates every
-     * consumption, and commits after its own.
+     * In a child: build the consumption, wait for the start, consume and
+     * report; in a transaction, read first.
      *
      * @param  int  $process
      * @param  float  $start
@@ -284,8 +262,7 @@ final class ConcurrentRequestConsumptionTest extends TestCase
     }
 
     /**
-     * The status the result reports, with its reason when it was not consumed
-     * or replayed.
+     * The result's status, with its reason unless consumed or replayed.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\ConsumptionResult  $result
      * @return string

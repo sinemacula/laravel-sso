@@ -9,12 +9,8 @@ use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 
 /**
- * The default linking contract (SSO-8.3): no result resolves to an identity, so
- * every `sign_in` result is unlinked until the application binds the link
- * store, an adapter binds it, or the application binds its own. It is no
- * `Contracts\LinkStorage`, so nothing writes a link while it is bound.
- *
- * It holds nothing between calls (SSO-11.2).
+ * The default linker: nothing resolves, and nothing writes a link while it is
+ * bound.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

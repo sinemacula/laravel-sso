@@ -26,13 +26,8 @@ use Tests\Fixtures\Protocols\ExampleConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for what a validated SAML assertion is recorded as against
- * replay (SSO-6.6): its id scoped by the connection and its issuer, in the
- * assertion namespace, until the earliest of the conditions' `NotOnOrAfter`,
- * the chosen confirmation's and the assertion's `IssueInstant` maximum age,
- * each with the skew, so the record never outlives the last moment a rule would
- * accept the assertion and never ends before it, the later of two confirmations
- * ending within one second included.
+ * Feature tests for the replay record of a validated SAML assertion, which ends
+ * exactly when the last rule would stop accepting it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -72,10 +67,8 @@ final class ReplayWindowTest extends TestCase
     }
 
     /**
-     * Rows of `[conditions, confirmation, issued, until]`: the conditions' and
-     * the confirmation's `NotOnOrAfter` and the assertion's `IssueInstant`, in
-     * seconds from now, and the record's expiry, in seconds from now; the skew
-     * is 60 seconds and the maximum age 300.
+     * Rows of `[conditions, confirmation, issued, until]` in seconds from now,
+     * with a 60-second skew and 300-second maximum age.
      *
      * @return iterable<string, array{0: ?int, 1: int, 2: int, 3: int}>
      */
@@ -127,12 +120,8 @@ final class ReplayWindowTest extends TestCase
     }
 
     /**
-     * Of two unsolicited confirmations ending within one second, the later is
-     * chosen, so the record lasts until it ends plus the skew, to the
-     * microsecond, and a store keeping whole seconds holds it until the next
-     * second. A replay after the earlier has ended still chooses the later, up
-     * to its last microsecond, and the record still holds then; from the
-     * record's expiry no confirmation accepts the assertion.
+     * Of two confirmations ending within one second the later is chosen, and
+     * the record covers it to the microsecond.
      *
      * @return void
      */

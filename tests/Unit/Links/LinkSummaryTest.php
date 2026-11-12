@@ -11,9 +11,7 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Links\LinkSummary;
 
 /**
- * Unit tests for the summary of a link (SSO-8.4): what it holds, and its
- * snake_case encoding, with each time in UTC to the second and never the
- * subject.
+ * Unit tests for a link summary.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -58,8 +56,7 @@ final class LinkSummaryTest extends TestCase
     }
 
     /**
-     * A link never used, with no format, encodes both as `null`, and holds no
-     * subject under any key.
+     * An unused link encodes nulls and never the subject.
      *
      * @return void
      */

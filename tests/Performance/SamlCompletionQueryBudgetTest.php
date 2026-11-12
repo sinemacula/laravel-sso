@@ -35,19 +35,8 @@ use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\Fixtures\Links\ExampleLinks;
 
 /**
- * Query budgets for completing a SAML sign-in (SSO-5.6, SSO-6.6, SSO-11.3,
- * SSO-11.5), each measured once the IP address's and the connection's counters
- * exist, so every completion first costs their two updates. Beside a completion
- * through any driver (`CompletionQueryBudgetTest`), the SAML driver reads the
- * connection's trusted certificates to judge it complete before it validates,
- * again for the adapter's policy, and again under the lock, and records the
- * assertion's id in the locked transaction:
- *
- * - a signed assertion is eight reads and six writes;
- * - an encrypted one adds the decryption keys' read and the private key's;
- * - a response refused before it is verified records nothing and takes no
- *   lock that judges the connection again: seven reads and five writes;
- * - a post with no response is the connection's read alone.
+ * Query budgets for completing a SAML sign-in, measured once the IP and
+ * connection counters exist, so each costs their two updates.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -71,10 +60,8 @@ final class SamlCompletionQueryBudgetTest extends PerformanceContractTestCase
     private Connection $connection;
 
     /**
-     * Bind the recording issuer, a linker and a request from an IP address,
-     * configure SAML, the endpoints and the application, make a usable
-     * connection that maps the email and has an encryption key, and create the
-     * counters.
+     * Configure SAML and make a usable connection that maps the email and has
+     * an encryption key, and create the counters.
      *
      * @return void
      */
@@ -120,7 +107,8 @@ final class SamlCompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A completion of a signed assertion is eight reads and six writes.
+     * Beside any completion's, the certificates are read before validation, for
+     * the adapter's policy and under the lock; the id is recorded.
      *
      * @return void
      */
@@ -134,8 +122,8 @@ final class SamlCompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A completion of an encrypted assertion adds the two reads of its
-     * decryption key: ten reads and six writes.
+     * An encrypted assertion adds the reads of the decryption keys and the
+     * private key.
      *
      * @return void
      */
@@ -150,8 +138,8 @@ final class SamlCompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A response refused before it is verified is seven reads and five writes,
-     * and a post with no response is the connection's read alone.
+     * A response refused before verification records nothing and takes no
+     * judging lock; an empty post reads the connection alone.
      *
      * @return void
      */
@@ -194,8 +182,8 @@ final class SamlCompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A valid response from the trusted identity provider, made now, answering
-     * the request.
+     * A valid response from the trusted identity provider answering the
+     * request.
      *
      * @param  string  $requestId
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse

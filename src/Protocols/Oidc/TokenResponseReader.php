@@ -11,29 +11,8 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\StrictJson;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse;
 
 /**
- * Reads what a token endpoint answered an authorisation code with (SSO-7.2,
- * SSO-7.6).
- *
- * `refusal()` says why the answer is refused, or `null` when it holds tokens:
- *
- * - a request refused or failed is `fetch_refused` or `fetch_failed`, a timeout
- *   and a body over the request's cap among them;
- * - a `400` or `401` whose body is a JSON object with a string `error` is
- *   `provider_error`, whose code alone `providerError()` answers for the log;
- * - any other status outside `2xx`, `3xx` and `5xx` among them, is
- *   `fetch_failed`, since a credentialed request follows no redirect and is
- *   never retried;
- * - a `2xx` body must be a JSON object read by `Jose\StrictJson`, so a repeated
- *   member is refused, else `token_response_invalid`; its `id_token` a
- *   non-empty string, else `id_token_invalid`; its `access_token` an RFC 6750
- *   b64token (`FetchCredentials::accessToken()`'s rule) and its `token_type`
- *   `Bearer` in any case, else `token_response_invalid`. Each is read as JSON
- *   wrote it, so a number is never taken for a string of its digits.
- *
- * `tokens()` builds the `Tokens\TokenResponse` of an answer not refused.
- * Nothing else of the body is read or kept, a refresh token and
- * `error_description` above all; the body is never logged. It holds nothing
- * between calls (SSO-11.2).
+ * Reads a token endpoint's response to an authorisation code; only the ID
+ * token, access token and token type are read, and the body is never logged.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -42,14 +21,15 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse;
  */
 final readonly class TokenResponseReader
 {
-    /** @var list<int> The statuses of an OAuth error response (RFC 6749 §5.2). */
+    /** @var list<int> The statuses of an OAuth error response (RFC 6749 section 5.2). */
     private const array ERROR_STATUSES = [400, 401];
 
-    /** @var string The one token type the package accepts, in lower case. */
+    /** @var string The only accepted token type, in lower case. */
     private const string BEARER = 'bearer';
 
     /**
-     * Why the answer is refused, or `null` when it holds tokens.
+     * Why the answer is refused, or `null` when it holds tokens. A non-`2xx`
+     * answer other than an OAuth error is `fetch_failed`.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $result
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
@@ -68,8 +48,7 @@ final readonly class TokenResponseReader
     }
 
     /**
-     * The `error` of an OAuth error response, for the log alone, or `null` when
-     * the answer is not one.
+     * The `error` code of an OAuth error response, for the log only, or `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $result
      * @return ?string
@@ -86,8 +65,7 @@ final readonly class TokenResponseReader
     }
 
     /**
-     * The tokens of an answer `refusal()` does not refuse; any other is the
-     * caller's mistake.
+     * The tokens of an answer `refusal()` accepts.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $result
      * @return \SineMacula\Laravel\Sso\Protocols\Oidc\Tokens\TokenResponse
@@ -107,8 +85,7 @@ final readonly class TokenResponseReader
     }
 
     /**
-     * Why the members of a `2xx` body are refused, or `null` when they hold the
-     * tokens.
+     * Why the members of a `2xx` body are refused, or `null`.
      *
      * @param  ?array<array-key, mixed>  $members
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
@@ -125,8 +102,7 @@ final readonly class TokenResponseReader
     }
 
     /**
-     * Whether the value is a non-empty string; the ID token's validation reads
-     * the rest of it.
+     * Whether the value is a non-empty string; validation reads the rest.
      *
      * @param  mixed  $value
      * @return bool
@@ -137,8 +113,7 @@ final readonly class TokenResponseReader
     }
 
     /**
-     * Whether the value is what a bearer token may hold, by the rule the
-     * UserInfo request sends it under.
+     * Whether the value is an RFC 6750 b64token, by the UserInfo rule.
      *
      * @param  mixed  $value
      * @return bool

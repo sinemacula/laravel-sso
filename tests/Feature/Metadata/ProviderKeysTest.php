@@ -32,14 +32,7 @@ use Tests\Fixtures\Protocols\IdentifiedConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the key an ID token is checked with (SSO-7.3): chosen from
- * the JWKS stored with its connection, read on the write connection whether the
- * connection is given as a row or through its contract, admitted again for the
- * allow-list. Only a selection that is unknown refetches, once: a refused one
- * never fetches, a `kid` the refetch did not bring never falls back to a key
- * without one, and how each refetch ended is logged with its reason and the
- * fetch's status alone. It also pins what an update of the issuer or the JWKS
- * URI clears.
+ * Feature tests for choosing the key an ID token is checked with.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -70,8 +63,8 @@ final class ProviderKeysTest extends TestCase
     private FakeOpenIdProvider $provider;
 
     /**
-     * Bind a fixed clock and a fake fetcher serving the provider, create the
-     * tables and capture logs.
+     * Bind a fixed clock and a fetcher serving the provider, create the tables
+     * and capture logs.
      *
      * @return void
      */
@@ -91,8 +84,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * The key is chosen from the stored JWKS by its `kid`, whichever way the
-     * connection is given, with nothing fetched or logged.
+     * The key is chosen from the stored JWKS by `kid`, however the connection
+     * is given, with nothing fetched.
      *
      * @return void
      */
@@ -128,8 +121,7 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * Rows of `[token, allow-list]`: a selection that is refused, the stored
-     * key being there or not.
+     * Rows of `[token, allow-list]` for a refused selection.
      *
      * @return iterable<string, array{0: \Closure(): string, 1: list<string>}>
      */
@@ -164,8 +156,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * An unknown `kid` refetches once and finds the key the provider has just
-     * published, and how it ended is logged as information.
+     * An unknown `kid` refetches once, finds the new key and logs as
+     * information.
      *
      * @return void
      */
@@ -186,9 +178,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A `kid` the refetch did not bring stays unknown after one fetch: it never
-     * falls back to the key without a `kid` it brought, and a select never
-     * refetches twice.
+     * A `kid` the refetch did not bring stays unknown and never falls back to a
+     * key without one.
      *
      * @return void
      */
@@ -203,8 +194,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * Rows of `[keys the JWKS gives, outcome]`: a token with no `kid` after a
-     * refetch, none stored before.
+     * Rows of `[keys the JWKS gives, outcome]` for a token with no `kid` after
+     * a refetch.
      *
      * @return iterable<string, array{0: list<string>, 1: \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome}>
      */
@@ -217,7 +208,7 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A token with no `kid` and no admissible key stored refetches, and is then
+     * A token with no `kid` and no admissible stored key refetches, then is
      * chosen by the same rule.
      *
      * @param  list<string>  $kids
@@ -238,8 +229,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A token with no `kid` and exactly one admissible key stored is chosen
-     * with no fetch, and with two is refused with no fetch.
+     * A token with no `kid` takes the one admissible stored key, and is refused
+     * with two, without a fetch.
      *
      * @return void
      */
@@ -255,8 +246,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * Rows of `[answer the JWKS gives, level, message, context]`: how a refetch
-     * that did not find the key is logged.
+     * Rows of `[JWKS answer, level, message, context]` for a refetch that did
+     * not find the key.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Fetching\FetchResult, 1: string, 2: string, 3: array<string, mixed>}>
      */
@@ -271,9 +262,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A failed refetch is logged as a warning with its reason and the fetch's
-     * status alone, never the URL, the body or a key, and the key stays
-     * unknown.
+     * A failed refetch logs a warning with only its reason and fetch status,
+     * and the key stays unknown.
      *
      * @param  \SineMacula\Laravel\Sso\Fetching\FetchResult  $response
      * @param  string  $level
@@ -295,8 +285,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A refetch that lost to a change is logged as a warning, and the winner's
-     * keys are selected from.
+     * A refetch that lost logs a warning, and the winner's keys are selected
+     * from.
      *
      * @return void
      */
@@ -320,8 +310,7 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A refetch that lost to a change of anything but trust, leaving no key for
-     * the token, stays unknown.
+     * A refetch that lost to a non-trust change and left no key stays unknown.
      *
      * @return void
      */
@@ -341,9 +330,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A refetch that lost to a trust change, leaving no key for the token, is
-     * overtaken; as is one whose connection was deleted meanwhile; and a key
-     * the winner left stored is still found.
+     * A refetch that lost to a trust change or deletion is overtaken, but a key
+     * the winner stored is still found.
      *
      * @return void
      */
@@ -390,8 +378,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A refetch the cooldown holds fetches nothing, reads what is stored now,
-     * and is logged as information with neither a reason nor a status.
+     * A refetch held by the cooldown fetches nothing, reads what is stored and
+     * logs without reason or status.
      *
      * @return void
      */
@@ -406,10 +394,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * Every token the cooldown turns away is counted and none is logged; the
-     * next claim, one per window whichever server wins it, writes its fetch's
-     * own line, then one summary line with the count alone, and starts counting
-     * again.
+     * Tokens the cooldown turns away are counted, not logged; the next claim
+     * per window logs its fetch and one count summary.
      *
      * @return void
      */
@@ -443,8 +429,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A window that turned nothing away writes no summary, and a summary never
-     * holds a `kid`, a token or anything of the provider's.
+     * A summary is written only for a non-zero count and holds nothing but the
+     * count.
      *
      * @return void
      */
@@ -468,8 +454,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * Rows of `[change, delete, outcome]`: what happens after the connection
-     * was read, its claim of the cooldown then failing.
+     * Rows of `[change, delete, outcome]` after the connection was read and its
+     * cooldown claim failed.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: bool, 2: \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\Enums\KeySelectionOutcome}>
      */
@@ -484,9 +470,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A failed claim that finds a trust change or a deletion is `overtaken`, as
-     * a lost compare and set is, so the completion answers
-     * `connection_unavailable`, with nothing fetched and nothing logged.
+     * A failed claim that finds a trust change or deletion is `overtaken`,
+     * fetching and logging nothing.
      *
      * @param  array<string, mixed>  $change
      * @param  bool  $delete
@@ -516,9 +501,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A key stored by the time a failed claim reads it is found, a winner's
-     * among them, even across a trust change: the completion's locks judge
-     * that.
+     * A key stored by the time a failed claim reads it is found, even across a
+     * trust change.
      *
      * @return void
      */
@@ -534,9 +518,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A token the caller says is disqualified stays unknown with nothing
-     * claimed or fetched; the question is never asked of a key the JWKS holds
-     * or a selection already refused.
+     * A token the caller disqualifies stays unknown with nothing claimed or
+     * fetched.
      *
      * @return void
      */
@@ -564,8 +547,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * A selection that would refetch inside a transaction refuses, with nothing
-     * claimed or fetched; one that needs no refetch runs inside one.
+     * A selection that would refetch inside a transaction refuses; one needing
+     * no refetch runs.
      *
      * @return void
      *
@@ -614,9 +597,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * An update of the issuer or the JWKS URI clears the keys, raises their
-     * version and clears the cooldown and token, an issuer's also the discovery
-     * document's refresh dates; anything else clears nothing.
+     * Updating the issuer or JWKS URI clears the keys, cooldown and token and
+     * raises the version; the issuer also clears the document's dates.
      *
      * @param  string  $protocol
      * @param  list<string>  $changed
@@ -645,10 +627,9 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * Rows of `[changed, stored switch, cleared]`: an endpoint changed with the
-     * refresh off takes it over by hand, and clears when a document was last
-     * validated; the switch turned off alone, or an endpoint changed with it
-     * on, clears nothing, so turning it off never means unlimited trust.
+     * Rows of `[changed, stored switch, cleared]`. Only an endpoint changed
+     * with refresh off clears the dates, so turning refresh off never means
+     * unlimited trust.
      *
      * @return iterable<string, array{0: list<string>, 1: mixed, 2: bool}>
      */
@@ -666,8 +647,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * Saving an endpoint by hand with the refresh off clears the document's
-     * dates alone.
+     * Saving an endpoint by hand with refresh off clears only the document's
+     * dates.
      *
      * @param  list<string>  $changed
      * @param  mixed  $switch
@@ -685,8 +666,8 @@ final class ProviderKeysTest extends TestCase
     }
 
     /**
-     * Run the change once, as soon as the selection's first read of a row of
-     * the connections table is answered.
+     * Run the change once, as soon as the selection's first connections-table
+     * read is answered.
      *
      * @param  \Closure(): void  $change
      * @return void

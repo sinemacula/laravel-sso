@@ -12,10 +12,7 @@ use SineMacula\Laravel\Sso\Logging\LoggingSettings;
 use SineMacula\Laravel\Sso\Logging\RedactedKeys;
 
 /**
- * Unit tests for the redacted keys (SSO-5.7, SSO-9.8, SSO-11.9): a key matched
- * decoded and normalised, by any run of its words, a key in text named by the
- * words just before it, a key encoded past reading taken for a redacted one,
- * and a key whose one word only contains a redacted key kept.
+ * Unit tests for matching redacted keys.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -105,8 +102,7 @@ final class RedactedKeysTest extends TestCase
     }
 
     /**
-     * Rows of `[text before, key, matched]`: a key found in text and the text
-     * before it.
+     * Rows of `[text before, key, matched]`: a key found in text.
      *
      * @return iterable<string, array{string, string, bool}>
      */
@@ -128,9 +124,7 @@ final class RedactedKeysTest extends TestCase
     }
 
     /**
-     * A key found in text matches when the words just before it, run on into
-     * it, name a redacted key; a redacted key in the words before it that does
-     * not run into it does not make it match.
+     * A key matches when the words running into it name a redacted key.
      *
      * @param  string  $before
      * @param  string  $key
@@ -144,8 +138,7 @@ final class RedactedKeysTest extends TestCase
     }
 
     /**
-     * A key still encoded after the most decoding is taken for a redacted one,
-     * since what cannot be read cannot be shown to be harmless.
+     * A key still encoded after full decoding is treated as redacted.
      *
      * @return void
      */
@@ -166,8 +159,7 @@ final class RedactedKeysTest extends TestCase
     }
 
     /**
-     * The text percent-encoded the given number of times, every character of it
-     * encoded the first time.
+     * The text percent-encoded `$times` times, every character the first time.
      *
      * @param  string  $text
      * @param  int  $times

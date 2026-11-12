@@ -7,14 +7,9 @@ namespace SineMacula\Laravel\Sso\Handoffs;
 use Carbon\CarbonImmutable;
 
 /**
- * A handoff code as `Contracts\HandoffIssuer` issued it (SSO-9.2): the code,
- * which the completion puts on the application's redirect URI once and which is
- * never shown again; when it expires, as stored; and its opaque reference, what
- * a reservation holds of it (SSO-8.8), which works for the package's codes and
- * an adapter's. An issuer that holds a reservation must answer a reference.
+ * A handoff code as issued, with its stored expiry and opaque reference.
  *
- * It holds the code, so a dump never shows it and it refuses to be serialised
- * or unserialised, as the code itself does.
+ * An issuer that holds a reservation must answer a reference.
  *
  * @api
  *
@@ -43,7 +38,7 @@ final readonly class IssuedHandoff
     ) {}
 
     /**
-     * What a dump shows: when the code expires, never the code.
+     * Dump the expiry, never the code.
      *
      * @return array<string, mixed>
      */

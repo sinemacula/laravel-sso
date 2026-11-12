@@ -24,17 +24,10 @@ use SineMacula\Laravel\Sso\SsoServiceProvider;
 use Tests\TestCase;
 
 /**
- * Feature tests for the marking of the transaction records a failed commit left
- * behind, against real transactions on whichever engine the suite runs on and a
- * second connection: an outermost begin strands every record its connection
- * still holds but its own and the savepoints inside it, a savepoint strands
- * nothing, a transaction begun from a commit callback leaves the committing
- * records alone, another connection's records are never touched, the current
- * container's manager is the one read, and one instance serves the whole
- * process.
+ * Feature tests for marking the transaction records a failed commit left.
  *
- * The failed commit is reproduced as Laravel 12 leaves it: the database rolls
- * the transaction back, but the transactions manager is never told.
+ * Laravel 12 rolls a failed commit back without telling the transactions
+ * manager.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -49,9 +42,8 @@ final class StrandedTransactionsTest extends TestCase
     private const string SEPARATE = 'sso_separate_stranded';
 
     /**
-     * The next outermost begin on the connection strands the record a failed
-     * commit left pending and the savepoint record it staged, and not the
-     * record just begun; the records are gone once that transaction commits.
+     * The next outermost begin strands the failed commit's records, not its
+     * own.
      *
      * @return void
      *
@@ -80,8 +72,7 @@ final class StrandedTransactionsTest extends TestCase
     }
 
     /**
-     * A savepoint strands nothing: neither the transaction it sits in, nor a
-     * savepoint that committed before it, nor itself.
+     * A savepoint strands nothing.
      *
      * @return void
      *
@@ -111,8 +102,7 @@ final class StrandedTransactionsTest extends TestCase
     }
 
     /**
-     * A transaction begun and committed from a commit callback strands neither
-     * the records whose callbacks are running nor its own.
+     * A transaction run from a commit callback strands nothing.
      *
      * @return void
      *
@@ -148,8 +138,7 @@ final class StrandedTransactionsTest extends TestCase
     }
 
     /**
-     * A savepoint opened and committed by an earlier listener on the beginning
-     * of the outermost transaction is that transaction's own, not stranded.
+     * A savepoint opened by a listener on the outermost begin is not stranded.
      *
      * @return void
      *
@@ -183,9 +172,7 @@ final class StrandedTransactionsTest extends TestCase
     }
 
     /**
-     * Only the connection's own records are stranded: a transaction open on
-     * another connection keeps its record, and an outermost begin there strands
-     * nothing of the default connection.
+     * Only the connection's own records are stranded.
      *
      * @return void
      *
@@ -222,9 +209,8 @@ final class StrandedTransactionsTest extends TestCase
     }
 
     /**
-     * Under the transactions manager of Laravel's testing traits, the records
-     * it skips by position are read too: a transaction begun after a failed
-     * commit strands the record it left, and not its own.
+     * Under the testing traits' transactions manager, the failed commit's
+     * record is still stranded.
      *
      * @return void
      *
@@ -266,10 +252,8 @@ final class StrandedTransactionsTest extends TestCase
     }
 
     /**
-     * Under an Octane-style sandbox, a clone of the application made current
-     * with a transactions manager of its own, the listener registered at boot
-     * marks that manager's records, and a dispatcher the sandbox builds shares
-     * the marks: an event a failed commit left there is never dispatched.
+     * Under an Octane-style sandbox, the sandbox manager's records are marked
+     * and shared.
      *
      * @return void
      *
@@ -328,9 +312,7 @@ final class StrandedTransactionsTest extends TestCase
     }
 
     /**
-     * One instance serves the process: the same one is resolved every time, and
-     * it survives the scoped instances being forgotten between requests and
-     * jobs, with its marks.
+     * One instance serves the process and keeps its marks across scoped resets.
      *
      * @return void
      *
@@ -369,10 +351,8 @@ final class StrandedTransactionsTest extends TestCase
     }
 
     /**
-     * Begin an outermost transaction on the default connection with a savepoint
-     * that commits inside it, then end it as Laravel 12 ends one whose commit
-     * failed: the database rolls it back, but the transactions manager is never
-     * told.
+     * Begin a transaction with a committed savepoint, then end it as a failed
+     * commit does.
      *
      * @return array{\Illuminate\Database\DatabaseTransactionRecord, \Illuminate\Database\DatabaseTransactionRecord}
      *
