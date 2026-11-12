@@ -58,8 +58,8 @@ adapter the request is written through is in `saml-adapter.md`.
 - A request is signed only when the connection's `sign_authn_requests` is on, with its current `sp_signing` key
   (`Keys\KeyRing::current()`, then `privateKey()`, a `Secrets\Secret`) and the first algorithm of its
   `signature_algorithms` (RSA-SHA256, RSA-SHA384 or RSA-SHA512).
-- HTTP-Redirect: the signature is over exactly the bytes `SAMLRequest=…&RelayState=…&SigAlg=…` as they appear in the
-  query, and is sent as `Signature`, base64 encoded. The XML is not signed.
+- HTTP-Redirect: the signature is over exactly the bytes `SAMLRequest=...&RelayState=...&SigAlg=...` as they appear in
+  the query, and is sent as `Signature`, base64 encoded. The XML is not signed.
 - HTTP-POST: an enveloped signature placed after `Issuer`, referencing the request's `ID`, with exclusive
   canonicalisation (without comments), the enveloped-signature and exclusive canonicalisation transforms, and the
   digest that belongs to the signature algorithm (SHA-256, SHA-384 or SHA-512). It carries no `KeyInfo`: the identity

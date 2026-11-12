@@ -14,17 +14,20 @@ helper), `keys.md` (trusted certificates), `domains.md` (`DomainWithdrawal`) and
 ### Voiding what is in flight
 
 - `Connections\InFlightVoider` (`@internal`, readonly, not final) is the one place a connection's flows are voided.
-  `voidFor($locked)` runs inside the caller's transaction on the storage connection, with the connection's row already
-  locked; called outside a transaction it is a `LogicException`, so a void never commits apart from its change.
+  `voidFor($locked, $spared = null)` runs inside the caller's transaction on the storage connection, with the
+  connection's row already locked; called outside a transaction it is a `LogicException`, so a void never commits apart
+  from its change.
 - It sets `voided_at` and `updated_at` to the clock's now, in two statements:
   - on the connection's authorisation requests with `completed_at` and `voided_at` both unset, so a request a
-    completion has consumed but not yet finished is voided too;
+    completion has consumed but not yet finished is voided too, but for the one request `$spared` names (an unknown
+    `kid` refetch spares the request whose token asked, `oidc-discovery.md`);
   - on the connection's handoff codes with `redeemed_at` and `voided_at` both unset.
 - A request or code voided before keeps its first `voided_at`; a finished request and a redeemed code are left as they
   are; another connection's rows are never touched.
-- It then calls `reservationsVoided($locked)`, which deletes the connection's open link reservations (state
-  `reserved`, `Links\ReservationWithdrawal`), under the same lock and in the same transaction, as
-  `Domains\DomainWithdrawal::linkingWithdrawn()` does for a domain's withdrawal (SSO-8.8, `linking.md`).
+- It then raises the connection's `trust_version` by one and calls `reservationsVoided($locked)`, which deletes the
+  connection's open link reservations (state `reserved`, `Links\ReservationWithdrawal`), under the same lock and in the
+  same transaction, as `Domains\DomainWithdrawal::linkingWithdrawn()` does for a domain's withdrawal (SSO-8.8,
+  `linking.md`).
 - Every completion and redemption takes the connection's row lock first (`flows.md`), so a void either waits for a
   completion or redemption that holds the lock, and then finds its request finished or its code redeemed, or is waited
   for, and the completion refuses a voided request with `connection_unavailable` and the redemption a voided code with
@@ -98,7 +101,7 @@ code issued before a disable is never redeemed after the enable. A refused or un
   id) for the identity of each link it removes and each relinked link of verified domain provenance, whose new row a
   later revocation by link could not reach the old sessions through, and none for any other link it relinks, whose
   identity keeps signing in through the connection.
-- An exception the revocation throws rolls the whole change back, reports nothing and propagates (decision D5).
+- An exception the revocation throws rolls the whole change back, reports nothing and propagates.
 
 ### Changes to what subjects mean
 

@@ -2,10 +2,9 @@
 
 ## Purpose
 
-This note records how the package is shown to stand alone (FEATURES "No dependency on a sibling"): what each seam's
-default does in an application with no sibling installed, what an application must supply before a flow goes further,
-and how the suite keeps default and adapter acceptance apart, so that a fully faked happy path is never taken for proof
-of independence.
+This note records how the package is shown to stand alone (CTX/a): what each seam's default does in an application with
+no sibling installed, what an application must supply before a flow goes further, and how the suite keeps default and
+adapter acceptance apart, so that a fully faked happy path is never taken for proof of independence.
 
 ## Invariants
 
@@ -28,11 +27,11 @@ of independence.
 - Nothing is shaped to one consumer's applications, tenant tree, identity providers or attribute names: presets hold
   only public providers' documented endpoints, shared issuers are listed by requirement, the tenant tree is the
   application's (`Contracts\EnforcementInheritance`) and custom mapping keys are the application's own
-  (`sso.mapping.custom_attributes`). No test can show a negative like this one, so the recommended default (2026-11-03,
-  [RD-35](requirements.md#recorded-decisions)) is that it is proven by review: before each release, `src/`, `config/`,
-  `lang/` and the presets are read for a name, a default or a branch that only one consumer needs, and any change to the
-  presets, the linking settings or the inheritance seam triggers the same review (the requirement closure matrix's CTX/e
-  and its change triggers).
+  (`sso.mapping.custom_attributes`). No test can show a negative like this one, so it is proven by review
+  ([RD-35](requirements.md#recorded-decisions)): before each release, `src/`, `config/`, `lang/` and the presets are
+  read for a name, a default or a branch that only one consumer needs, and any change to the presets, the linking
+  settings or the inheritance seam triggers the same review (the requirement closure matrix's CTX/e and its change
+  triggers).
 
 What each default does, and what an application supplies to go further:
 
@@ -42,7 +41,9 @@ What each default does, and what an application supplies to go further:
 | `AttemptLimiter`           | `DatabaseAttemptLimiter`        | Limits in the database, with no cache                                                                | Nothing                                                                                |
 | `Fetcher`                  | `GuzzleFetcher`                 | Makes every outbound request, under its checks                                                       | Nothing                                                                                |
 | `DnsResolver`              | `SystemDnsResolver`             | Looks up TXT records; `lookup_failed` when it cannot answer                                          | Nothing                                                                                |
+| `HostResolver`             | `SystemHostResolver`            | Resolves the fetcher's hosts through the system resolver, with no timeout of its own                 | Nothing; its own for a bounded lookup, DNSSEC or DNS over HTTPS                        |
 | `Clock`                    | `SystemClock`                   | Follows Laravel's clock                                                                              | Nothing                                                                                |
+| `SecretEncrypter`          | `LaravelSecretEncrypter`        | Encrypts stored secrets with Laravel's encrypter under `app.key`                                     | Nothing; its own for a key management service                                          |
 | `HandoffIssuer`            | `DatabaseHandoffStore`          | Issues codes the package's redemption redeems                                                        | Nothing; another must store the reservation's binding and write inside the transaction |
 | `Enforcement`              | `DatabaseEnforcement`           | Reads the database; off until a tenant turns it on                                                   | Nothing                                                                                |
 | `EnforcementInheritance`   | `OwnTenantInheritance`          | Applies each tenant's own rule                                                                       | A tenant tree, to inherit one                                                          |

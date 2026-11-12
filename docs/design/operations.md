@@ -5,7 +5,7 @@
 This note records the package's scheduled work (SSO-11.11, SSO-11.12): the clean-up of what it no longer needs, the
 report of keys and certificates nearing expiry, the helper that puts the commands on the application's schedule, and
 what makes each safe on several servers at once. How a domain is rechecked and how metadata is refreshed are in
-`domain-rechecks.md` and `metadata-refresh.md`; this note records the audit of them.
+`domain-rechecks.md` and `metadata-refresh.md`; this note records why they are safe to run on several servers.
 
 ## Invariants
 
@@ -69,13 +69,13 @@ what makes each safe on several servers at once. How a domain is rechecked and h
   propagates (SSO-11.4). A run begun again finds what is left.
 - A run refuses to start inside a transaction on the storage connection or the counters' (a `LogicException`), since it
   would turn every short batch into one long one.
-- A run dispatches no event, being housekeeping and not an administrative change. It logs one line, `sso.prune.finished`,
-  through the sanitising logger: `info` when complete, `warning` when incomplete, `error` when failed, with the outcome,
-  the instant, the duration, the rows each kind deleted, the kinds incomplete, and each failed kind with its exception's
-  class alone. It never logs a message, a binding or an identifier. A logger that throws on that line, a destination
-  that cannot be written say, loses nothing: the run throws `PruneFailedException` all the same, holding the report and
-  any kind's failure, with the logger's exception in `logFailure` (chained when no kind failed), and `sso:prune` prints
-  the counts, each failed kind, and the logger's exception by class, and exits 1.
+- A run dispatches no event, being housekeeping and not an administrative change. It logs one line,
+  `sso.prune.finished`, through the sanitising logger: `info` when complete, `warning` when incomplete, `error` when
+  failed, with the outcome, the instant, the duration, the rows each kind deleted, the kinds incomplete, and each failed
+  kind with its exception's class alone. It never logs a message, a binding or an identifier. A logger that throws on
+  that line, a destination that cannot be written say, loses nothing: the run throws `PruneFailedException` all the
+  same, holding the report and any kind's failure, with the logger's exception in `logFailure` (chained when no kind
+  failed), and `sso:prune` prints the counts, each failed kind, and the logger's exception by class, and exits 1.
 - `model:prune` still works on `Models\SingleUseKey` and `Models\RateLimit`, deleting what a run would (`expires_at` and
   `window_ends_at` at or before the clock's now). It is one chunked statement after another with no work cap and no
   report; `sso:prune` is the entry point that covers everything.
@@ -119,10 +119,10 @@ what makes each safe on several servers at once. How a domain is rechecked and h
 
 ### The audit of the other two commands
 
-- `sso:domains:recheck` and `sso:metadata:refresh`, OIDC included, were audited against overlapping commands, duplicate
-  queued jobs, worker death, expired leases and claims, takeover, administrative changes during a lookup or fetch, and an
-  old worker writing after takeover. Their database coordination holds, and no behaviour changed. Since then, a domain
-  recheck contains a resolver that throws (below).
+- `sso:domains:recheck` and `sso:metadata:refresh`, OIDC included, coordinate through the database, which holds against
+  overlapping commands, duplicate queued jobs, worker death, expired leases and claims, takeover, administrative changes
+  during a lookup or fetch, and an old worker writing after takeover. A domain recheck also contains a resolver that
+  throws (below).
 - Idempotence here is of effects, not of activity. Overlapping metadata commands queue duplicate jobs, since neither has
   claimed anything; the duplicates apply nothing. A later domain recheck moves its successful-check time, as it should.
 
@@ -148,7 +148,7 @@ what makes each safe on several servers at once. How a domain is rechecked and h
   key recorded again.
 - PostgreSQL `REPEATABLE READ` callers whose snapshot predates a pruned reservation fail to serialise on the raised
   `links_version`, rather than reason from what is gone.
-- A resolver bound by the application should answer `lookup_failed` rather than throw, but a throw no longer stops the
+- A resolver bound by the application should answer `lookup_failed` rather than throw, but a throw does not stop the
   recheck run: the claim is left as it was but for its lease, which is released, it is reported as `resolver_threw`,
   never as a failed lookup, the exception is logged by its class alone, and the run goes on to the other claims, as
   `domain-rechecks.md` records. The command still exits non-zero, so monitoring notices. Only what the resolver throws
@@ -156,13 +156,12 @@ what makes each safe on several servers at once. How a domain is rechecked and h
 
 ## Implementation Anchors
 
-- `src/Pruning/Pruner.php`, `src/Pruning/PruneTarget.php`, `src/Pruning/PruneSettings.php`, `src/Pruning/PruningCheck.php`,
-  `src/Pruning/PruneReport.php`, `src/Pruning/PruneFailedException.php`, `src/Pruning/Enums/PruneKind.php`,
-  `src/Pruning/Enums/PruneStatus.php`.
+- `src/Pruning/Pruner.php`, `PruneTarget.php`, `PruneSettings.php`, `PruningCheck.php`, `PruneReport.php`,
+  `PruneFailedException.php`, `Enums/PruneKind.php`, `Enums/PruneStatus.php`.
 - `src/Links/ReservationWithdrawal.php`: `expired()`.
-- `src/Keys/ExpiryReport.php`, `src/Keys/ExpiryNotifier.php`, `src/Keys/ExpiryThresholds.php`, `src/Keys/ExpiryRun.php`,
-  `src/Keys/ExpiringKey.php`, `src/Keys/Enums/ExpiryNotice.php`.
-- `src/Operations/OperationsSchedule.php`, `src/Operations/OperationsSettings.php`, `src/Operations/OperationsCheck.php`.
+- `src/Keys/ExpiryReport.php`, `ExpiryNotifier.php`, `ExpiryThresholds.php`, `ExpiryRun.php`, `ExpiringKey.php`,
+  `Enums/ExpiryNotice.php`.
+- `src/Operations/OperationsSchedule.php`, `OperationsSettings.php`, `OperationsCheck.php`.
 - `src/Console/PruneCommand.php`, `src/Console/ExpiringKeysCommand.php`.
 
 ## Authoritative Tests

@@ -67,9 +67,9 @@ Sheet).
   `application/jwk-set+json, application/json;q=0.9`; the rest `application/json`). On Guzzle 7 the fetcher also sets
   `CURLOPT_PROTOCOLS` and `CURLOPT_REDIR_PROTOCOLS` to `CURLPROTO_HTTPS`, `CURLOPT_FOLLOWLOCATION` false and
   `CURLOPT_NOPROXY` `*`; Guzzle 8 sets the same from the `protocols`, `allow_redirects` and `proxy` options and
-  refuses them in the `curl` option, so there the fetcher leaves them to it.
-  The package requires Guzzle `^7.9` for now, because the SAML library holds it there (`saml-library.md`); the
-  Guzzle 8 handling stays, so moving up is a change of constraint only.
+  refuses them in the `curl` option, so there the fetcher leaves them to it. The package requires Guzzle `^7.9`,
+  because the SAML library holds it there (`saml-library.md`); the Guzzle 8 handling is kept, so moving up is a change
+  of constraint only.
 - The handler is Guzzle's `CurlHandler`, built by the fetcher, never `choose_handler()`, the stream handler or a proxy
   handler, because only cURL can pin the address with `CURLOPT_RESOLVE`. Without `ext-curl` and with no handler
   injected, the constructor throws a `LogicException` rather than fall back. `[fetcher]` reports a missing `ext-curl`
@@ -84,16 +84,15 @@ Sheet).
   before the request is sent (`FetchDeadline::transferTimeouts()`, one read of the clock, `null` under a millisecond),
   so time passing between the checks cannot hand cURL a cap of `0`, which it reads as none. A lookup or hop that leaves
   less than a millisecond at any of these fails the fetch (`timeout`), never sends and is never `fetched`, and a
-  transfer that fails once the deadline has passed fails as `timeout` too. The response may be at most the request's
-  own cap when it carries one (`FetchRequest::$maxBytes`: only a metadata request does, `sso.metadata.max_bytes`, so a
+  transfer that fails once the deadline has passed fails as `timeout` too. The response may be at most the request's own
+  cap when it carries one (`FetchRequest::$maxBytes`: only a metadata request does, `sso.metadata.max_bytes`, so a
   federation aggregate may be far larger than any other response without raising every other request's cap), and
   `max_response_bytes` (1024 to 10485760, default 1048576) otherwise: a declared `Content-Length` over it aborts the
-  transfer
-  from `on_headers`; the body is written into a `Fetching\CappedSink`, which refuses the write that would pass the
-  cap, so cURL aborts the transfer there with a write error on Guzzle 7 and 8 alike; and the body is read back no
-  further than a byte past the cap and measured again. The `progress` callback also aborts once the bytes received
-  pass the cap, on a Guzzle that acts on its answer. Over the cap fails (`too_large`); a body without a declared
-  length is never held past the cap.
+  transfer from `on_headers`; the body is written into a `Fetching\CappedSink`, which refuses the write that would pass
+  the cap, so cURL aborts the transfer there with a write error on Guzzle 7 and 8 alike; and the body is read back no
+  further than a byte past the cap and measured again. The `progress` callback also aborts once the bytes received pass
+  the cap, on a Guzzle that acts on its answer. Over the cap fails (`too_large`); a body without a declared length is
+  never held past the cap.
 - Redirects: a request for a credentialed purpose (`token`, `userinfo`) follows none; a redirect answer is refused
   (`redirect_refused`) and its `Location` is never resolved or asked, so the credential is never sent on. Any other
   request follows a `3xx` with a `Location` at most `max_redirects` times (0 to 10, default 3), the `Location`
@@ -123,9 +122,8 @@ Sheet).
 - Each refusal and failure is logged once, as a warning: `sso.fetch.refused` or `sso.fetch.failed`, with `purpose`,
   `reason` (the code), `cause` (`scheme`, `userinfo`, `malformed`, `ip_form`, `refused_address`, `unresolved`,
   `redirect_refused`, `too_many_redirects`, `too_large`, `timeout` or `transfer`), `host` (the normalised host, when
-  there is one)
-  and `exception_class`. Never the URL's path or query, the form, a credential, a header, the body or the exception's
-  message, which can quote the URL. A success logs nothing.
+  there is one) and `exception_class`. Never the URL's path or query, the form, a credential, a header, the body or the
+  exception's message, which can quote the URL. A success logs nothing.
 - Settings are read on each call through `Fetching\FetcherSettings`, with `Config\IntegerSetting` for the integers. A
   malformed value fails closed with an `InvalidArgumentException` naming its key (`sso.fetcher.refused_ranges.<index>`
   for one range), never its value. `[fetcher]` (`Fetching\FetcherCheck`) applies while the package is in use, reports
@@ -182,12 +180,10 @@ Sheet).
 ## Implementation Anchors
 
 - `src/Contracts/Fetcher.php`.
-- `src/Fetching/FetchRequest.php`, `src/Fetching/FetchCredentials.php`, `src/Fetching/FetchResult.php`,
-  `src/Fetching/Enums/FetchPurpose.php`, `src/Fetching/Enums/CredentialKind.php`, `src/Fetching/Enums/FetchStatus.php`.
-- `src/Fetching/GuzzleFetcher.php`, `src/Fetching/FetchDeadline.php`, `src/Fetching/CappedSink.php`,
-  `src/Fetching/AddressPolicy.php`,
-  `src/Fetching/FetcherSettings.php`, `src/Contracts/HostResolver.php`, `src/Fetching/SystemHostResolver.php`,
-  `src/Fetching/FetcherCheck.php`.
+- `src/Fetching/FetchRequest.php`, `FetchCredentials.php`, `FetchResult.php`, `Enums/FetchPurpose.php`,
+  `Enums/CredentialKind.php`, `Enums/FetchStatus.php`.
+- `src/Fetching/GuzzleFetcher.php`, `FetchDeadline.php`, `CappedSink.php`, `AddressPolicy.php`, `FetcherSettings.php`,
+  `SystemHostResolver.php`, `FetcherCheck.php`; `src/Contracts/HostResolver.php`.
 - `src/Testing/FakeFetcher.php`.
 - `src/SsoServiceProvider.php`: `register()` and `CONFIGURATION_CHECKS['fetcher']`; `src/Support/PackageDefaults.php`:
   the fetcher's scoped default and the host resolver's singleton; `config/sso.php`: `fetcher`.

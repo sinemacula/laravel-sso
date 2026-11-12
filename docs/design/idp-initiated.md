@@ -11,10 +11,10 @@ driver's and the completion's (`saml-responses.md`, `completion.md`); the lock o
 Consuming an unsolicited assertion directly is not supported. Such an assertion is bound to no request and no client,
 so the package cannot tell who posted it:
 
-- **Login CSRF.** An attacker who holds a valid assertion for their own account can make a victim's browser post it,
-  signing the victim into the attacker's account; whatever the victim then enters is the attacker's to read.
-- **An intercepted assertion.** An assertion taken from a log, a proxy, the browser's history or a shared machine can
-  be posted by anyone within its validity window. The replay cache refuses a second use, never the first.
+- Login CSRF: an attacker who holds a valid assertion for their own account can make a victim's browser post it, signing
+  the victim into the attacker's account; whatever the victim then enters is the attacker's to read.
+- An intercepted assertion: one taken from a log, a proxy, the browser's history or a shared machine can be posted by
+  anyone within its validity window. The replay cache refuses a second use, never the first.
 
 Re-initiation keeps what IdP-initiated sign-in is for (a user starting from the identity provider's portal) without
 either risk: the response is only a hint that the user wants to sign in through the connection; the sign-in itself is

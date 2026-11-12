@@ -275,9 +275,9 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    saml2's dependencies allow `guzzlehttp/psr7` 3.x, or with v7, which requires PHP 8.5.
 7. **Composer setup.** The installation guide tells applications to allow the
    `simplesamlphp/composer-xmlprovider-installer` plugin.
-8. **SAML is RSA only on this floor.** The owner decided (2026-11-01) that SAML stays on PHP 8.3 and saml2 v6, whose
-   signatures are RSA alone: RSA with SHA-256, SHA-384 or SHA-512 signs and verifies, RSA-OAEP transports keys, and
-   AES-128-GCM or AES-192-GCM encrypts content. This is a known limit of SSO-6.7. Configuration validation refuses
+8. **SAML is RSA only on this floor.** SAML stays on PHP 8.3 and saml2 v6 ([RD-10](requirements.md#recorded-decisions)),
+   whose signatures are RSA alone: RSA with SHA-256, SHA-384 or SHA-512 signs and verifies, RSA-OAEP transports keys,
+   and AES-128-GCM or AES-192-GCM encrypts content. This is a known limit of SSO-6.7. Configuration validation refuses
    everything else for every SAML key use, each with its own code: a generated `sp_signing` or `sp_encryption` key of
    type `ec` (`key_type`, `not_allowed`); an elliptic curve certificate trusted as `idp_signing` or as a
    `metadata_signing` anchor (`certificate`, `unsupported`); and an ECDSA or RSA-PSS signature algorithm or AES-256-GCM
@@ -296,11 +296,10 @@ the API changes to PHP's new DOM classes, so the adapter has to be rewritten, no
 
 ## Implementation Anchors
 
-- The package's hardened SAML parsing wraps the calls in condition 1, and the re-rooting in condition 3, behind one
-  package-owned adapter, so no other class touches the library.
-- The fixture generator and the 40 fixtures, with their manifest, move into the test suite with the package's fake
-  SAML identity provider. Each fixture's required outcome becomes a test of the package's validator, not of the
-  library.
+- The calls in condition 1 and the re-rooting in condition 3 sit behind one package-owned adapter
+  (`src/Protocols/Saml2/Library/`, `saml-adapter.md`), so no other class touches the library.
+- The 40 fixtures and their manifest are in `tests/Fixtures/Saml/`, beside the package's fake SAML identity provider.
+  Each fixture's required outcome is a test of the package's validator, not of the library.
 
 ## Change Triggers
 

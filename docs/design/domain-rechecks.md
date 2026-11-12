@@ -41,13 +41,11 @@ domain is claimed and first verified, and the predicates it is judged by, are in
   suspension, no failure count, no check time and no `updated_at`, so the row is as it was before the run. Nothing is
   reported, since `DomainRecheckFailed` would read as a failed lookup, which it is not. The entry is `resolver_threw`,
   with `lapsesAt` as the claim stood, and the run goes on to the next claim.
-- The lease is released rather than left to expire, and no further: a throw must not move the check time, so the claim
-  keeps its place in the order, and the next run (or an overlapping one, which selects it again since nothing about it
-  was stamped) checks it there, the least recently confirmed first, with every other claim after it, none skipped. It
-  comes first because it is the least recently confirmed, the claim nearest the linking maximum age, as the order means;
-  contained, its throw costs the others one call and blocks none. A lease held past the next run would have that run
-  skip it, reported as `skipped` rather than `resolver_threw`, hiding the fault from the exit code and delaying the
-  confirmation once the resolver answers again.
+- The lease is released rather than left to expire, and the check time does not move, so the claim keeps its place as
+  the least recently confirmed, and the next run (or an overlapping one, which selects it again since nothing was
+  stamped) checks it first, with every other claim after it. A lease held past the next run would have that run skip it,
+  reported as `skipped` rather than `resolver_threw`, hiding the fault from the exit code and delaying the confirmation
+  once the resolver answers again.
 - Repeated throws never lapse or suspend a domain. Like a failed lookup, they leave its last successful check where it
   was, so linking by the domain stops on its own once that check is older than the linking maximum age, while discovery
   still routes it. A claim already suspended keeps its lapse time, and lapses without a lookup once it has passed, as
@@ -123,8 +121,7 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 - If the grace period ran out during a lookup that finished within its lease, the claim is lapsed whatever the lookup
   answered.
 - A resolver that throws on one claim is contained, and the run checks the rest; the command exits 1 so monitoring
-  notices, and the warning logged names the exception's class. Before, the throw stopped the run, and since the claim
-  came first again once its lease ran out, it blocked every later claim on every run until the resolver was fixed.
+  notices, and the warning logged names the exception's class.
 - A database error, or anything else thrown but by the resolver (the package's own storage, the withdrawal, the
   settings), propagates (SSO-11.4) and stops the run, even when it is raised releasing the lease of a claim the resolver
   threw on; the claims already written stay written and reported. The command exits 1 naming the exception's class,
@@ -138,8 +135,8 @@ domain is claimed and first verified, and the predicates it is judged by, are in
   `src/Domains/Enums/RecheckOutcome.php`, `src/Console/RecheckDomainsCommand.php`.
 - Shared with the domain helpers: `src/Domains/DomainFinder.php`, `DomainStanding.php`, `DomainSettings.php`,
   `DomainWithdrawal.php`, `DnsLookup.php`, `Enums/RecheckFailure.php`; `src/Links/ReservationWithdrawal.php`;
-  `src/Administration/DomainEvents.php`;
-  `src/Events/DomainRecheckFailed.php`, `DomainRestored.php`, `DomainLapsed.php`; `src/Models/Domain.php`.
+  `src/Administration/DomainEvents.php`; `src/Events/DomainRecheckFailed.php`, `DomainRestored.php`, `DomainLapsed.php`;
+  `src/Models/Domain.php`.
 
 ## Authoritative Tests
 

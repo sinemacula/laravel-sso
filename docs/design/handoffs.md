@@ -14,9 +14,9 @@ completion is in `completion.md`.
 ### Issuing
 
 - `Handoffs\DatabaseHandoffStore` is the default `Contracts\HandoffIssuer` (bound scoped). `issue(HandoffGrant)`
-  generates a `HandoffCode` (43 base64url characters, 256 bits) and inserts one row through `Models\HandoffCode` on
-  the storage connection, inside the completion's transaction; it opens none of its own, so a completion rolled back
-  keeps no code (decision D5).
+  generates a `HandoffCode` (43 base64url characters, 256 bits) and inserts one row through `Models\HandoffCode` on the
+  storage connection, inside the completion's transaction; it opens none of its own, so a completion rolled back keeps
+  no code.
 - The completion holds the connection's row lock when it asks, and the store raises the connection's `flows_version` by
   one under it for each code it issues, so the insert also writes the connection's row: a PostgreSQL `REPEATABLE READ`
   change whose snapshot predates the code fails to serialise when it locks the connection, rather than void the
@@ -42,12 +42,12 @@ completion is in `completion.md`.
 
 ### Redeeming
 
-`Handoffs\HandoffRedemption::redeem(Purpose $purpose, string $application, string $connectionId, string $code,
-string $verifier, ClientContext $client, ?Caller $caller = null)` (`@api`, resolved per request), and `admit()` with the
-same arguments inside the caller's transaction, answers a `Handoffs\RedemptionResult`. The caller (`Identities\Caller`)
-is the one the application authenticated, on the session it gave; a `link` compares its identity with the bound one
-and gives it, as given, to freshness and the link confirmation. The steps run in this fixed
-order, and the first that refuses ends the redemption:
+`Handoffs\HandoffRedemption::redeem(Purpose $purpose, string $application, string $connectionId, string $code, string
+$verifier, ClientContext $client, ?Caller $caller = null)` (`@api`, resolved per request), and `admit()` with the same
+arguments inside the caller's transaction, answers a `Handoffs\RedemptionResult`. The caller (`Identities\Caller`) is
+the one the application authenticated, on the session it gave; a `link` compares its identity with the bound one and
+gives it, as given, to freshness and the link confirmation. The steps run in this fixed order, and the first that
+refuses ends the redemption:
 
 1. The attempt is counted with `AttemptSubject::redemption()` against the IP address of the `Http\ClientContext` the
    redemption is given (none for a client with none) (SSO-11.8): a full limit is `rate_limited`, with its wait.
@@ -111,13 +111,13 @@ order, and the first that refuses ends the redemption:
   endpoint is the client's error, consumed and refused as `purpose_mismatch`, never a server error.
 - The lock order is `flows.md`'s: for a code bound to a reservation and a `link` code, the identity's guard, then the
   tenant's enforcement row, then connection rows in id order, then the code's. A change that voids a connection's codes
-  (BL-37) locks the connection first and raises its trust version under that lock, so it waits for a redemption that
-  holds it, or the redemption finds the code voided and the version raised. Voiding the package's own codes is defence
-  in depth: the raised version alone refuses a code of any store, an application's included, which the package never
-  voids. A change that only adds a key or a certificate raises no version and refuses nothing. A change to enforcement
-  locks the rule's row first, so it waits for a redemption that holds it, and its revocation, inside its own
-  transaction, then sees the session the redeemer wrote in its transaction; or the redemption waits for the change and
-  refuses under the new rule. No session written in the redeemer's transaction survives a rule that does not allow it.
+  locks the connection first and raises its trust version under that lock, so it waits for a redemption that holds it,
+  or the redemption finds the code voided and the version raised. Voiding the package's own codes is defence in depth:
+  the raised version alone refuses a code of any store, an application's included, which the package never voids. A
+  change that only adds a key or a certificate raises no version and refuses nothing. A change to enforcement locks the
+  rule's row first, so it waits for a redemption that holds it, and its revocation, inside its own transaction, then
+  sees the session the redeemer wrote in its transaction; or the redemption waits for the change and refuses under the
+  new rule. No session written in the redeemer's transaction survives a rule that does not allow it.
 - On PostgreSQL under `REPEATABLE READ`, a redemption that waited on a change of the rule may get a serialisation
   failure (SQLSTATE `40001`) instead of the new rule. Inside a caller's transaction it propagates, as a server error;
   the package never retries a part of a caller's transaction, and a caller that redeems inside its own transaction
@@ -132,10 +132,12 @@ order, and the first that refuses ends the redemption:
 ### The result
 
 - `Handoffs\RedemptionResult` is `final readonly`: `redeemed(result, linkedIdentity, identity, sessionId,
-  enforcementVersion, sessionNotAfter)`, `refused(reason)` (never `rate_limited`) and `rateLimited(retryAfter)` (at
-  least a second). Its outcome is its `status`, a `Handoffs\Enums\RedemptionStatus` (`redeemed`, `refused` or
-  `rate_limited`), set by the named constructor; `isRedeemed()`, `isRefused()` and `isRateLimited()` say which. A
-  refused one names its `reason`, and a rate limited one `rate_limited` with its `retryAfter`.
+  enforcementVersion, sessionNotAfter, linkId, evidence, admitted, provenance)`, `refused(reason)` (never
+  `rate_limited`) and `rateLimited(retryAfter)` (at least a second). Its outcome is its `status`, a
+  `Handoffs\Enums\RedemptionStatus` (`redeemed`, `refused` or `rate_limited`), set by the named constructor;
+  `isRedeemed()`, `isRefused()` and `isRateLimited()` say which, and `isAdmitted()` whether a redeemed code was redeemed
+  inside the caller's transaction. A refused one names its `reason`, and a rate limited one `rate_limited` with its
+  `retryAfter`.
 - It holds the verified result, which carries personal data: a dump and `json_encode()` show only `status`, `reason`,
   `retry_after`, `purpose`, `connection_id` and `request_reference`, never the subject or an attribute, and it refuses
   to be serialised or unserialised. The result itself stays serialisable (SSO-8.1).
@@ -150,15 +152,16 @@ redemption and for an application that issues and redeems codes of its own. Unde
 package issues, stores and redeems every handoff code (the reconciliation of AUTH-3.10 recorded as SSO-9.2/f), and the
 adapter redeems through `HandoffRedemption` (`docs/guides/integrating-with-laravel-iam.md`):
 
-- `lock(string $tenantId, string $connectionId, string $application): Handoffs\RecheckLock` comes first, before the
-  redeemer locks its own code. Under `DatabaseEnforcement` with the `enforcement` feature on it calls
-  `DatabaseEnforcement::lock()`: the inheritance contract names the enforcing tenant, `Enforcement\EnforcementLock`
-  upserts and locks that tenant's row, and the connection and the rule's connections are locked in one statement in
-  ascending id order. Otherwise (feature off, or another contract bound) it locks the connection alone with
-  `ConnectionFinder::findForUpdate()`, with no enforcement statement and no inheritance call. The `RecheckLock`
-  (`@api`, made only by `lock()`) holds the tenant, connection and application it was taken for, the connection's
-  locked row (`null` when gone or of another tenant) and the locked enforcement; it is good only for the transaction it
-  was taken in.
+- `lock(string $tenantId, string $connectionId, string $application, ?string $reservationId = null, ?IdentityReference
+  $confirming = null): Handoffs\RecheckLock` comes first, before the redeemer locks its own code. Given a reservation or
+  a confirming identity, it takes that identity's guard first (`linking.md`). Under `DatabaseEnforcement` with the
+  `enforcement` feature on it calls `DatabaseEnforcement::lock()`: the inheritance contract names the enforcing tenant,
+  `Enforcement\EnforcementLock` upserts and locks that tenant's row, and the connection and the rule's connections are
+  locked in one statement in ascending id order. Otherwise (feature off, or another contract bound) it locks the
+  connection alone with `ConnectionFinder::findForUpdate()`, with no enforcement statement and no inheritance call. The
+  `RecheckLock` (`@api`, made only by `lock()`) holds the tenant, connection and application it was taken for, the
+  connection's locked row (`null` when gone or of another tenant) and the locked enforcement; it is good only for the
+  transaction it was taken in.
 - `recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?Caller $caller =
   null): Handoffs\Enums\RecheckOutcome` takes the lock (one taken for another tenant, connection or application than the
   result's is a `LogicException`), so the check is never reached without the locks, and answers, in order, the first
@@ -172,17 +175,17 @@ adapter redeems through `HandoffRedemption` (`docs/guides/integrating-with-larav
      otherwise;
   3. the purpose's own rules (`Contracts\PurposeBranch`, `linking.md`), which compare the link as it is now with the one
      observed at completion by its id, so a link removed and made again is told apart.
-- `RecheckOutcome` is `passed`, or a refusal of the same value as its `FailureReason`, and `reason()`
-  answers the `FailureReason` a redemption refused by it reports, `null` for `passed`.
+- `RecheckOutcome` is `passed`, or a refusal of the same value as its `FailureReason`, and `reason()` answers the
+  `FailureReason` a redemption refused by it reports, `null` for `passed`.
 - `acknowledgeSignIn(VerifiedResult $result, RecheckLock $lock)` sets the connection's `has_completed_sign_in`
   (SSO-4.3), through the model, on the row the lock holds, and writes nothing when it is already set. A result of
   another purpose is a `LogicException`, and so is a connection that is gone. The redeemer calls it after the recheck
   passed, for a `sign_in` result linked to an identity; a `link` or `reauthenticate` code, an unlinked handoff and a
   code issued but never redeemed never set the flag.
-- All three run only inside a transaction open on the storage connection; with none, each is a `LogicException`
-  (decision D5). An adapter writes its consumption and its session through the same Laravel connection, inside that
-  transaction, so the locks, the checks, its consumption, the acknowledgement and the session commit or roll back
-  together. The package's link store reads the link with a locking read.
+- Every method runs only inside a transaction open on the storage connection; with none, each is a `LogicException`. An
+  adapter writes its consumption and its session through the same Laravel connection, inside that transaction, so the
+  locks, the checks, its consumption, the acknowledgement and the session commit or roll back together. The package's
+  link store reads the link with a locking read.
 - A bound `Contracts\Enforcement` other than `DatabaseEnforcement` is asked at the recheck, under the connection's lock
   alone. A current read alone does not keep a session from escaping a change: such a contract must itself serialise
   the admission against changes to its rule until the session's transaction commits, and its revocation must find

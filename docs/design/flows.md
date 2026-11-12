@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This note records the parts of the links and flow core (P3) that every flow shares, so links, authorisation requests,
-discovery, completion, handoff codes, completion responses and connection lifecycle changes are built on one model:
-the three tables and their models, the distinct value types that cross a flow, the verified result, the contracts and
-their fail-closed defaults, the completion's fixed steps and the transaction each runs in, the lock order, the failure
-reasons by flow and the events each operation reports. Each part's own behaviour is in its own note (`links.md`,
+This note records the parts of the links and flow core that every flow shares, so links, authorisation requests,
+discovery, completion, handoff codes, completion responses and connection lifecycle changes are built on one model: the
+three tables and their models, the distinct value types that cross a flow, the verified result, the contracts and their
+fail-closed defaults, the completion's fixed steps and the transaction each runs in, the lock order, the failure reasons
+by flow and the events each operation reports. Each part's own behaviour is in its own note (`links.md`,
 `authorization-requests.md`, `discovery.md`, `completion.md`, `handoffs.md`, `completion-responses.md`,
 `connection-lifecycle.md`); applications and endpoints are in `applications.md`.
 
@@ -15,15 +15,14 @@ reasons by flow and the events each operation reports. Each part's own behaviour
 ### Tables and models
 
 - `sso.links.table` (`sso_links`, `Models\Link`): `connection_id`; `issuer` (up to 1024) and `name_id_format` (up to
-  255, SAML only), kept as received; `subject`, byte for byte in a binary column (`Models\Casts\BinaryString`: a
-  stream on PostgreSQL, a string elsewhere); `subject_key`, the lower-case hex SHA-256 of the issuer, the format and the
+  255, SAML only), kept as received; `subject`, byte for byte in a binary column (`Models\Casts\BinaryString`: a stream
+  on PostgreSQL, a string elsewhere); `subject_key`, the lower-case hex SHA-256 of the issuer, the format and the
   subject, each length-prefixed, unique with `connection_id`, the only column a lookup compares, so no collation can
   fold or trim a subject; `identity_type` and `identity_id`; `state` (`Links\Enums\LinkState`: `active`, `reserved`,
   `suspended`) with `suspended_at`; `provenance` (`Links\Enums\LinkOrigin`), from which `domain_provenance` is read; a
   reservation's binding (`linking.md`); `last_used_at`, `created_at`, `updated_at`. The connection, issuer, format,
-  subject and key are fixed once
-  the link exists (`LogicException`). Indexed by (`identity_type`, `identity_id`, `connection_id`) for listing and the
-  link limit.
+  subject and key are fixed once the link exists (`LogicException`). Indexed by (`identity_type`, `identity_id`,
+  `connection_id`) for listing and the link limit.
 - `sso.authorization_requests.table` (`sso_authorization_requests`, `Models\AuthorizationRequest`): `reference`, the
   public reference, unique; `state_digest`, the SHA-256 of the random protocol state, unique, never the state;
   `purpose`, `application`, `connection_id`; `expected_issuer`, `issuer_required`; `nonce_digest`; `code_verifier`, the
@@ -32,8 +31,8 @@ reasons by flow and the events each operation reports. Each part's own behaviour
   version as the start read it, compared at consumption and again under the completion's lock; `identity_type`,
   `identity_id` (`link`, `reauthenticate`) and `session_id` (`reauthenticate`); `expires_at`, and `consumed_at` (a
   completion consumed it), `verified_at` (its response was verified and recorded against replay, at the provisioning
-  boundary), `voided_at` (a change to its connection voided it) and `completed_at` (its completion
-  finished, either way).
+  boundary), `voided_at` (a change to its connection voided it) and `completed_at` (its completion finished, either
+  way).
 - `sso.handoff_codes.table` (`sso_handoff_codes`, `Models\HandoffCode`): `code_digest`, unique, never the code; what the
   code is bound to: `purpose`, `application`, `connection_id`, `request_reference`, `handoff_challenge`, `identity_type`
   and `identity_id` (the flow's identity), `session_id`, `linked_identity_type`, `linked_identity_id` and `link_id`
@@ -51,9 +50,9 @@ reasons by flow and the events each operation reports. Each part's own behaviour
 
 - `Flows\RequestReference`: 32 base64url characters from 24 random bytes, under the 40 the log sanitiser redacts; not a
   secret, the only flow identifier in events and logs, under `request_reference` (SSO-9.8).
-- `Flows\Verifier`: 43 to 128 unreserved characters (RFC 7636 §4.1); a generated one is 43 characters from 32 random
-  bytes, returned once in the start response's body. Held in a `\SensitiveParameterValue` behind `reveal()`, with a
-  redacted dump and JSON form, no `__toString()`, and no (un)serialisation; compared in constant time.
+- `Flows\Verifier`: 43 to 128 unreserved characters (RFC 7636 section 4.1); a generated one is 43 characters from 32
+  random bytes, returned once in the start response's body. Held in a `\SensitiveParameterValue` behind `reveal()`, with
+  a redacted dump and JSON form, no `__toString()`, and no (un)serialisation; compared in constant time.
 - `Flows\S256Challenge`: `BASE64URL(SHA-256(verifier))` without padding, 43 characters; satisfied only by its verifier,
   compared in constant time.
 - `Handoffs\HandoffCode`: 43 base64url characters from 32 random bytes; held like a verifier; stored only as
@@ -120,29 +119,28 @@ binding is kept and nothing outlives a request (SSO-11.2).
 - The steps run in `Completion\Enums\CompletionStep`'s order: `correlation`, `consumption`, `validation`,
   `replay_recording`, `link_resolution`, `enforcement`, `purpose_rules`, `domain_reservation`, `provisioning`,
   `unlinked_decision`, `handoff_issuance`. Each is a `Contracts\CompletionStage` taking and returning a
-  `Completion\CompletionState` through
-  a `Completion\StageOutcome` (`proceed`, `refuse` with a reason, or, from `correlation` alone, `reinitiate` for an
-  unsolicited SAML response, or, from `provisioning` alone, `provision` for the boundary of `linking.md`; the state kept
-  either way).
+  `Completion\CompletionState` through a `Completion\StageOutcome` (`proceed`, `refuse` with a reason, or, from
+  `correlation` alone, `reinitiate` for an unsolicited SAML response, or, from `provisioning` alone, `provision` for the
+  boundary of `linking.md`; the state kept either way).
 - Transactions: a completion, and a start (named or by discovery), run outside any transaction on the storage
   connection; called inside one, each is a `LogicException` at entry, before anything is written, so a caller's rollback
   never undoes a consumption (SSO-5.1) and a caller's transaction never keeps the connection's lock across a call to the
-  driver (SSO-11.5). A redemption, by decision D5, may run inside the redeemer's. `correlation` and `validation` run
-  outside any transaction the pipeline opens (validation may fetch); `consumption` runs in a transaction of its own on
-  the storage connection, which locks the connection's row before the request's, as every transaction here does, so the
-  request is consumed whether the response then passes or fails; every step from `replay_recording` on runs in one
-  transaction on the storage connection that first locks the tenant's enforcement (when it applies, see the lock order),
-  then the connection's row (with the rule's connections) and then the request's row, and refuses if the connection is
-  no longer usable, the request was voided since consumption or its stored trust version is no longer the connection's,
-  or the enforcing tenant moved since its rule was locked. The trust version is stored on every request at start
-  (compared under the connection's lock before the insert), checked at consumption against the locked connection
-  before validation or any provider call, and checked again under the completion's lock. One exception, and only one,
-  crosses a trust version: the sign-in whose own token triggered an unknown-`kid` refetch that removed a key may finish
-  across exactly that transition, on a `Protocols\TransitionReceipt` judged at those locks (`oidc-driver.md`); it never
-  restores a voided request and never adopts a later trust version.
-  A genuinely unlinked `sign_in` stops that transaction at the provisioning boundary and finishes in a final
-  continuation, with the unlinked-result event dispatched between them (`linking.md`). Events are dispatched after their
-  transaction commits (or after the consumption's, for a refusal before it), never on a rollback, except that one.
+  driver (SSO-11.5). A redemption may run inside the redeemer's, so its writes commit with the redeemer's. `correlation`
+  and `validation` run outside any transaction the pipeline opens (validation may fetch); `consumption` runs in a
+  transaction of its own on the storage connection, which locks the connection's row before the request's, as every
+  transaction here does, so the request is consumed whether the response then passes or fails; every step from
+  `replay_recording` on runs in one transaction on the storage connection that first locks the tenant's enforcement
+  (when it applies, see the lock order), then the connection's row (with the rule's connections) and then the request's
+  row, and refuses if the connection is no longer usable, the request was voided since consumption or its stored trust
+  version is no longer the connection's, or the enforcing tenant moved since its rule was locked. The trust version is
+  stored on every request at start (compared under the connection's lock before the insert), checked at consumption
+  against the locked connection before validation or any provider call, and checked again under the completion's lock.
+  One exception, and only one, crosses a trust version: the sign-in whose own token triggered an unknown-`kid` refetch
+  that removed a key may finish across exactly that transition, on a `Protocols\TransitionReceipt` judged at those locks
+  (`oidc-driver.md`); it never restores a voided request and never adopts a later trust version. A genuinely unlinked
+  `sign_in` stops that transaction at the provisioning boundary and finishes in a final continuation, with the
+  unlinked-result event dispatched between them (`linking.md`). Events are dispatched after their transaction commits
+  (or after the consumption's, for a refusal before it), never on a rollback, except that one.
 - `Completion\CompletionResult` is how a completion ended: `completed` (redirect URI, delivery, reference, issued
   handoff), `failed` (reason, redirect URI, delivery, reference), `rejected` (reason, no trusted target: a 400),
   `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL, SSO-5.8). It may hold the code, so
@@ -155,25 +153,24 @@ binding is kept and nothing outlives a request (SSO-11.2).
 ### Lock order
 
 An identity's guard, for what changes its verified domain links; a tenant's enforcement row; connection rows in
-ascending id order; then their rows in the other tables: domains (P2), requests, codes, links; then the application's
-guards.
+ascending id order; then their rows in the other tables: domains, requests, codes, links; then the application's guards.
 
 - The identity's guard (`Linking\IdentityLock`, `sso_identity_guards`) comes first in a principal widening, a
   reservation, the redemption of a code bound to a reservation (its activation), and every `link` redemption, whether it
   confirms a link, creates one or is refused, and whether or not the `domain_linking` feature is on: a `link` is
   confirmed against the identity's verified domain links, held now or before. Nothing else takes it: an ordinary linked
-  sign-in, a `reauthenticate` and a sign-in with no reservation never do. It amends the order this note first set, for
-  the reason `linking.md` records: what is about to be changed is found by plain reads, locked in this order, and judged
-  again under the locks. The application's principal-change transaction calls `Linking\ScopeWidening::widened()` first,
-  then its own guard and its write, so a racing reservation or activation cannot slip past it. See `linking.md` for each
-  flow's discovery and what it does when the candidates changed.
+  sign-in, a `reauthenticate` and a sign-in with no reservation never do. As `linking.md` records, what is about to be
+  changed is found by plain reads, locked in this order, and judged again under the locks. The application's
+  principal-change transaction calls `Linking\ScopeWidening::widened()` first, then its own guard and its write, so a
+  racing reservation or activation cannot slip past it. See `linking.md` for each flow's discovery and what it does when
+  the candidates changed.
 - The enforcement row comes first wherever a rule is changed or an admission is judged against one: the enforcement
-  change (P2), a redemption (`HandoffRecheck::lock()`, before the code), and the locked steps of a completion (at the
-  start of `CompletionPipeline::finish()`, before the request). An admission takes it only under the default
-  `DatabaseEnforcement` with the `enforcement` feature on, and locks the row of the enforcing tenant the inheritance
-  contract names. A tenant with no row has one inserted unconfigured (`Enforcement\EnforcementLock`: an upsert that
-  never changes an existing row, then a locking read), which reads everywhere as no row, so racing first lockers queue
-  on the row rather than deadlock on MySQL's gap locks.
+  change, a redemption (`HandoffRecheck::lock()`, before the code), and the locked steps of a completion
+  (`CompletionLocks::take()`, before the request). An admission takes it only under the default `DatabaseEnforcement`
+  with the `enforcement` feature on, and locks the row of the enforcing tenant the inheritance contract names. A tenant
+  with no row has one inserted unconfigured (`Enforcement\EnforcementLock`: an upsert that never changes an existing
+  row, then a locking read), which reads everywhere as no row, so racing first lockers queue on the row rather than
+  deadlock on MySQL's gap locks.
 - The connections come next in one locking statement ordered by id: the admission's own connection with every
   connection the rule names (the union), so a disable of a satisfying connection is ordered too.
 - Anything learnt before the locks to choose them (the code's connection and application, the connection's tenant,
@@ -216,20 +213,19 @@ fallback's navigation (`Protocols\Navigation::toApplication()`), a reference and
   `challenge_invalid`, `freshness_required` (`link`), `session_ineligible` (`reauthenticate`), `discovery_no_match`,
   `rate_limited`.
 - Assertion and callback (`Flow::ASSERTION`, `Flow::CALLBACK`): `connection_unavailable`, `connection_mismatch`,
-  `request_unknown`, `request_expired`, every validation reason of P4 and P5, `enforcement_unsatisfied`,
+  `request_unknown`, `request_expired`, every validation reason of the SAML and OIDC drivers, `enforcement_unsatisfied`,
   `link_suspended` (a `sign_in` or a `reauthenticate`), `principal_scope_unknown` (a `sign_in`, a `link` or a
-  `reauthenticate`), `link_reserved` (a `sign_in` or a `link`),
-  `link_ineligible` and `subject_already_linked` (`link`), `identity_mismatch` and `authentication_expired`
-  (`reauthenticate`), `unlinked`, `application_not_allowed`, `rate_limited`.
+  `reauthenticate`), `link_reserved` (a `sign_in` or a `link`), `link_ineligible` and `subject_already_linked` (`link`),
+  `identity_mismatch` and `authentication_expired` (`reauthenticate`), `unlinked`, `application_not_allowed`,
+  `rate_limited`.
 - Redemption (`Flow::REDEMPTION`): `handoff_unknown`, `handoff_expired`, `replayed`, `purpose_mismatch`,
   `application_mismatch`, `connection_mismatch`, `verifier_mismatch`, `connection_unavailable`,
   `enforcement_unsatisfied`, `link_changed`, `link_suspended`, `principal_scope_unknown`, `link_reserved`,
-  `reservation_invalid`,
-  `identity_mismatch`, `freshness_required`, `link_ineligible`, `independent_authentication_required`,
-  `subject_already_linked`, `link_limit_reached`,
-  `session_ineligible`, `authentication_expired`, `application_not_allowed`, `rate_limited`.
+  `reservation_invalid`, `identity_mismatch`, `freshness_required`, `link_ineligible`,
+  `independent_authentication_required`, `subject_already_linked`, `link_limit_reached`, `session_ineligible`,
+  `authentication_expired`, `application_not_allowed`, `rate_limited`.
 - Administration (a helper's result, no event): `link_not_found`, `link_limit_reached`, `subject_already_linked`,
-  `connection_has_links`, `links_unaccounted`, with P1's `freshness_required` and `connection_not_found`.
+  `connection_has_links`, `links_unaccounted`, with `freshness_required` and `connection_not_found`.
 
 ### Events
 
@@ -275,7 +271,7 @@ and its provisioning grant (`linking.md`).
   `src/Results/`, `src/Links/`, `src/Completion/`.
 - `src/Contracts/` (the contracts above), `src/Protocols/Correlation.php`, `src/Protocols/ConsumedRequest.php`,
   `src/Protocols/Completion.php`, `src/Protocols/Start.php`.
-- `src/Events/Enums/FailureReason.php`, the six events, `src/SsoServiceProvider.php`.
+- `src/Events/Enums/FailureReason.php`, the events above, `src/SsoServiceProvider.php`.
 
 ## Authoritative Tests
 

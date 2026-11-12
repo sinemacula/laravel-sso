@@ -85,9 +85,9 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   4. a count at or above the limit is `link_limit_reached`;
   5. the link is inserted through the model, `active`, with its `provenance` the origin given, which is
      `verified_domain` only for `LinkOrigin::VERIFIED_DOMAIN`, in a savepoint of its own; the unique index on
-     (`connection_id`, `subject_key`)
-     refusing it (`UniqueConstraintViolationException`) is `subject_already_linked`, for this identity or another, and
-     the savepoint keeps the caller's transaction usable (PostgreSQL aborts a transaction on a failed statement);
+     (`connection_id`, `subject_key`) refusing it (`UniqueConstraintViolationException`) is `subject_already_linked`,
+     for this identity or another, and the savepoint keeps the caller's transaction usable (PostgreSQL aborts a
+     transaction on a failed statement);
   6. the connection's `links_version` is raised by one, so the insert also writes the connection's row: a PostgreSQL
      `REPEATABLE READ` transaction whose snapshot predates the creation (a subject migration that waited on the lock,
      say) fails to serialise when it locks the row, rather than go on without the new link, which neither its locking
@@ -106,9 +106,9 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
 - `Links\LinkService` (`@api`, resolved per request) takes an identity as an `IdentityReference` or the string `me`,
   which names the caller passed; `me` without a caller, or any other string, is an `InvalidArgumentException`.
   - `list($identity, $caller)`, the identity a reference or `me` for the identity of the `Identities\Caller` given,
-    answers the identity's `LinkSummary`s in every connection of every tenant (SSO-1.5),
-    read on the write connection, the identity compared byte for byte, ordered by `created_at` then `id`; a link whose
-    connection no longer exists is left out.
+    answers the identity's `LinkSummary`s in every connection of every tenant (SSO-1.5), read on the write connection,
+    the identity compared byte for byte, ordered by `created_at` then `id`; a link whose connection no longer exists is
+    left out.
   - `remove($identity, $linkId, $client, $caller)`, in this order, a refusal deleting, revoking and reporting nothing;
     the one caller resolves `me`, is the one freshness judges and is the acting identity `LinkRemoved` names, whether
     it removes its own link or another identity's:
@@ -124,8 +124,7 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
        is reported after commit.
 
     Removing the identity's last link is allowed. A revocation that throws rolls the delete back, reports nothing and
-    propagates; an adapter that writes through the same Laravel connection commits or rolls back with the removal
-    (decision D5).
+    propagates; an adapter that writes through the same Laravel connection commits or rolls back with the removal.
 - `Links\LinkResult` answers `removed` with the `LinkSummary` as it was, or `refused` with `link_not_found` or
   `freshness_required` (any other reason is an `InvalidArgumentException`); `isRemoved()`, `isRefused()`.
 - `Links\LinkSummary` holds the id, connection id, tenant id, protocol, issuer, `NameID` format, state, verified domain
@@ -176,11 +175,11 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
 
 ## Implementation Anchors
 
-- `src/Links/LinkSubject.php`, `LinkStore.php`, `LinkCreation.php`, `Enums/LinkCreationStatus.php`,
-  `LinkService.php`, `LinkResult.php`, `LinkSummary.php`, `LinkEvents.php`, `LinkResolution.php`,
-  `LinkReservations.php`, `ReservationTerms.php`, `ReservationWithdrawal.php`, `ReservedCandidate.php`, `LinkHoldings.php`,
-  `LinkStorageBinding.php`; `NoLinks.php`,
-  `OneLinkPerConnection.php`, `Enums/LinkState.php`, `Enums/LinkOrigin.php`, `Enums/LinkResolutionStatus.php`.
+- `src/Links/LinkSubject.php`, `LinkStore.php`, `LinkCreation.php`, `Enums/LinkCreationStatus.php`, `LinkService.php`,
+  `LinkResult.php`, `LinkSummary.php`, `LinkEvents.php`, `LinkResolution.php`, `LinkReservations.php`,
+  `ReservationTerms.php`, `ReservationWithdrawal.php`, `ReservedCandidate.php`, `LinkHoldings.php`,
+  `LinkStorageBinding.php`; `NoLinks.php`, `OneLinkPerConnection.php`, `Enums/LinkState.php`, `Enums/LinkOrigin.php`,
+  `Enums/LinkResolutionStatus.php`.
 - `src/Linking/ScopeWidening.php`, `IdentityLock.php`, `src/Connections/LinkingPolicyService.php`.
 - `src/Contracts/Linker.php`, `LinkStorage.php`, `LinkLimit.php`, `PrincipalScope.php`, `SessionRevocation.php`;
   `src/Revocation/RevocationScope.php`.

@@ -3,10 +3,10 @@
 ## Purpose
 
 This note records how the package knows the applications people sign into and the URLs it publishes for each
-connection (SSO-5.5, SSO-5.1 (allowed), decision D7): the application registry, the one exact redirect URI of each
-application and the contract that answers it, the contract that says whether an application allows sign-in through an
-external provider, and the contract that builds a connection's assertion consumer service, OIDC callback, service
-provider entity id and metadata URL. None of them reads anything from the request.
+connection (SSO-5.5, SSO-5.1): the application registry, the one exact redirect URI of each application and the
+contract that answers it, the contract that says whether an application allows sign-in through an external provider,
+and the contract that builds a connection's assertion consumer service, OIDC callback, service provider entity id and
+metadata URL. None of them reads anything from the request.
 
 ## Invariants
 
@@ -21,23 +21,23 @@ provider entity id and metadata URL. None of them reads anything from the reques
   malformed), and checked whenever it is given; `unlinkedHandoffs` (off unless set); and `handoffTtlSeconds`, 1 to 300,
   60 by default. Any other setting is refused, naming the key and never the value.
 - A redirect URI and a fallback URL are `Config\UrlSetting::redirect()` values: `https`, `http` on `127.0.0.1` or
-  `[::1]`, or a private-use scheme with a dot that a native application registers (RFC 8252 §7.1), with no user
+  `[::1]`, or a private-use scheme with a dot that a native application registers (RFC 8252 section 7.1), with no user
   information, fragment, wildcard, whitespace or control character, at most 2048 bytes. They are used exactly as
-  configured: the package appends the code or the failure code and the public reference (in the fragment or the query
-  as the application's `delivery` says) and never a path, and it carries no return URL; the application keeps its own,
-  keyed by its verifier (SSO-5.5, RFC 9700 §2.1).
+  configured: the package appends the code or the failure code and the public reference (in the fragment or the query as
+  the application's `delivery` says) and never a path, and it carries no return URL; the application keeps its own,
+  keyed by its verifier (SSO-5.5, RFC 9700 section 2.1).
 - `Applications\ApplicationRegistry` reads `sso.applications` on each call and finds an application only under exactly
   its name: an unknown name, a name of another form and a dotted path (`web.redirect_uri`) are all `null`, never another
   application or a setting. A registered application whose settings are malformed fails closed with the
   `InvalidArgumentException` of `fromSettings()`.
 - `Contracts\ApplicationPolicy::externalSignIn(Application)` answers `Applications\Enums\ExternalSignIn` (`allowed`,
   `not_allowed`). The default, `Applications\ConfiguredApplicationPolicy`, answers the `external_sign_in` setting; under
-  `laravel-iam` it is bound to AUTH-3.7's per-application method list. It is asked before a start (BL-32) and again
-  before a handoff is issued (BL-34); anything but `allowed` is `application_not_allowed`.
+  `laravel-iam` it is bound to AUTH-3.7's per-application method list. It is asked before a start and again before a
+  handoff is issued; anything but `allowed` is `application_not_allowed`.
 - `Contracts\RedirectUriResolver::redirectUri(Application, SsoConnection)` answers the exact URI for the application,
   through the connection the authorisation request names, read from storage. The default,
   `Applications\ConfiguredRedirectUriResolver`, answers the configured `redirect_uri` whatever the connection; an
-  application binds its own to answer a per-client address without a schema change (D7).
+  application binds its own to answer a per-client address without a schema change.
 - `Applications\ApplicationGate` is the one way a flow reaches an application. `admit($name)` answers an
   `Applications\ApplicationAdmission`: `admitted` with the application, or `refused` with `application_not_allowed`
   whether the name is unknown or the policy does not allow it, so a refusal says nothing of which; the policy is never
@@ -56,9 +56,9 @@ provider entity id and metadata URL. None of them reads anything from the reques
   holding `{connection}` once, no other brace, no dot segment, nothing after it, and distinct from the others) on each
   call, the one way the resolver and the boot check (`Config\Checks\EndpointsCheck`) both read them. A connection with
   no id is refused. Nothing is built from the request's host, `X-Forwarded-*` headers or scheme.
-- A completion is accepted only at the endpoint resolved for the connection its authorisation request names (BL-34),
-  SAML `Destination` and `Recipient` are compared with `assertionConsumerService` exactly (P4), and the OIDC callback is
-  sent as `redirect_uri` exactly (P5).
+- A completion is accepted only at the endpoint resolved for the connection its authorisation request names, SAML
+  `Destination` and `Recipient` are compared with `assertionConsumerService` exactly, and the OIDC callback is sent as
+  `redirect_uri` exactly.
 - Every binding is a default, a singleton (the policy and the redirect resolver hold nothing) or scoped (the endpoint
   resolver reads configuration), so an application's or a sibling's earlier binding is kept, and nothing
   of one request outlives it (SSO-11.2).

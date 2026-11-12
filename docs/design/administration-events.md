@@ -7,7 +7,8 @@ what it never carries (SSO-10.4), who dispatches each and when, after the change
 (SSO-10.5), and the nearing-expiry report, which reports a certificate's end of validity and never enforces it (SSO-2.6,
 SSO-11.12). Audit trails attach to these events to record who changed an identity provider's trust, so their shape and
 their timing are a contract. The domain and enforcement events follow the same rules and are listed under "Domain and
-enforcement events" below; the metadata and link events arrive with their parts of the package.
+enforcement events" below; the metadata, JWKS and link events are in `metadata-refresh.md`, `oidc-discovery.md` and
+`linking.md`.
 
 ## Invariants
 
@@ -24,13 +25,14 @@ enforcement events" below; the metadata and link events arrive with their parts 
   | `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter` | A key pair generated, or a certificate trusted   |
   | `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`     | A key of the service provider's own made current |
   | `KeyRetired`         | `keyId`, `use`, `fingerprint`                      | A key retired, or a certificate distrusted       |
-  | `KeyNearingExpiry`   | `keyId`, `use`, `fingerprint`, `notAfter`          | A validity ending within the warning, or ended   |
+  | `KeyNearingExpiry`   | those of `KeyRetired`, `notAfter`, `thresholdDays` | A validity ending within the warning, or ended   |
 
   `changedSettings` is a `list<string>` of names, each once. `keyId` is the row's ULID; `use` a `Keys\Enums\KeyUse`;
   `state` a `Keys\Enums\KeyState` (`current` or `next` for a key added, `null` for a trusted certificate); `fingerprint`
   the lower-case hex SHA-256 of the certificate's DER, the public identifier an administrator compares; `notAfter` a
   `CarbonImmutable` in UTC, `null` on `KeyAdded` for a row with no certificate; `previousKeyId` the key replaced, now
-  `retiring`, or `null` when there was none.
+  `retiring`, or `null` when there was none; `thresholdDays` the most urgent threshold reached, 0 once the validity has
+  ended.
 - Every event is built by `Administration\AdministrationEvents`, one method per event, and its context through the one
   projection, `Events\EventContexts::make()` (see `event-model.md`), from four facts only: the connection's id, its
   tenant (`connectionTenantId`), its protocol (`saml2`, `oidc` or a registered driver's name), and the acting identity:
@@ -60,6 +62,9 @@ enforcement events" below; the metadata and link events arrive with their parts 
   | `KeyRetired`         | `KeyService::retire()`, `KeyService::distrustCertificate()`  | Once the row is deleted, reported as it was read before                 |
   | `KeyNearingExpiry`   | `Keys\ExpiryNotifier::notify()`                              | For each warning sent, with no acting identity                          |
 
+  `ConnectionUpdated` is also reported by `LinkingPolicyService`, `EvidenceSettingsService`, `ImportSaver`,
+  `MetadataApplier` and `OidcMetadataSource` when they change a connection.
+
 - `ConnectionUpdated` names what changed in one order: the settings as the protocol's setting enum lists them
   (`Saml2Setting`, `OidcSetting`; a registered driver's in the order its settings hold them), then the secrets, then
   `display_name`, then `attribute_mapping`. A secret is named (`client_secret`) when it was set, replaced or cleared,
@@ -81,8 +86,9 @@ enforcement events" below; the metadata and link events arrive with their parts 
   and each name once.
 - No secret. The events hold ids, enum cases, a fingerprint, times and names. None holds a secret, a ciphertext, a
   private key, a PEM, a setting's value or the settings: no property is named `secret`, `private_key`, `value` or
-  `settings`, and `ConnectionUpdated` holds names only. Every field is a string, an enum, a `CarbonImmutable` or a list
-  of strings, so an event crosses a queue as it is and a queued listener receives what a synchronous one does.
+  `settings`, and `ConnectionUpdated` holds names only. Every field is a string, an integer, an enum, a
+  `CarbonImmutable` or a list of strings, so an event crosses a queue as it is and a queued listener receives what a
+  synchronous one does.
 - Every change asks the freshness contract before it writes (SSO-2.12, see `freshness.md`), so a stale caller is refused
   before anything could be reported:
 

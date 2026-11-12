@@ -36,18 +36,16 @@ are a contract.
   identity in several tenants may switch. `connectionTenantId` (`connection_tenant_id`) is the tenant that owns the
   connection, or, for an enforcement event, the tenant whose rule it is; both are opaque string ids. They differ when a
   session acts in a child tenant under a parent's enforcement, and an event about a connection alone names only the
-  connection's tenant. The owner decided these names (2026-11-03), so that a sink mapping the suite's `tenant_id`
-  reads the same fact from every package. A part the flow did not establish, or that does not apply to the event, is
-  `null`. `toArray()` is the record an audit sink keeps: snake_case keys, and `occurred_at` as an ISO 8601 UTC string to
-  the microsecond.
+  connection's tenant. A sink mapping the suite's `tenant_id` reads the same fact from every package. A part the flow
+  did not establish, or that does not apply to the event, is `null`. `toArray()` is the record an audit sink keeps:
+  snake_case keys, and `occurred_at` as an ISO 8601 UTC string to the microsecond.
 - One projection builds every context: `Events\EventContexts::make()`. Nothing else in the package calls
   `new EventContext`. Its parameter list is the admission control: the action's `Http\ClientContext`, required, then
   fifteen named fields, each `?string` defaulting to `null`, and nothing else. No array and no other object is admitted,
   so a verified result, a request, a raw payload or a set of mapped attributes can never reach an event whole, and a
   field the context does not name cannot reach one. A secret, an assertion, a provider token, a verifier, a handoff
   code, protocol state (`state`, `RelayState`, a nonce, the PKCE verifier) and a transport header have no parameter to
-  arrive through (SSO-10.4). Later parts of the package add typed convenience methods to the projection (from a verified
-  result, from an authorisation request) that pick the fields they may and pass them to `make()`.
+  arrive through (SSO-10.4).
 - The public reference (`requestReference`) is the only flow identifier an event carries (SSO-9.8). The authorisation
   request's internal id, its `state` and `RelayState`, the SAML request and assertion ids, and the handoff code are
   never passed to the projection.
@@ -133,17 +131,17 @@ are a contract.
   value. The nearing-expiry event reports a certificate's end of validity and never enforces it, with no acting
   identity. `administration-events.md` records the rest:
 
-  | Event                | Fields beyond the context                                  | Dispatched by                                                  |
-  |----------------------|------------------------------------------------------------|----------------------------------------------------------------|
-  | `ConnectionCreated`  | none                                                       | `ConnectionService::create()`                                  |
-  | `ConnectionUpdated`  | `changedSettings`, names only                              | `ConnectionService::update()`, `SubjectMigration::migrate()`   |
-  | `ConnectionEnabled`  | none                                                       | `ConnectionService::enable()`, when it was disabled            |
-  | `ConnectionDisabled` | none                                                       | `ConnectionLifecycle::disable()`, when it was enabled          |
-  | `ConnectionDeleted`  | none                                                       | `ConnectionLifecycle::delete()`                                |
-  | `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter`         | `KeyService::addNext()`, `trustCertificate()`                  |
-  | `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`             | `KeyService::addNext()` for a use's first key, `makeCurrent()` |
-  | `KeyRetired`         | `keyId`, `use`, `fingerprint`                              | `KeyService::retire()`, `distrustCertificate()`                |
-  | `KeyNearingExpiry`   | `keyId`, `use`, `fingerprint`, `notAfter`, `thresholdDays` | `Keys\ExpiryNotifier::notify()`                                |
+  | Event                | Fields beyond the context                                  | Dispatched by                                                                                                                                                               |
+  |----------------------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+  | `ConnectionCreated`  | none                                                       | `ConnectionService::create()`                                                                                                                                               |
+  | `ConnectionUpdated`  | `changedSettings`, names only                              | `ConnectionService::update()`, `SubjectMigration::migrate()`, `LinkingPolicyService::change()`, `EvidenceSettingsService::set()`, `ImportSaver::save()`, a metadata refresh |
+  | `ConnectionEnabled`  | none                                                       | `ConnectionService::enable()`, when it was disabled                                                                                                                         |
+  | `ConnectionDisabled` | none                                                       | `ConnectionLifecycle::disable()`, when it was enabled                                                                                                                       |
+  | `ConnectionDeleted`  | none                                                       | `ConnectionLifecycle::delete()`                                                                                                                                             |
+  | `KeyAdded`           | `keyId`, `use`, `state`, `fingerprint`, `notAfter`         | `KeyService::addNext()`, `trustCertificate()`                                                                                                                               |
+  | `KeyMadeCurrent`     | `keyId`, `use`, `fingerprint`, `previousKeyId`             | `KeyService::addNext()` for a use's first key, `makeCurrent()`                                                                                                              |
+  | `KeyRetired`         | `keyId`, `use`, `fingerprint`                              | `KeyService::retire()`, `distrustCertificate()`                                                                                                                             |
+  | `KeyNearingExpiry`   | `keyId`, `use`, `fingerprint`, `notAfter`, `thresholdDays` | `Keys\ExpiryNotifier::notify()`                                                                                                                                             |
 
 ## Success Path
 
@@ -204,11 +202,10 @@ are a contract.
   `testItIsAPackageEventReturningItsContext`, `testItSurvivesASerializeRoundTrip`,
   `testItHoldsNothingBeyondItsContextFlowAndReason`.
 - `tests/Unit/Events/Enums/FlowTest.php`, `tests/Unit/Events/Enums/FailureReasonTest.php`.
-- `tests/Feature/Events/EventContextsTest.php`
-  `testTheTimeComesFromTheBoundClock`, `testTheClientComesFromTheRequestCleanedAndCapped`,
-  `testTheConsoleGivesTheRequestsOwnAddress`, `testNoRequestBoundGivesNoClient`,
-  `testEveryNamedFieldReachesTheContext`, `testEachFieldIsCleanedAndCapped`, `testTheRequestIsResolvedOnEachCall`,
-  `testTheProjectionAdmitsTheContextsStringFieldsOnly`.
+- `tests/Feature/Events/EventContextsTest.php` `testTheTimeComesFromTheBoundClock`,
+  `testTheClientComesFromItsContextCleaned`, `testNoClientGivesNoClient`, `testTheRequestBeingServedIsNeverRead`,
+  `testEveryNamedFieldReachesTheContext`, `testEachFieldIsCleanedAndCapped`, `testEachCallTakesItsOwnClient`,
+  `testTheProjectionAdmitsTheClientAndStringFields`.
 - `tests/Feature/Events/AfterCommitDispatcherTest.php`
   `testDispatchesAtOnceOutsideATransaction`, `testWaitsForTheStorageConnectionsTransactionToCommit`,
   `testNeverDispatchesAfterARollback`, `testARolledBackSavepointDropsOnlyItsEvents`,

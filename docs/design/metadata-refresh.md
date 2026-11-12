@@ -152,15 +152,15 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   logger, never the URL, the response or the metadata.
 - A SAML connection holds a stale deadline only while it follows its metadata URL: a valid `metadata_url` and either a
   `metadata_refresh` of `true` or a metadata signing anchor (`SamlRefreshRule::holdsDeadline()`). `false` on an anchored
-  connection keeps the deadline of what a validated fetch applied, as the next invariant says. Any other connection, not
-  opted in, behaves like one whose certificates were entered by hand: nothing changes by itself and nothing expires,
-  whatever was stamped earlier, so removing the last anchor or the URL, or opting out with no anchor, never leaves a
-  connection expiring with nothing to recover it. The trade-off is plain: not opted in, an administrator installs a new
-  certificate before the provider switches to it; opted in, trust is delegated to the URL and its TLS, which suits a
-  provider whose metadata has no independent anchor. `Connections\ImportSaver::save()` judges the connection as its
-  change leaves it, and on one that holds no deadline stamps nothing and clears a stamp left from before; an
-  administrator's `refreshNow()` of one still writes what it fetched, and the deadline rule leaves it none. Whatever
-  brings a connection to hold a deadline (an update of `metadata_url` or `metadata_refresh`,
+  connection keeps the deadline of what a validated fetch applied, as the expiry invariant below says. Any other
+  connection, not opted in, behaves like one whose certificates were entered by hand: nothing changes by itself and
+  nothing expires, whatever was stamped earlier, so removing the last anchor or the URL, or opting out with no anchor,
+  never leaves a connection expiring with nothing to recover it. The trade-off is plain: not opted in, an administrator
+  installs a new certificate before the provider switches to it; opted in, trust is delegated to the URL and its TLS,
+  which suits a provider whose metadata has no independent anchor. `Connections\ImportSaver::save()` judges the
+  connection as its change leaves it, and on one that holds no deadline stamps nothing and clears a stamp left from
+  before; an administrator's `refreshNow()` of one still writes what it fetched, and the deadline rule leaves it none.
+  Whatever brings a connection to hold a deadline (an update of `metadata_url` or `metadata_refresh`,
   `SamlRefreshRule::resetForSettings()`, or its first anchor, `resetForAnchor()`) clears `metadata_fetched_at`,
   `metadata_valid_until` and `metadata_refresh_at` under the same lock, so a stamp from while it held none, however old,
   never expires it the moment it opts in, and its first refresh is due at once. A change that stays within, or leaves,

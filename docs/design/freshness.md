@@ -142,9 +142,8 @@ each, the default that refuses, and the gate every listed mutation calls before 
   `testAContractBoundAfterwardsReplacesTheDefault`.
 - `tests/Integration/Freshness/DefaultFreshnessRefusesTest.php` `testTheDefaultRefusesEveryOperation`,
   `testAFreshContractLetsEveryOperationThrough`, `testEachRequestAsksTheContractBoundWhenItIsServed`.
-- `tests/Unit/SsoServiceProviderTest.php` `testEachDefaultIsSharedAsItsStateAllows`.
-- Each management helper's own test that a stale caller is refused, writing and reporting nothing (the convention every
-  item that adds a listed mutation follows).
+- `tests/Unit/SsoServiceProviderTest.php` `testEachDefaultIsSharedUnderItsKeyAndNeverByTheContract`.
+- Each management helper's own test that a stale caller is refused, writing and reporting nothing.
 
 ## Change Triggers
 
