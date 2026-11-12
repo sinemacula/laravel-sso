@@ -21,20 +21,11 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Races link creations across processes, each with its own database connection,
- * on PostgreSQL and MySQL (SSO-8.4). Each creation locks the connection's row,
- * then counts the identity's links by a locking read, so creations in one
- * connection are serialised: two creations of one subject for different
- * identities make exactly one link, the other refused as
- * `subject_already_linked`; two subjects for one identity at a limit of one
- * make exactly one link, the other refused as `link_limit_reached`.
+ * Integration tests racing link creations across processes.
  *
- * Each race runs twice: plainly, and with every process inside a transaction of
- * its own that read the links table before the race began, so a read that
- * answered from that snapshot (MySQL's `REPEATABLE READ`) would fail it.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Each race also runs inside transactions that read the table first, to catch
+ * answers from a `REPEATABLE READ` snapshot. Skipped on SQLite and without
+ * `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -56,9 +47,8 @@ final class ConcurrentLinkCreationTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock,
-     * create the tables and a connection, and make the directory the processes
-     * report in.
+     * Skip where processes cannot share the database, then create a connection
+     * and the outcome directory.
      *
      * @return void
      *
@@ -104,8 +94,7 @@ final class ConcurrentLinkCreationTest extends TestCase
     }
 
     /**
-     * Rows of `[inTransaction]`: each race plainly, and with every process
-     * inside a transaction of its own.
+     * Rows of `[inTransaction]`.
      *
      * @return iterable<string, array{bool}>
      */
@@ -116,8 +105,8 @@ final class ConcurrentLinkCreationTest extends TestCase
     }
 
     /**
-     * Two creations of one subject for different identities make exactly one
-     * link; the other is `subject_already_linked`.
+     * Racing links of one subject make one link; the other is
+     * `subject_already_linked`.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -140,8 +129,8 @@ final class ConcurrentLinkCreationTest extends TestCase
     }
 
     /**
-     * Two subjects for one identity at the default limit of one make exactly
-     * one link; the other is `link_limit_reached`.
+     * Racing subjects at a limit of one make one link; the other is
+     * `link_limit_reached`.
      *
      * @param  bool  $inTransaction
      * @return void
@@ -159,8 +148,7 @@ final class ConcurrentLinkCreationTest extends TestCase
     }
 
     /**
-     * Fork a process per subject and identity, have each create its link at the
-     * same moment on a connection of its own, and collect what each reported.
+     * Fork a process per subject and identity and collect what each reported.
      *
      * @param  list<array{0: string, 1: string}>  $creations
      * @param  bool  $inTransaction
@@ -177,13 +165,9 @@ final class ConcurrentLinkCreationTest extends TestCase
     }
 
     /**
-     * In a forked process: build the store, open a transaction that reads the
-     * links table first when asked, wait for the start, create the link,
-     * commit, and report the outcome and the identity.
+     * In a forked process: wait for the start, create the link and report it.
      *
-     * A process that reaches the start late, on a loaded machine, creates at
-     * once rather than failing: the race is then less close, but every
-     * assertion still holds.
+     * A late process creates at once; the race is less close but still holds.
      *
      * @param  float  $start
      * @param  string  $subject
@@ -220,8 +204,7 @@ final class ConcurrentLinkCreationTest extends TestCase
     }
 
     /**
-     * Fork a process per body, have each run its body on a connection of its
-     * own, and collect what each reported, in order.
+     * Fork a process per body and collect what each reported, in order.
      *
      * @param  list<\Closure(): array<string, mixed>>  $bodies
      * @return list<array<string, mixed>>
@@ -260,9 +243,8 @@ final class ConcurrentLinkCreationTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, run the body, report
-     * what it answered, or the error it threw, and end without running the
-     * parent's shutdown.
+     * In a forked process: run the body on a new connection, report its answer
+     * or error, and exit without the parent's shutdown.
      *
      * @param  int  $process
      * @param  \Closure(): array<string, mixed>  $body

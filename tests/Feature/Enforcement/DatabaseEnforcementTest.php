@@ -29,11 +29,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Feature tests for the default enforcement contract (SSO-4.1, SSO-4.2,
- * SSO-4.6): nothing is required, with nothing read, while the feature is off;
- * otherwise the enforcing tenant's stored rule is read on the write connection
- * on every call, and only its enabled connections, of that tenant byte for
- * byte, satisfy it, with the rule's version.
+ * Feature tests for the default enforcement contract.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -53,8 +49,7 @@ final class DatabaseEnforcementTest extends TestCase
     private const string APPLICATION = 'web';
 
     /**
-     * Bind a fixed clock and a fresh caller, create the tables and switch the
-     * feature on.
+     * Bind a fixed clock and a fresh caller, and switch the feature on.
      *
      * @return void
      */
@@ -72,8 +67,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * While the feature is off nothing is required, and nothing is read or
-     * asked, whatever is stored.
+     * While the feature is off nothing is required, read or asked.
      *
      * @return void
      */
@@ -136,8 +130,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * A rule that is on requires one of its enabled connections, in id order,
-     * and carries its version.
+     * A rule that is on requires its enabled connections, in id order.
      *
      * @return void
      */
@@ -161,10 +154,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * Only the enforcing tenant's own enabled connections satisfy it: a
-     * disabled one, another tenant's id stored in the list, a tenant whose id
-     * differs only in case, and an id with no connection are all left out. A
-     * rule left with none is still required, and satisfied by none.
+     * Only the enforcing tenant's own enabled connections satisfy a rule.
      *
      * @return void
      */
@@ -216,8 +206,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * The policy carries the version the rule now has, which changes with every
-     * update.
+     * The policy carries the rule's current version.
      *
      * @return void
      */
@@ -245,8 +234,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * One instance answers from the row as it is at each call, never from what
-     * it read before.
+     * Each call reads the row afresh.
      *
      * @return void
      */
@@ -303,8 +291,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * The inheritance contract bound is asked, and the tenant it names is the
-     * one whose rule and connections apply.
+     * The tenant the inheritance contract names is the one whose rule applies.
      *
      * @return void
      */
@@ -331,8 +318,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * An inheritance contract that names no tenant is a logic error, never an
-     * answer that nothing is required.
+     * An inheritance contract that names no tenant is a logic error.
      *
      * @return void
      */
@@ -360,7 +346,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * Rows of `[tenant, application]`: what the application may not ask about.
+     * Rows of `[tenant, application]`: invalid arguments.
      *
      * @return iterable<string, array{string, string}>
      */
@@ -372,8 +358,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * An empty or overlong tenant, or an empty application, is the caller's
-     * mistake, whether the feature is on or off.
+     * An empty or overlong tenant, or an empty application, is refused.
      *
      * @param  string  $tenantId
      * @param  string  $application
@@ -410,8 +395,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * The policy the bound contract answers is an `EnforcementPolicy` of the
-     * default store.
+     * The bound contract answers an `EnforcementPolicy`.
      *
      * @return void
      */
@@ -426,7 +410,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * Make an enabled connection, with a completed sign-in, of the tenant.
+     * Make an enabled connection of the tenant with a completed sign-in.
      *
      * @param  string  $tenantId
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -437,7 +421,7 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * The enforcement contract, as the container builds it: the default store.
+     * The enforcement contract, as the container builds it.
      *
      * @return \SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement
      */

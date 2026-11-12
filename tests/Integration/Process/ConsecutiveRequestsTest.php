@@ -36,27 +36,11 @@ use Tests\Fixtures\Clients;
 use Tests\TestCase;
 
 /**
- * One Octane worker across requests for different tenants (SSO-11.2): the same
- * root application serves A, B and A again, where A and B differ in tenant,
- * protocol, issuer, keys and allow-list, and C shares A's `kid` under a key and
- * an allow-list of its own. Nothing rebuilds the application or clears the
- * package's state: only the worker's lifecycle runs between requests.
+ * Integration tests for one Octane worker serving requests for different
+ * tenants.
  *
- * A test goes through success, refusal and exception, the last as a route that
- * throws or a statement that fails, answered with a 500 by the kernel, and the
- * next request runs in the same worker. Stateful paths interleave: each flow
- * finds its own request and its own code whatever was served between.
- *
- * A `Provisioning\ProvisioningGrant` and a `Protocols\TransitionReceipt`
- * captured from inside A's request are presented in B's, and each is refused
- * with B's flow unaffected. An exception in a listener voids the grant it held.
- *
- * What matters is what a later request could reach, never what a response says:
- * after each request no value of the flows so far (subject, email, the raw
- * state and nonce, their digests, the client's verifier, the handoff code,
- * reference, tenant id, connection id) is retained by the root application or a
- * package class's static property, read through whatever hides it, and neither
- * a verified result nor a grant outlives its request.
+ * Only the worker's lifecycle runs between requests; nothing of a flow may stay
+ * reachable after it.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -108,8 +92,8 @@ final class ConsecutiveRequestsTest extends TestCase
     private array $flowValues = [];
 
     /**
-     * Create the tables, the routes and the three connections, and boot the one
-     * worker on the root application.
+     * Create the three connections and boot the one worker on the root
+     * application.
      *
      * @return void
      */
@@ -147,8 +131,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A then B then A: each completes and redeems for its own tenant, protocol
-     * and issuer, and nothing of any flow stays after any request.
+     * A then B then A each complete for their own tenant, and nothing stays.
      *
      * @return void
      */
@@ -166,9 +149,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * Started first and finished last, each flow finds its own request and its
-     * own code, whatever the worker served between: B's start, A's start, B's
-     * completion, A's completion, B's redemption, A's redemption.
+     * Interleaved flows each find their own request and code.
      *
      * @return void
      */
@@ -188,10 +169,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * What belongs to one tenant serves no other in the next request: A's
-     * answer at C's callback is `connection_mismatch`, and A's code redeemed at
-     * B is `connection_mismatch`, while the worker goes on serving each its
-     * own.
+     * One tenant's answer or code is `connection_mismatch` at another.
      *
      * @return void
      *
@@ -216,10 +194,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A refusal between successes leaves nothing: under one `kid`, a token
-     * signed with A's key is refused at C, whose key that `kid` names there,
-     * and C's own passes; A's allow-list then refuses the algorithm C has just
-     * verified.
+     * A refusal under a shared `kid` leaves nothing for the next request.
      *
      * @return void
      */
@@ -246,8 +221,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A refusal of the SAML tenant between two OIDC successes: its unsigned
-     * response is refused, with nothing issued, and the next tenant is served.
+     * A SAML refusal between two OIDC successes leaves nothing behind.
      *
      * @return void
      */
@@ -266,8 +240,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A route that throws is a 500 from the kernel; the next request runs in
-     * the same worker, for another tenant, as if nothing had happened.
+     * A route that throws is a 500 and the next request runs normally.
      *
      * @return void
      */
@@ -285,8 +258,8 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A statement failing in a transaction is a 500; the transaction is gone by
-     * the next request, in which the flow runs, on the rows the failure left.
+     * A failed statement is a 500 and its transaction is gone by the next
+     * request.
      *
      * @return void
      */
@@ -310,9 +283,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A's grant, captured from inside A's request, opens nothing in B's: for
-     * B's result, for A's own, or for any identity. B's own grant is untouched
-     * by the attempts, and links B's person; A's person has no link anywhere.
+     * A's grant opens nothing in B's request.
      *
      * @return void
      */
@@ -366,8 +337,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A grant is good for one dispatch: one a listener used, and one it left
-     * unused, are each refused once the request is over.
+     * A grant, used or not, is refused once its request is over.
      *
      * @return void
      */
@@ -409,9 +379,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A listener that throws is a 500 and voids the grant it held, so nothing
-     * it left half done can be finished in the next request, and the next
-     * request's flow runs with a grant of its own.
+     * A listener that throws is a 500 and voids the grant it held.
      *
      * @return void
      */
@@ -452,11 +420,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A's receipt, captured from inside A's request, lets A finish across its
-     * own rotation and nothing else: in the next requests, of an OIDC tenant
-     * and of a SAML one, it is refused for their requests even with every
-     * version forged to match, a grant issued around it opens nothing, and each
-     * completes untouched. Once A has finished, it permits A nothing either.
+     * A's receipt permits only A's own finish, never another tenant's.
      *
      * @return void
      */
@@ -533,8 +497,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * A's rotation is A's alone: it voids A's flow in flight, and B's and C's
-     * go on to complete.
+     * A's rotation voids only A's flow in flight.
      *
      * @return void
      */
@@ -561,8 +524,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * Neither the verified result nor the grant of a request outlives it: with
-     * only a weak reference kept, each is gone once the worker has finished.
+     * Neither the verified result nor the grant outlives its request.
      *
      * @return void
      */
@@ -590,9 +552,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * The check looks for each secret a flow handles in memory, whatever the
-     * database holds of it: a package object kept with a flow's verifier, raw
-     * state, raw nonce, relay state or handoff code is noticed.
+     * The retention check notices each secret a flow holds in memory.
      *
      * @return void
      */
@@ -635,7 +595,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * Start in the worker, and add the flow's values to what must not stay.
+     * Start in the worker and track the flow's values as secrets.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @return array{reference: string, verifier: string, navigation: array{type: string, url: string}}
@@ -657,8 +617,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * Complete the flow in the worker, add its handoff code to what must not
-     * stay, and answer the code.
+     * Complete the flow in the worker, track its code, and answer it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array{reference: string, verifier: string, navigation: array{type: string, url: string}}  $start
@@ -677,8 +636,7 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * What the start sends the provider that only the flow should know: the
-     * state and nonce of an OIDC start, and the relay state of a SAML one.
+     * The OIDC state and nonce, or the SAML relay state, the start sent.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array{reference: string, verifier: string, navigation: array{type: string, url: string}}  $start
@@ -783,8 +741,8 @@ final class ConsecutiveRequestsTest extends TestCase
     }
 
     /**
-     * Assert no value of a flow is held by the root application or a static
-     * property of a package class.
+     * Assert no flow value is held by the root application or a static
+     * property.
      *
      * @return void
      */

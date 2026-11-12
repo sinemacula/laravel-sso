@@ -19,13 +19,7 @@ use SineMacula\Laravel\Sso\Events\StrandedTransactions;
 use Tests\TestCase;
 
 /**
- * Feature tests for the dispatch of package events once the writes that caused
- * them commit, against real transactions on whichever engine the suite runs on,
- * and a second connection: at once outside a transaction, on the commit of the
- * storage connection's transaction, never on its rollback or a savepoint's,
- * whatever another connection's transaction does, nor on a later transaction's
- * commit when its own commit failed; and at once, always, for the synchronous
- * dispatch.
+ * Feature tests for dispatching package events once their writes commit.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +56,8 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * Outside any transaction, the event is dispatched at once, and a
-     * connection named that has not been used is not made to find that out.
+     * Outside a transaction the event is dispatched at once, without touching
+     * an unused connection.
      *
      * @return void
      */
@@ -80,9 +74,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * Inside a transaction on the storage connection, the event waits for it to
-     * commit, including an outer one it is nested in, and is dispatched once on
-     * that commit.
+     * Inside a storage transaction the event waits for the outermost commit.
      *
      * @return void
      *
@@ -104,8 +96,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * An event dispatched inside a transaction that rolls back is never
-     * dispatched, then or later.
+     * An event in a transaction that rolls back is never dispatched.
      *
      * @return void
      *
@@ -127,8 +118,8 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * An event dispatched in a savepoint that rolls back is dropped, while one
-     * dispatched in the outer transaction still follows its commit.
+     * A rolled-back savepoint drops its event; the outer one's still follows
+     * the commit.
      *
      * @return void
      *
@@ -154,10 +145,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * A savepoint nested in others that rolls back drops the events dispatched
-     * inside it, those of a savepoint it holds that committed included, and
-     * nothing else: the events of the savepoints around it that commit, and of
-     * the outer transaction, follow its commit.
+     * A nested savepoint that rolls back drops only the events inside it.
      *
      * @return void
      *
@@ -210,10 +198,8 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * A callback left pending by an outermost transaction whose commit failed,
-     * as Laravel 12 leaves it by not telling its transactions manager, is
-     * dropped when the next outermost transaction commits, and only that
-     * transaction's own event is dispatched.
+     * A callback left by a failed commit is dropped when the next transaction
+     * commits.
      *
      * @return void
      *
@@ -237,10 +223,8 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * Outside any transaction, an event is dispatched at once even while the
-     * transactions manager still holds a record that a failed commit left on
-     * the connection, and is not dispatched again when the next transaction
-     * commits.
+     * Outside a transaction, a failed commit's leftover record does not defer
+     * or repeat the event.
      *
      * @return void
      *
@@ -262,9 +246,8 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * An earlier callback of the same commit that begins and commits an
-     * outermost transaction does not drop the event: it is dispatched once,
-     * after that callback, in one sequence with it.
+     * An earlier commit callback that runs its own transaction does not drop
+     * the event.
      *
      * @return void
      *
@@ -301,9 +284,8 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * An event dispatched in a transaction a callback of the committing one
-     * begins is dispatched once, on that transaction's commit, and each event
-     * of the committing transaction, its savepoint's included, once too.
+     * An event in a transaction begun by a commit callback follows that
+     * transaction's commit.
      *
      * @return void
      *
@@ -343,9 +325,8 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * After a failed commit, the next transaction's own event is dispatched
-     * once though an earlier callback of its commit begins a transaction, and
-     * the event the failed commit left is still dropped.
+     * After a failed commit, a callback that begins a transaction still lets
+     * the next event through.
      *
      * @return void
      *
@@ -369,9 +350,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * A transaction on another connection neither delays nor cancels an event
-     * for the storage connection, whether it is the only one open or opened
-     * inside the storage connection's own.
+     * A transaction on another connection neither delays nor cancels the event.
      *
      * @return void
      *
@@ -406,8 +385,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * A connection named waits for its own transaction, not the storage
-     * connection's.
+     * A named connection waits for its own transaction only.
      *
      * @return void
      *
@@ -432,9 +410,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * With no connection named, the event follows the connection
-     * `sso.storage.connection` names, and a transaction on the default
-     * connection no longer defers it.
+     * With no connection named, the event follows `sso.storage.connection`.
      *
      * @return void
      *
@@ -466,8 +442,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * A storage connection setting that is not a connection name fails closed
-     * rather than dispatching on another connection.
+     * A storage connection setting that is not a name fails closed.
      *
      * @return void
      */
@@ -485,8 +460,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * The synchronous dispatch, for the unlinked-result event, is at once
-     * inside a transaction, and stays dispatched when it rolls back.
+     * The synchronous dispatch is immediate and survives a rollback.
      *
      * @return void
      *
@@ -508,9 +482,8 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * Under the transactions manager of Laravel's testing traits, the
-     * transaction wrapping each test never commits, so it does not defer an
-     * event; a transaction opened inside it still does, until it commits.
+     * The testing traits' wrapping transaction does not defer an event; one
+     * inside it does.
      *
      * @return void
      *
@@ -564,8 +537,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * Without a transactions manager, nothing can be deferred, so the event is
-     * dispatched at once even inside a transaction.
+     * Without a transactions manager the event is dispatched at once.
      *
      * @return void
      *
@@ -593,8 +565,8 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * The dispatcher bound when the transaction commits receives the event, not
-     * the one bound when it was scheduled, so a fake made in between sees it.
+     * The dispatcher bound at commit receives the event, so a later fake sees
+     * it.
      *
      * @return void
      *
@@ -616,8 +588,7 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * A listener's exception propagates from the commit that dispatched the
-     * event, as it does from Laravel's dispatcher.
+     * A listener's exception propagates from the commit.
      *
      * @return void
      *
@@ -654,10 +625,10 @@ final class AfterCommitDispatcherTest extends TestCase
     }
 
     /**
-     * Dispatch the event inside an outermost transaction on the default
-     * connection, then end it as Laravel 12 ends one whose commit failed: the
-     * database rolls it back, but the transactions manager is never told, so
-     * its record, and the event's callback, stay pending.
+     * Dispatch the event in a transaction, then end it as a failed commit does.
+     *
+     * Laravel 12 rolls back but never tells the transactions manager, so the
+     * callback stays pending.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
      * @return void

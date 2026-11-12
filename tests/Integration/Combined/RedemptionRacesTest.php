@@ -47,26 +47,11 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Races a `sign_in` redemption of a code that resolved to a link, across
- * processes, each with its own database connection, on PostgreSQL and MySQL
- * (SSO-8.4, SSO-9.2, SSO-9.9), against what the suites of each change leave
- * out: a protocol trust change, the link's removal and its reassignment to
- * another identity, each in both winning orders.
+ * Integration tests racing a linked `sign_in` redemption against trust and link
+ * changes.
  *
- * The racer going first holds the connection's lock in a transaction, signals,
- * and commits only once the database shows the other waiting on it, so the two
- * really overlap. The session a redeemer writes is a row of this test's on the
- * storage connection, committed with the consumption, and a revocation marks
- * it, so what these races protect is what is asserted: a session written before
- * a removal is found and revoked by it, and none is written after one.
- *
- * Each racer runs plainly, and inside its own `REPEATABLE READ` transaction
- * that read first. On MySQL its locking reads must then answer what is
- * committed and not its snapshot; on PostgreSQL the racer going second fails to
- * serialise, on the connection's row the first wrote, which is accepted there
- * alone and leaves nothing of it.
- *
- * Skipped on SQLite and without `pcntl`.
+ * The first racer holds the lock until the other waits. Skipped on SQLite and
+ * without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -115,11 +100,8 @@ final class RedemptionRacesTest extends LinkingTestCase
     private string $certificate = '';
 
     /**
-     * Skip where processes cannot share the database; bind a fresh caller, a
-     * limiter that allows every attempt and a revocation that marks the
-     * identity's sessions; create the sessions' table; and make the link, a
-     * trusted certificate, read before any process forks, and the completed
-     * flow.
+     * Skip where processes cannot share the database, then set up the
+     * revocation, the link, a certificate and the completed flow.
      *
      * @return void
      *
@@ -174,8 +156,8 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the change, whether the racer going first read first, whether
-     * the racer going second did]`.
+     * Rows of `[the change, whether the first racer read first, whether the
+     * second did]`.
      *
      * @return iterable<string, array{0: string, 1: bool, 2: bool}>
      */
@@ -189,9 +171,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * A redemption holding the connection's lock commits its session first. A
-     * removal or a reassignment then finds that session and revokes it; a trust
-     * change voids nothing of a code redeemed, and revokes nothing.
+     * A redemption that commits first has its session revoked by a link change.
      *
      * @param  string  $change
      * @param  bool  $firstReads
@@ -236,10 +216,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * The change holding the connection's lock commits first. The redemption
-     * then finds its code voided by a trust change, `handoff_unknown` with the
-     * code unconsumed, or its link gone or another identity's, `link_changed`
-     * with the code spent. Either way no session is written.
+     * A change that commits first stops the redemption writing a session.
      *
      * @param  string  $change
      * @param  bool  $firstReads
@@ -284,10 +261,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * Assert the change committed: a trust change raised the connection's
-     * version and removed the certificate; a removal left no link; a
-     * reassignment left the subject the other identity's, under another link.
-     * The session, when there is one, is revoked or not as given.
+     * Assert the change committed and the session was revoked as given.
      *
      * @param  string  $change
      * @param  bool  $revoked
@@ -333,8 +307,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * Assert a change that failed to serialise left everything as it was, and
-     * revoked nothing.
+     * Assert a change that failed to serialise left everything as it was.
      *
      * @return void
      */
@@ -366,8 +339,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * Run the racer, and report how it ended with the events it reported, once
-     * whatever it committed has committed.
+     * Run the racer and report how it ended with its events, once committed.
      *
      * @param  \Closure(): string  $racer
      * @return array{outcome: string, events: list<class-string>}
@@ -382,8 +354,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * Redeem the code in a transaction, a savepoint inside a snapshot, writing
-     * the session in it when it is admitted, as a redeemer does.
+     * Redeem the code in a transaction and write the session when admitted.
      *
      * @return string
      */
@@ -439,8 +410,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * Remove the link and link the subject to the other identity, in one
-     * transaction of the application's.
+     * Relink the subject to the other identity in one transaction.
      *
      * @return string
      */
@@ -530,8 +500,8 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * A revocation that marks the identity's sessions through the connection,
-     * in the change's transaction, as an adapter's does.
+     * A revocation that marks the identity's sessions in the change's
+     * transaction.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\SessionRevocation
      */

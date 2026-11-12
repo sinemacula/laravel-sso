@@ -27,11 +27,7 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * A failing statement in a console command (SSO-11.4): each of `sso:prune`,
- * `sso:domains:recheck`, `sso:metadata:refresh` and `sso:keys:expiring` exits
- * non-zero, at its first read and past it, naming the exception by its class
- * and printing no statement, binding or message. `sso:check` opens no database
- * connection, so a failing database changes nothing it says.
+ * Integration tests for console commands when a statement fails.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -97,8 +93,8 @@ final class DatabaseFailureConsoleTest extends TestCase
     }
 
     /**
-     * A prune failing to select a kind exits non-zero, names the kind and the
-     * class, and says what it committed of the others.
+     * A prune failing to select a kind exits non-zero and reports what it
+     * committed.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @param  string  $table
@@ -117,9 +113,7 @@ final class DatabaseFailureConsoleTest extends TestCase
     }
 
     /**
-     * A prune failing to delete a row it selected, past its first read, keeps
-     * what the other kinds deleted, exits non-zero and prints nothing of the
-     * row; run again, it finishes.
+     * A prune failing past its first read keeps the other kinds' deletions.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @param  string  $table
@@ -164,7 +158,7 @@ final class DatabaseFailureConsoleTest extends TestCase
     }
 
     /**
-     * A recheck that fails exits non-zero, and prints no domain or token.
+     * A failed recheck exits non-zero and prints no domain or token.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -189,8 +183,8 @@ final class DatabaseFailureConsoleTest extends TestCase
     }
 
     /**
-     * Rows of `[options, verb, table]`: a queueing run's read, and a run in the
-     * command's own read and claim.
+     * Rows of `[options, verb, table]`: a queueing run's read, and an inline
+     * run's read and claim.
      *
      * @return iterable<string, array{0: array<string, bool>, 1: string, 2: string}>
      */
@@ -202,8 +196,7 @@ final class DatabaseFailureConsoleTest extends TestCase
     }
 
     /**
-     * A refresh that fails exits non-zero, and prints nothing of the
-     * connection.
+     * A failed refresh exits non-zero and prints nothing of the connection.
      *
      * @param  array<string, bool>  $options
      * @param  string  $verb
@@ -238,8 +231,7 @@ final class DatabaseFailureConsoleTest extends TestCase
     }
 
     /**
-     * A report that fails exits non-zero, and prints nothing of the key's
-     * material.
+     * A failed report exits non-zero and prints nothing of the key.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -260,8 +252,7 @@ final class DatabaseFailureConsoleTest extends TestCase
     }
 
     /**
-     * `sso:check` opens no database connection: with every statement armed to
-     * fail it runs no statement, and says and exits as it does without.
+     * `sso:check` runs no statement, so a failing database changes nothing.
      *
      * @return void
      */
@@ -280,8 +271,7 @@ final class DatabaseFailureConsoleTest extends TestCase
     }
 
     /**
-     * Assert the output shows nothing of a statement, a message or the values
-     * given.
+     * Assert the output shows no statement, message or bound value.
      *
      * @param  string  $output
      * @param  list<string>  $values

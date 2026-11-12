@@ -17,12 +17,9 @@ use Tests\Concerns\RecordsEventSequences;
 use Tests\TestCase;
 
 /**
- * Feature tests for the event sequence harness the flow tests use: it records
- * every package event and nothing else, in order, and its assertions hold for
- * exactly one failure event of the flow and reason named and fail otherwise.
+ * Feature tests for the event sequence test harness.
  *
- * Marked `#[CoversNothing]` because the harness is test support, outside the
- * package source coverage is measured on.
+ * Covers nothing: the harness is test support, outside measured coverage.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -35,8 +32,7 @@ final class RecordsEventSequencesTest extends TestCase
     use RecordsEventSequences;
 
     /**
-     * Only package events are recorded, in the order they are dispatched: an
-     * event that is not one, object or string, is not.
+     * Only package events are recorded, in dispatch order.
      *
      * @return void
      */
@@ -80,8 +76,7 @@ final class RecordsEventSequencesTest extends TestCase
     }
 
     /**
-     * Starting again forgets what was recorded, and registers no second
-     * listener: each event is recorded once.
+     * Starting again forgets the recording and adds no second listener.
      *
      * @return void
      */
@@ -101,8 +96,7 @@ final class RecordsEventSequencesTest extends TestCase
     }
 
     /**
-     * One failure event of the flow and reason named passes, among other
-     * package events, and is returned.
+     * One matching failure event passes and is returned.
      *
      * @return void
      */
@@ -135,8 +129,7 @@ final class RecordsEventSequencesTest extends TestCase
     }
 
     /**
-     * Two failure events fail the assertion, even when both are of the flow and
-     * reason named.
+     * Two failure events fail the assertion, even when both match.
      *
      * @return void
      */
@@ -153,8 +146,7 @@ final class RecordsEventSequencesTest extends TestCase
     }
 
     /**
-     * One failure event of another flow, or another reason, fails the
-     * assertion.
+     * A failure event of another flow or reason fails the assertion.
      *
      * @return void
      */
@@ -173,8 +165,7 @@ final class RecordsEventSequencesTest extends TestCase
     }
 
     /**
-     * No failure passes with only other package events recorded, and fails once
-     * a failure event is.
+     * No failure passes with other events and fails once a failure is recorded.
      *
      * @return void
      */
@@ -194,8 +185,7 @@ final class RecordsEventSequencesTest extends TestCase
     }
 
     /**
-     * No events passes when nothing of the package was dispatched, and fails
-     * once any package event is.
+     * No events passes until a package event is dispatched.
      *
      * @return void
      */

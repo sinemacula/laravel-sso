@@ -42,13 +42,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\TestCase;
 
 /**
- * Feature tests for the enforcement helper (SSO-4.1, SSO-4.3, SSO-4.5,
- * SSO-2.11, SSO-2.12, SSO-10.3): every outcome and violation, another tenant's
- * connection answered as an unknown one, turning it on only with a completed
- * sign-in, freshness asked only for a change, a new version on every change,
- * the revocation called inside the change's transaction with the policy now in
- * force, and the one event each change reports; a refusal writes, revokes and
- * reports nothing, and a failed revocation rolls the change back.
+ * Feature tests for the enforcement helper.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -90,9 +84,8 @@ final class EnforcementServiceTest extends TestCase
     private Connection $untried;
 
     /**
-     * Bind the clock, the freshness contract and the revocation, create the
-     * tables and the tenant's connections, switch the feature on and record
-     * events.
+     * Bind the clock, freshness and revocation, create the tenant's
+     * connections, and record events.
      *
      * @return void
      */
@@ -121,9 +114,8 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Turning it on for the first time stores the rule with a new version, asks
-     * freshness once, revokes once inside the transaction after the write, and
-     * reports the change with no previous version.
+     * A first change stores a new version, revokes in the transaction and
+     * reports once.
      *
      * @return void
      */
@@ -178,8 +170,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Only the enabled connections given satisfy the policy the revocation is
-     * called with, though every one given is stored.
+     * Only enabled connections satisfy the policy, though all are stored.
      *
      * @return void
      */
@@ -194,8 +185,8 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Changing the connections while on revokes again, with the new version and
-     * the new set, and reports the version it replaced.
+     * Changing the connections while on revokes again and reports the old
+     * version.
      *
      * @return void
      */
@@ -217,8 +208,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Turning it off revokes nothing, needs no completed sign-in, and reports
-     * the change.
+     * Turning it off revokes nothing and needs no completed sign-in.
      *
      * @return void
      */
@@ -236,8 +226,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Storing a rule that is off for a tenant with none is a change, with no
-     * previous version and no revocation.
+     * Storing an off rule for a new tenant is a change with no revocation.
      *
      * @return void
      */
@@ -253,7 +242,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Every change gives a new version, never one used before.
+     * Every change gets a new version.
      *
      * @return void
      */
@@ -280,8 +269,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Giving what is stored, the ids in any order and repeated, is unchanged:
-     * nothing is asked, written, revoked or reported.
+     * Giving what is stored, in any order, is unchanged.
      *
      * @return void
      */
@@ -304,10 +292,8 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A rule that looked unchanged on the first read, but was turned off before
-     * the lock (as a caller's older transaction snapshot would show it), is
-     * changed under the lock once freshness is asked: the update is never lost
-     * as `unchanged`.
+     * A rule changed before the lock is changed again under it, never lost as
+     * `unchanged`.
      *
      * @return void
      */
@@ -327,8 +313,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A rule that looked unchanged but changed before the lock is refused, with
-     * nothing written, when the caller then proves stale.
+     * A rule changed before the lock is refused when the caller proves stale.
      *
      * @return void
      */
@@ -346,9 +331,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Turning off a tenant with no rule stored is unchanged, and stores no
-     * rule: the only row is the unconfigured one the lock inserted, which reads
-     * as none.
+     * Turning off a tenant with no rule is unchanged and stores no rule.
      *
      * @return void
      */
@@ -363,8 +346,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Rows of `[enabled, ids, violations]`: connection ids refused, and the
-     * violations each gives.
+     * Rows of `[enabled, ids, violations]`.
      *
      * @return iterable<string, array{bool, list<mixed>, list<array{setting: string, code: string}>}>
      */
@@ -387,8 +369,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Connection ids refused are `invalid`, with every violation, and nothing
-     * is asked, written, revoked or reported.
+     * Refused connection ids are `invalid` and nothing changes.
      *
      * @param  bool  $enabled
      * @param  list<mixed>  $ids
@@ -407,8 +388,8 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A valid id given alongside refused ones is looked up, and its own
-     * position named only when it is unknown; a duplicate is dropped silently.
+     * A valid id beside refused ones is still looked up; duplicates are
+     * dropped.
      *
      * @return void
      */
@@ -428,8 +409,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Another tenant's connection, and one of a tenant whose id differs only in
-     * case, are answered exactly as an id with no connection.
+     * Another tenant's connection is answered as an unknown id.
      *
      * @return void
      */
@@ -447,8 +427,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Turning it on with no connection given that has completed a sign-in is
-     * refused, and nothing is asked, written, revoked or reported.
+     * Turning it on with no completed connection is refused.
      *
      * @return void
      */
@@ -462,7 +441,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A connection that completed a sign-in but is disabled does not count.
+     * A disabled connection does not count as completed.
      *
      * @return void
      */
@@ -477,8 +456,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * The freshness contract is asked with `sso.enforcement.update` and the
-     * maximum age configured for it.
+     * Freshness is asked with `sso.enforcement.update` and its configured age.
      *
      * @return void
      */
@@ -493,8 +471,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A caller whose authentication is stale is refused, and nothing is
-     * written, revoked or reported.
+     * A stale caller is refused and nothing changes.
      *
      * @return void
      */
@@ -513,8 +490,8 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * While the feature is off every change is refused, with nothing looked up,
-     * asked or written; a malformed switch fails closed.
+     * While the feature is off every change is refused; a malformed switch
+     * fails closed.
      *
      * @return void
      */
@@ -558,8 +535,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * `get()` answers the rule as stored: off with nothing for a tenant with
-     * none, and the stored ids, version and time otherwise.
+     * `get()` answers the stored rule, or off for a tenant with none.
      *
      * @return void
      */
@@ -576,8 +552,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Every read, of the rule and of the connections, is on the write
-     * connection.
+     * Every read is on the write connection.
      *
      * @return void
      */
@@ -606,8 +581,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A revocation that fails rolls the first change back: no row, no event,
-     * and the exception propagates.
+     * A failed revocation rolls the first change back.
      *
      * @return void
      */
@@ -631,8 +605,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A revocation that fails rolls a later change back: the rule keeps its
-     * switch, its connections and its version, and nothing is reported.
+     * A failed revocation rolls a later change back.
      *
      * @return void
      */
@@ -657,9 +630,8 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A connection disabled after the first read is seen by the locked read in
-     * the transaction: the change is refused, and the row the change locked
-     * stays unconfigured, reading as no rule.
+     * A connection disabled after the first read refuses the change under the
+     * lock.
      *
      * @return void
      */
@@ -678,8 +650,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A connection deleted after the first read is `unknown` under the lock,
-     * and an existing rule is left as it was.
+     * A connection deleted after the first read is `unknown` under the lock.
      *
      * @return void
      */
@@ -701,8 +672,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A change that another made the same meanwhile is unchanged under the
-     * lock, and reports nothing.
+     * A change already made by another is unchanged under the lock.
      *
      * @return void
      */
@@ -721,10 +691,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A tenant whose only row is the unconfigured guard a redemption or a
-     * completion inserted answers as no rule: its first change is made on that
-     * row, reports no previous version, and is stored with a new version and
-     * the time of the change.
+     * A tenant with only an unconfigured row reads as having no rule.
      *
      * @return void
      */
@@ -753,9 +720,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * A change refused once it locked a tenant with no rule leaves its row
-     * unconfigured, and the next change, the first real one, still reports no
-     * previous version.
+     * A refused change leaves the row unconfigured.
      *
      * @return void
      */
@@ -798,8 +763,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Turn the tenant's enforcement on, satisfied by the ids given, by the
-     * acting identity.
+     * Turn the tenant's enforcement on with the ids given.
      *
      * @param  list<mixed>  $ids
      * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementResult
@@ -823,9 +787,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Assert the tenant has no rule stored: its only row is the unconfigured
-     * one the lock inserted, off, with no connection, no version and no time,
-     * which every reader answers as none.
+     * Assert the tenant's only row is the unconfigured one the lock inserted.
      *
      * @return void
      */
@@ -843,10 +805,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Turn the tenant's rule off straight after the next read of it, as a
-     * change committed after a caller's transaction took its snapshot would
-     * leave it: the first read sees the rule as it was, the locked read as it
-     * is.
+     * Turn the rule off straight after its next read, as a snapshot would miss.
      *
      * @return void
      */
@@ -921,7 +880,7 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * The summary a successful result of the status carries.
+     * The summary a successful status result carries.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementResult  $result
      * @param  \SineMacula\Laravel\Sso\Enforcement\Enums\EnforcementStatus  $status

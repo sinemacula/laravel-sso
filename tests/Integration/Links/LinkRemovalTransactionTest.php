@@ -30,13 +30,8 @@ use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
 
 /**
- * Integration tests, on a real database, that a link's removal and the session
- * revocation it needs commit or roll back together (SSO-4.5, SSO-10.5, decision
- * D5): a revocation that throws leaves the link, reports nothing and
- * propagates; one that writes through the storage connection commits with the
- * removal; and inside a transaction the application opened, a rollback undoes
- * both though the helper succeeded, with nothing reported, while a commit
- * reports the removal only then.
+ * Integration tests that a link removal and its revocation commit or roll back
+ * together.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -62,8 +57,8 @@ final class LinkRemovalTransactionTest extends TestCase
     private Link $link;
 
     /**
-     * Bind a fixed clock and a fresh caller, create the tables, a connection, a
-     * link and the revocation's table, and record events.
+     * Bind a fixed clock and a fresh caller, create a link and the revocation's
+     * table, and record events.
      *
      * @return void
      */
@@ -104,8 +99,7 @@ final class LinkRemovalTransactionTest extends TestCase
     }
 
     /**
-     * A revocation that throws rolls the removal back: the link stays, nothing
-     * is reported, and the exception propagates.
+     * A revocation that throws rolls the removal back and propagates.
      *
      * @return void
      */
@@ -129,7 +123,7 @@ final class LinkRemovalTransactionTest extends TestCase
     }
 
     /**
-     * A revocation that writes and then throws leaves neither its write nor the
+     * A revocation that writes then throws leaves neither its write nor the
      * removal.
      *
      * @return void
@@ -151,8 +145,7 @@ final class LinkRemovalTransactionTest extends TestCase
     }
 
     /**
-     * A revocation that writes and succeeds commits with the removal, which is
-     * then reported once.
+     * A revocation that succeeds commits with the removal.
      *
      * @return void
      */
@@ -167,9 +160,7 @@ final class LinkRemovalTransactionTest extends TestCase
     }
 
     /**
-     * Inside a transaction the application opened, the removal and the
-     * revocation's write are undone by its rollback, though the helper
-     * succeeded, and nothing is reported.
+     * In an open transaction, a rollback undoes the removal and the revocation.
      *
      * @return void
      */
@@ -193,8 +184,7 @@ final class LinkRemovalTransactionTest extends TestCase
     }
 
     /**
-     * Inside a transaction the application opened, the removal is reported only
-     * once it commits.
+     * In an open transaction, the removal is reported only once it commits.
      *
      * @return void
      */
@@ -228,9 +218,8 @@ final class LinkRemovalTransactionTest extends TestCase
     }
 
     /**
-     * Bind a revocation that records the scope's connection and identity in the
-     * revocation's table, through the storage connection, and then throws when
-     * asked to.
+     * Bind a revocation that writes through the storage connection and can be
+     * told to throw.
      *
      * @param  bool  $fails
      * @return void

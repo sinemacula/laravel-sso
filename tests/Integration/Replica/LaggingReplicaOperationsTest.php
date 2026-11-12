@@ -39,13 +39,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * What runs beside the flows against a lagging replica (SSO-11.3): the rate
- * limit counters, on a lagging pair of their own, where they decide admission;
- * and the candidates `Pruner`, `ExpiryReport`, `DomainRechecker` and
- * `MetadataRefresher` choose, on the write connection: a row missing from the
- * replica is found, one only the replica has is not, and one the primary has
- * moved on is judged as it stands there. A flow served through the two split
- * connections needs neither replica.
+ * Integration tests for the counters and background commands against a lagging
+ * replica.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -75,7 +70,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     private FakeDnsResolver $dns;
 
     /**
-     * Create the tables on each pair, and the routes.
+     * Create the tables on each pair.
      *
      * @return void
      */
@@ -111,8 +106,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * Counters full on the primary refuse, though the replica's are empty; and
-     * they are the limit a start answers.
+     * Counters full on the primary refuse though the replica's are empty.
      *
      * @return void
      */
@@ -131,8 +125,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * Counters behind on the replica change nothing: a copy taken after the
-     * first attempt says there is room, and the primary's count refuses.
+     * Counters behind on the replica change nothing.
      *
      * @return void
      */
@@ -152,8 +145,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * Counters full on the replica alone refuse nothing: the valid start goes
-     * on.
+     * Counters full on the replica alone refuse nothing.
      *
      * @return void
      */
@@ -175,8 +167,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * A flow through the split connections needs neither replica, the counters'
-     * included.
+     * A flow through the split connections needs neither replica.
      *
      * @return void
      */
@@ -223,8 +214,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * An eligible row only the replica has is not selected: nothing is counted,
-     * and the replica keeps it until it catches up.
+     * A row only the replica has is not selected.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @return void
@@ -243,8 +233,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * A row eligible on the replica and renewed on the primary stands: a prune
-     * judges the row where it writes.
+     * A row renewed on the primary stands though the replica says eligible.
      *
      * @return void
      */
@@ -275,8 +264,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * A key only the replica has is not listed, and one the replica says is
-     * expiring that the primary has renewed is not either.
+     * Keys only the replica has, or that the primary renewed, are not listed.
      *
      * @return void
      */
@@ -313,8 +301,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * A claim only the replica has, and one lapsed on the primary that the
-     * replica says is verified, are not rechecked.
+     * Claims only the replica has, or lapsed on the primary, are not rechecked.
      *
      * @return void
      */
@@ -338,8 +325,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * A connection due on the primary is listed, though it is missing from the
-     * replica, or the replica says it is not due.
+     * A connection due on the primary is listed whatever the replica says.
      *
      * @return void
      */
@@ -365,8 +351,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * A connection the replica alone says is due is not listed: one not due on
-     * the primary, and one only the replica has.
+     * A connection due only by the replica is not listed.
      *
      * @return void
      */
@@ -464,8 +449,7 @@ final class LaggingReplicaOperationsTest extends TestCase
     }
 
     /**
-     * The direct connections of the pair the kind's table lives on: the
-     * primary, then the replica.
+     * The direct connections of the kind's pair, primary first.
      *
      * @param  \SineMacula\Laravel\Sso\Pruning\Enums\PruneKind  $kind
      * @return array{0: string, 1: string}

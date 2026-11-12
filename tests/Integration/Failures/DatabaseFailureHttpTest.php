@@ -41,19 +41,9 @@ use Tests\Fixtures\Linking\ScriptedTenantMembership;
 use Tests\TestCase;
 
 /**
- * A failing statement or commit through the HTTP kernel is a 5xx (SSO-11.4) on
- * every flow and beyond its first lookup: a start, a discovery start that has
- * matched a domain, a callback and an assertion consumer service through
- * consumption, the locked transaction and the continuation, a redemption with
- * its activation of a reservation, a re-initiation, metadata and JWKS. The
- * completion's response helper turns none of them into a failure redirect, no
- * response has a `Location`, no failure event is reported, and the body shows
- * nothing of the statement.
+ * Integration tests that a failing statement or commit over HTTP is a 5xx.
  *
- * The real SAML and OIDC drivers run, each statement armed where it is reached
- * for certain: before the token request is after consumption and before the
- * locked transaction; the unlinked-result event is between that and the
- * continuation.
+ * Never a failure redirect or event, and nothing of the statement in the body.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -138,9 +128,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * With nothing failing, a discovery start that matches the domain goes to
-     * its connection's provider and not the fallback, and stores its request:
-     * what the rows below fail is on the path this takes.
+     * With nothing failing, a matched discovery start reaches the provider.
      *
      * @return void
      */
@@ -155,8 +143,8 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * Rows of `[verb, table, occurrence]`: what a discovery start reads and
-     * writes once it has counted the attempt, in the order it does.
+     * Rows of `[verb, table, occurrence]`: a discovery start after counting the
+     * attempt.
      *
      * @return iterable<string, array{0: string, 1: string, 2: int}>
      */
@@ -170,9 +158,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * A discovery start that has matched a domain and then fails is a 5xx with
-     * no way on: never the fallback a miss answers, which would hide the
-     * failure and say the domain has no connection.
+     * A matched discovery start that fails is a 5xx, never the fallback.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -218,8 +204,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * A callback failing in its consumption is a 5xx, never `request_unknown`,
-     * and goes again.
+     * A callback failing in its consumption is a 5xx and can go again.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -262,8 +247,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * Rows of `[verb, table, occurrence]`: what the locked transaction reads
-     * and writes.
+     * Rows of `[verb, table, occurrence]`: the locked transaction.
      *
      * @return iterable<string, array{0: string, 1: string, 2: int}>
      */
@@ -276,8 +260,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * A callback failing in its locked transaction, past a valid token, is a
-     * 5xx with no failure redirect.
+     * A callback failing in its locked transaction is a 5xx with no redirect.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -311,8 +294,8 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * A callback failing to issue its code in the continuation is a 5xx, and a
-     * listener that was offered the result has been told nothing of a failure.
+     * A callback failing to issue its code is a 5xx, and no failure is
+     * reported.
      *
      * @return void
      */
@@ -342,8 +325,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * An assertion consumer service failing in its consumption is a 5xx, never
-     * an invalid response.
+     * An assertion consumer service failing in its consumption is a 5xx.
      *
      * @return void
      */
@@ -358,8 +340,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * An assertion that cannot be recorded against replay, the second record
-     * after its request's, is a 5xx, never `replayed` and never a pass.
+     * An assertion that cannot be recorded against replay is a 5xx.
      *
      * @return void
      */
@@ -388,8 +369,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * A redemption that fails is a 5xx, never a failed redemption, and the code
-     * redeems when tried again.
+     * A failed redemption is a 5xx and the code redeems on retry.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -429,9 +409,8 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * A redemption that cannot activate its reservation is a 5xx, never a
-     * failed redemption: the reservation is still one, and the code redeems and
-     * activates it when tried again.
+     * A redemption that cannot activate its reservation is a 5xx and retries
+     * cleanly.
      *
      * @return void
      */
@@ -473,8 +452,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * A re-initiation that cannot record its assertion is a 5xx, never a
-     * refusal.
+     * A re-initiation that cannot record its assertion is a 5xx.
      *
      * @return void
      */
@@ -488,8 +466,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * Rows of `[verb, table, occurrence]`: what SAML metadata reads, the keys
-     * of each use after the connection.
+     * Rows of `[verb, table, occurrence]`: SAML metadata's reads.
      *
      * @return iterable<string, array{0: string, 1: string, 2: int}>
      */
@@ -501,8 +478,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * Metadata that cannot read its connection or its keys is a 5xx, never a
-     * 404 and never a document missing the keys.
+     * Metadata that cannot read its rows is a 5xx, never a 404 or partial.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -547,8 +523,7 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * Assert a discovery start is the 5xx of the one injected failure, with no
-     * way on and no request stored.
+     * Assert a discovery start is the injected 5xx with nothing stored.
      *
      * @return void
      */
@@ -563,10 +538,8 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * An OIDC connection whose completion reserves a link for the person a
-     * verified email names, with what a reservation stands on bound: the
-     * package's link store, the contracts that accept the person, linking by a
-     * verified domain on, and the verified claim of `example.com`.
+     * An OIDC connection whose completion reserves a link for the verified
+     * email.
      *
      * @return \SineMacula\Laravel\Sso\Models\Connection
      */
@@ -610,8 +583,8 @@ final class DatabaseFailureHttpTest extends TestCase
     }
 
     /**
-     * Assert the response is the 5xx of the one injected failure: no redirect,
-     * nothing of the statement, and no failure event.
+     * Assert the response is the injected 5xx with no redirect or failure
+     * event.
      *
      * @param  \Illuminate\Testing\TestResponse<\Symfony\Component\HttpFoundation\Response>  $response
      * @return void

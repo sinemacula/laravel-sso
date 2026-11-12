@@ -49,26 +49,10 @@ use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * What a failure in TR, the redemption's transaction, rolls back, on every
- * database the suite runs on (SSO-9.9, SSO-10.5, SSO-11.4, decision D5,
- * `docs/design/transaction-ownership.md`). Consumption, activation, the
- * application's session and its evidence commit or roll back together, in the
- * caller's transaction on the storage connection, for `sign_in`, `link` and
- * `reauthenticate`.
+ * Integration tests for what a failure in TR, the redemption's transaction,
+ * rolls back.
  *
- * Each test names TR as what it rolls back, and compares every row stored
- * before and after, with a failure injected before and after each of its
- * mutations and at its commit: handoff consumption failing, what stands for
- * link activation in each purpose failing (activating a reservation, creating
- * or confirming a link, renewing a session), and the application's own writes
- * failing. No event of TR escapes, and the redemption then goes through whole,
- * since the code was never spent. What is committed outside TR stays, and is
- * asserted to: an attempt counted on the counters' own connection, and one a
- * standalone `link` counted before its transaction opened, counted once when a
- * deadlock rolled that transaction back and it was tried again.
- *
- * Cases `RedemptionTransactionTest` pins are not repeated: a rollback by the
- * caller with nothing failing, and a linker that throws.
+ * Transaction names follow `docs/design/transaction-ownership.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -122,8 +106,8 @@ final class RedemptionRollbackTest extends LinkingTestCase
     private ?\Throwable $renewalFailure = null;
 
     /**
-     * Bind a fresh caller, an eligibility that lets every identity link, and
-     * the session contract over the application's table, and create its tables.
+     * Bind a fresh caller, an open eligibility and the session contract over
+     * the application's tables.
      *
      * @return void
      */
@@ -168,9 +152,8 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the flow, the verb, the table, the occurrence]`, the verb
-     * `null` for the commit: TR failed before and after each mutation of each
-     * purpose.
+     * Rows of `[the flow, the verb, the table, the occurrence]`; a `null` verb
+     * fails the commit.
      *
      * @return iterable<string, array{0: string, 1: ?string, 2: ?string, 3: int}>
      */
@@ -215,10 +198,8 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TR. Whichever statement fails, every row stands as it did, the
-     * code unspent, no link activated, created, confirmed or renewed through,
-     * no session or evidence kept and no event reported; and the redemption
-     * then goes through whole, reporting once.
+     * Rolls back TR whichever statement fails; the redemption then goes through
+     * whole.
      *
      * @param  string  $flow
      * @param  ?string  $verb
@@ -250,9 +231,8 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TR: a session contract's write that fails inside the package's
-     * transaction takes with it the application's write made before the
-     * redemption, the consumption, and the renewal it made itself.
+     * Rolls back TR with the application's writes when the session contract
+     * fails.
      *
      * @return void
      *
@@ -290,9 +270,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TR: a contract that throws once the reservation has been
-     * activated leaves it reserved, with the guard unstamped and nothing
-     * reported.
+     * Rolls back TR when a contract throws after the reservation was activated.
      *
      * @return void
      */
@@ -350,8 +328,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key]`, the verb `null` for the commit: TR
-     * failed committing a refusal.
+     * Rows of `[the verb, the table's key]`; a `null` verb fails the commit.
      *
      * @return iterable<string, array{0: ?string, 1: ?string}>
      */
@@ -363,10 +340,8 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TR, one that refused: a refusal commits its consumption and
-     * deletes the reservation, so one that fails leaves the reservation
-     * standing, the code unspent and no `FlowFailed` reported, and the right
-     * verifier then redeems it.
+     * Rolls back TR of a refusal; the reservation stands and the code still
+     * redeems.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -391,8 +366,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[the verb, the table's key]`, the verb `null` for the commit:
-     * the standalone `link` failed.
+     * Rows of `[the verb, the table's key]`; a `null` verb fails the commit.
      *
      * @return iterable<string, array{0: ?string, 1: ?string}>
      */
@@ -404,9 +378,8 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TR, a standalone `link`'s, which is the package's own
-     * transaction. The attempt it counted before that opened is committed by
-     * then, and stays.
+     * Rolls back TR of a standalone `link`; the attempt counted before it
+     * stays.
      *
      * @param  ?string  $verb
      * @param  ?string  $table
@@ -437,8 +410,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
 
     /**
      * Rows of `[the verb, the table's key, whether it is a serialisation
-     * failure]`: the statement of a standalone `link` the database rolls back
-     * as a deadlock or cannot serialise, those in a savepoint of TR's included.
+     * failure]`.
      *
      * @return iterable<string, array{0: string, 1: string, 2: bool}>
      */
@@ -452,10 +424,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TR, a standalone `link`'s, as a deadlock or a serialisation
-     * failure, and tries it again: nothing of the first attempt is kept or
-     * reported, the second redeems, and the attempt counted before TR opened is
-     * counted once.
+     * A standalone `link` retried after a deadlock counts its attempt once.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -490,9 +459,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Rolls back TR, with the counters on a connection of their own: the
-     * attempt the redemption counted is outside it, so it stays though
-     * everything else goes.
+     * Rolls back TR; an attempt counted on a separate connection stays.
      *
      * @return void
      */
@@ -517,8 +484,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Add the connection the counters are moved to: the storage connection's
-     * configuration under another name.
+     * Add a copy of the storage connection under another name.
      *
      * @param  mixed  $app
      * @return void
@@ -532,8 +498,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Move the counters to their own connection, its table made where it is a
-     * database of its own.
+     * Move the counters to their own connection.
      *
      * @return void
      */
@@ -554,8 +519,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Every attempt counted on the connection, the storage connection's when
-     * none is named.
+     * Every attempt counted on the connection, or the storage connection.
      *
      * @param  ?string  $connection
      * @return int
@@ -566,9 +530,8 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Every row stored, of the package's tables and the application's; the
-     * counters, which may stand apart from the transaction, only when asked
-     * for.
+     * Every row of the package's and application's tables, with the counters
+     * when asked.
      *
      * @param  bool  $withCounters
      * @return array<string, list<string>>
@@ -585,8 +548,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Make the flow's code ready in this process, and answer what redeems it:
-     * the purpose, the code, the verifier and the caller.
+     * Ready the flow's code and answer the purpose, code, verifier and caller.
      *
      * @param  string  $flow
      * @return array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: string, 2: string, 3: ?\SineMacula\Laravel\Sso\Identities\IdentityReference}
@@ -621,8 +583,8 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * Link the subject to the person, open the session on that link, and
-     * complete a `reauthenticate`.
+     * Link the person, open a session on the link, and complete a
+     * `reauthenticate`.
      *
      * @return array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: string, 2: string, 3: ?\SineMacula\Laravel\Sso\Identities\IdentityReference}
      */
@@ -681,9 +643,8 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * What a redeemer does: in one transaction on the storage connection, admit
-     * the code, write the session a `sign_in` establishes, and write what it
-     * accepted.
+     * In one storage transaction, admit the code and write the session and
+     * evidence.
      *
      * @param  array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: string, 2: string, 3: ?\SineMacula\Laravel\Sso\Identities\IdentityReference}  $redeeming
      * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
@@ -770,9 +731,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
     }
 
     /**
-     * The session contract over the application's table, as an
-     * implementation's: it writes the renewal through the storage connection,
-     * then throws what the test set, if anything.
+     * A session contract that writes the renewal, then throws when told to.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions
      */
@@ -814,7 +773,7 @@ final class RedemptionRollbackTest extends LinkingTestCase
             }
 
             /**
-             * Lock the session, and whether it is bound to exactly the link.
+             * Lock the session and say whether it is bound to exactly the link.
              *
              * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
              * @param  string  $sessionId

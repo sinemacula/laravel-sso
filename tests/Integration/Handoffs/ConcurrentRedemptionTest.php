@@ -36,20 +36,9 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 use Tests\TestCase;
 
 /**
- * Races redemptions of one handoff code across processes, each with its own
- * database connection, on PostgreSQL and MySQL (SSO-9.2, SSO-11.3, SSO-11.5):
- * however they interleave, exactly one redeems the code and every other is
- * refused as `replayed`; the code is consumed once, recorded once in the
- * single-use store, and its connection's completed sign-in acknowledged.
+ * Integration tests racing redemptions of one handoff code across processes.
  *
- * The race runs with every process plain, and again with each inside a
- * transaction of its own that read the code and its connection before the race
- * began, so each locking read must see what another process committed rather
- * than its transaction's snapshot (MySQL's `REPEATABLE READ`), and the locks a
- * caller's transaction keeps until it commits must hold the others off.
- *
- * Skipped on SQLite, whose in-memory database each process would have to
- * itself, and where `pcntl` is not available.
+ * Skipped on SQLite and without `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -77,10 +66,8 @@ final class ConcurrentRedemptionTest extends TestCase
     private string $outcomes;
 
     /**
-     * Skip where processes cannot share the database, bind a fixed clock, a
-     * limiter that allows every attempt and a linker that links every result to
-     * one identity, register the driver, create the tables, the connection and
-     * the code, and make the directory the processes report in.
+     * Skip where processes cannot share the database, then set up the driver,
+     * the connection, the code and the outcome directory.
      *
      * @return void
      *
@@ -164,8 +151,7 @@ final class ConcurrentRedemptionTest extends TestCase
     }
 
     /**
-     * Redemptions of one code: exactly one redeems it, and every other is
-     * refused as `replayed`.
+     * Exactly one racer redeems the code; every other is `replayed`.
      *
      * @return void
      */
@@ -175,8 +161,7 @@ final class ConcurrentRedemptionTest extends TestCase
     }
 
     /**
-     * The same race, each inside a transaction of its own that read the code
-     * and its connection before the race began.
+     * The same race, each racer in a transaction that read the code first.
      *
      * @return void
      */
@@ -186,9 +171,8 @@ final class ConcurrentRedemptionTest extends TestCase
     }
 
     /**
-     * Assert exactly one process redeemed the code, every other was refused as
-     * `replayed`, and the code is consumed, recorded once, and its connection's
-     * sign-in acknowledged.
+     * Assert one racer redeemed the code, the rest were `replayed`, and it was
+     * consumed once.
      *
      * @param  list<string>  $outcomes
      * @return void
@@ -205,8 +189,7 @@ final class ConcurrentRedemptionTest extends TestCase
     }
 
     /**
-     * Fork a redeeming process for each racer, have each start at the same
-     * moment on a connection of its own, and collect what each reported.
+     * Fork a redeeming process per racer and collect what each reported.
      *
      * @param  bool  $inTransaction
      * @return list<string>
@@ -243,13 +226,11 @@ final class ConcurrentRedemptionTest extends TestCase
     }
 
     /**
-     * In a forked process: open a connection of its own, wait for the start,
-     * redeem the code, report the outcome, and end without running the parent's
-     * shutdown.
+     * In a forked process: wait for the start, redeem the code, report the
+     * outcome, and exit without the parent's shutdown.
      *
-     * Racing inside a transaction, the process opens one and reads the code and
-     * its connection before the start, so the transaction's snapshot predates
-     * every other process's work, and commits after its own.
+     * In a transaction, it reads the code first so its snapshot predates the
+     * race.
      *
      * @param  int  $process
      * @param  float  $start
@@ -297,8 +278,7 @@ final class ConcurrentRedemptionTest extends TestCase
     }
 
     /**
-     * Issue a linked `sign_in` code for `web` through the connection, bound to
-     * the client's verifier.
+     * Issue a linked `sign_in` code for `web` bound to the client's verifier.
      *
      * @return string
      *

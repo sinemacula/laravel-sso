@@ -85,15 +85,10 @@ use Tests\Fixtures\Linking\ScriptedTenantMembership;
 use Tests\StandaloneTestCase;
 
 /**
- * What the defaults refuse (FEATURES "Sensible behaviour alone"), each asserted
- * with its exact reason in the flow that consults it, over the real drivers: a
- * contract that holds nothing a package could know answers so as to fail
- * closed, rather than let an application go on as though it had answered.
+ * Integration tests for what the defaults refuse, each with its exact reason.
  *
- * A default deep inside a flow is only reached once what comes before it has
- * answered, so a test replaces those seams, the fake fetcher among them, names
- * them, and shows every other seam, the one it proves above all, is on its
- * default. What a default deliberately allows is `DefaultBindingsFlowsTest`'s.
+ * A test replaces the seams needed to reach the default it proves, and names
+ * them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -130,9 +125,8 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     private IdentityReference $person;
 
     /**
-     * Stop Laravel's clock, which the default clock follows, configure the
-     * protocols, the endpoints, the features each refusal needs and an
-     * application, and create the tables and the routes an application adds.
+     * Stop Laravel's clock, which the default clock follows, and configure the
+     * features each refusal needs.
      *
      * @return void
      */
@@ -174,7 +168,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * The twelve operations of SSO-2.12, none left out.
+     * The twelve operations that need a fresh caller.
      *
      * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation}>
      */
@@ -186,9 +180,8 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Under the default, each operation's change refuses `freshness_required`:
-     * no row changes, and nothing is reported but the one failure a start
-     * always reports. A start counts its attempt first, which is no part of it.
+     * Under the default, each operation is `freshness_required` and changes
+     * nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @return void
@@ -205,8 +198,8 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * The start of a `reauthenticate` asks the default sessions, which hold
-     * none, and is `session_ineligible`, with no request stored.
+     * A `reauthenticate` start is `session_ineligible` under the default
+     * sessions.
      *
      * @return void
      */
@@ -227,9 +220,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * A `link` through the default eligibility is `link_ineligible` at
-     * completion, with no code and no link: no identity may link until the
-     * application says so.
+     * A `link` under the default eligibility is `link_ineligible`.
      *
      * @return void
      */
@@ -250,9 +241,8 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * A `link` of an identity that holds a link by a verified domain, in any
-     * connection, needs a confirmation the default never gives, and its
-     * redemption is `independent_authentication_required`; no link is made.
+     * A `link` for an identity with a domain link is
+     * `independent_authentication_required`.
      *
      * @return void
      */
@@ -281,9 +271,8 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * A link standing on a verified domain asks the default scope, which knows
-     * no principals: its `sign_in` is `principal_scope_unknown`, and the link
-     * stays as it was, since uncertainty asserts no widening.
+     * A domain link's `sign_in` under the default scope is
+     * `principal_scope_unknown`.
      *
      * @return void
      */
@@ -308,9 +297,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Linking by a verified domain asks the default scope before it reserves:
-     * the person's membership is not even asked about, nothing is reserved, and
-     * the sign-in ends `unlinked`.
+     * The default scope stops domain linking before membership is asked.
      *
      * @return void
      */
@@ -333,8 +320,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Linking by a verified domain asks the default matcher, which finds
-     * nobody, so nothing is reserved and the sign-in ends `unlinked`.
+     * The default matcher finds nobody, so the sign-in ends `unlinked`.
      *
      * @return void
      */
@@ -350,9 +336,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Linking by a verified domain with a sole match, within the tenant, asks
-     * the default membership, which holds none: nothing is reserved, and the
-     * sign-in ends `unlinked`, once the scope has answered.
+     * The default membership holds nobody, so the sign-in ends `unlinked`.
      *
      * @return void
      */
@@ -374,8 +358,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * A linked `sign_in` is redeemed, and what the provider asserted counts for
-     * nothing under the default evidence.
+     * The default evidence policy accepts nothing the provider asserted.
      *
      * @return void
      */
@@ -411,9 +394,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * With linking by a verified domain on over the default linker, `sso:check`
-     * fails with the problem under its own subject, naming the linker and the
-     * way out; with the store bound, or the feature off, that subject passes.
+     * `sso:check` fails domain linking over the default linker.
      *
      * @return void
      */
@@ -440,7 +421,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * The same problem stops an application serving a request as it boots.
+     * The same problem stops a request as the application boots.
      *
      * @return void
      */
@@ -475,8 +456,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * The settings service refuses to turn linking on over the default linker,
-     * with nothing written, once a caller is fresh enough to reach it.
+     * The settings service refuses to turn linking on over the default linker.
      *
      * @return void
      *
@@ -516,9 +496,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * A `link` completed over the default linker refuses before anything is
-     * written: its request stays consumed, since that committed first, and is
-     * not finished.
+     * A `link` completed over the default linker refuses before any write.
      *
      * @return void
      *
@@ -555,8 +533,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * A `link` redeemed over the default linker refuses, leaving the code as it
-     * was; once the store is bound again the same code goes through.
+     * A `link` redeemed over the default linker refuses and keeps the code.
      *
      * @return void
      *
@@ -748,8 +725,8 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Turning enforcement on is `sso.enforcement.update`, asked once what it
-     * was given would be allowed.
+     * Turning enforcement on is `sso.enforcement.update`, asked after
+     * validation.
      *
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
      */
@@ -761,8 +738,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Starting a `link` is `sso.link.create`, and the one of these a flow
-     * makes, so it reports its failure.
+     * Starting a `link` is `sso.link.create`, the one that reports a failure.
      *
      * @return \SineMacula\Laravel\Sso\Events\Enums\FailureReason
      */
@@ -803,8 +779,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * What the helper refused with, once it has shown it wrote and reported
-     * nothing.
+     * The helper's refusal, once it has shown nothing was written or reported.
      *
      * @param  \Closure(): ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $helper
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
@@ -835,7 +810,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Assert the seams named are off their defaults, and every other is on its
+     * Assert the seams named are off their defaults and every other is on its
      * own.
      *
      * @param  class-string  ...$rebound
@@ -856,9 +831,9 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * A usable OIDC connection at the host, its provider answering on the fake
-     * fetcher, which is bound first, since a driver keeps what it was built
-     * with.
+     * A usable OIDC connection on the fake fetcher.
+     *
+     * A driver keeps what it was built with, so the fetcher is bound first.
      *
      * @param  string  $host
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -871,10 +846,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * An OIDC connection with linking by a verified domain on, classified one
-     * organisation's and acknowledged, holding the verified claim of the
-     * email's domain, last checked now, with the feature on and the store
-     * bound.
+     * An OIDC connection set up for linking by a verified domain.
      *
      * @param  string  $host
      * @return \SineMacula\Laravel\Sso\Models\Connection
@@ -928,8 +900,8 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Answer the flow at the connection's callback, through the service, so
-     * what it throws reaches the test.
+     * Answer the flow at the callback through the service, so what it throws
+     * reaches the test.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  array{navigation: array{url: string}}  $start
@@ -965,8 +937,7 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Run `sso:check`, and answer its exit code and the lines it printed,
-     * trimmed, without blank ones.
+     * Run `sso:check` and answer its exit code and trimmed non-blank lines.
      *
      * @return array{0: int, 1: list<string>}
      */

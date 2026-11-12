@@ -43,27 +43,9 @@ use Tests\Fixtures\Linking\RecordingSessions;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * A failing statement or commit at a service boundary is a server error
- * (SSO-11.4): the `QueryException` reaches the caller from every step of a
- * flow, never `failed`, `request_unknown`, `connection_unavailable`, an invalid
- * response or a failed redemption, and no failure event is reported for it.
+ * Integration tests that a failing statement at a service boundary propagates.
  *
- * Each step is reached for certain and fails once, at a named occurrence of a
- * named statement: a request's consumption (T1); the locked rechecks and the
- * issuance of the completion's transaction (T2), armed as the driver validates,
- * which is after T1 has committed; the continuation's issuance (T3), armed as
- * the unlinked result is offered, which is after T2 has committed; a link's
- * creation by the provisioning helper; a redemption, with its activation; and a
- * discovery start, at each step past its match. The commits of T1 and T3 fail
- * in their turn too. `CompletionRollbackTest` and `RedemptionRollbackTest` fail
- * the other writes and commits of T2 and of a redemption, and compare every row
- * stored, so they are not repeated here.
- *
- * What survives is what the transaction owns and no more: T1 unconsumed and
- * able to go again when T1 fails; T1 standing when T2 fails, and T2 standing
- * when T3 fails, with T2's own after-commit event reported; a redemption wholly
- * undone, the code unspent and the activation gone, so it runs again and
- * succeeds.
+ * Transaction names follow `docs/design/transaction-ownership.md`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -113,8 +95,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A start that fails at any statement propagates, and stores and reports
-     * nothing.
+     * A start that fails at any statement propagates and changes nothing.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -163,8 +144,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A failure in T1 propagates and leaves the request unconsumed and
-     * unrecorded, so the same answer goes again and completes.
+     * A failure in T1 leaves the request unconsumed, so it completes on retry.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -206,11 +186,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[verb, table, occurrence]`: each locked read of T2, in a
-     * completion that reserves a link, and its issuance of the code. The first
-     * read of a link and of a domain is the plain one before the transaction.
-     * `CompletionRollbackTest` fails T2's other writes and its commit,
-     * comparing every stored row.
+     * Rows of `[verb, table, occurrence]`: T2's locked reads and issuance.
      *
      * @return iterable<string, array{0: string, 1: string, 2: int}>
      */
@@ -225,8 +201,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A failure in T2 propagates: T1 stands, and nothing of T2 does, its code,
-     * its reservation and its events.
+     * A failure in T2 propagates; T1 stands.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -251,8 +226,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[verb, table, occurrence]`: each statement of T3, in the only
-     * completion failed here or anywhere that ends on an unlinked handoff.
+     * Rows of `[verb, table, occurrence]`: T3 of an unlinked handoff.
      *
      * @return iterable<string, array{0: string, 1: string, 2: int}>
      */
@@ -266,8 +240,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A failure in T3 propagates: T2 stands, with `verified_at` and the events
-     * already reported, and nothing of T3 does.
+     * A failure in T3 propagates; T2 stands.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -301,8 +274,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A failed write of the provisioning helper ends the completion as a server
-     * error, not a refusal, with no link and the grant void.
+     * A failed provisioning write is a server error, with the grant void.
      *
      * @return void
      */
@@ -328,9 +300,8 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[verb, table, occurrence]`: each read and lock of a redemption,
-     * and its activation of the reservation. `RedemptionRollbackTest` fails its
-     * other writes and its commit, comparing every stored row.
+     * Rows of `[verb, table, occurrence]`: a redemption's reads, locks and
+     * activation.
      *
      * @return iterable<string, array{0: string, 1: string, 2: int}>
      */
@@ -345,9 +316,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A failure anywhere in a redemption propagates, never as a failed one: the
-     * code is unspent, the reservation not activated and nothing reported, so
-     * the same code and verifier redeem when tried again.
+     * A failed redemption propagates and redeems on retry.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -387,8 +356,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A standalone `link` that fails creates no link and leaves the code
-     * unspent, its transaction its own.
+     * A failed standalone `link` creates nothing and leaves the code unspent.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -425,8 +393,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A `reauthenticate` that fails to consume its code propagates, with the
-     * code unspent and the session not renewed, and runs again.
+     * A failed `reauthenticate` consumption propagates and runs again.
      *
      * @return void
      */
@@ -449,8 +416,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * Rows of `[verb, table, occurrence]`: what a discovery start reads and
-     * writes, past the domain it matches.
+     * Rows of `[verb, table, occurrence]`: a discovery start past its match.
      *
      * @return iterable<string, array{0: string, 1: string, 2: int}>
      */
@@ -462,8 +428,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A discovery start that cannot read the domain or go on from it
-     * propagates, and is never the fallback a miss answers.
+     * A matched discovery start that fails propagates, never the fallback.
      *
      * @param  string  $verb
      * @param  string  $table
@@ -491,8 +456,8 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * Assert the call throws the one injected failure as a `QueryException`,
-     * with no transaction left open and no failure event reported.
+     * Assert the call throws the injected `QueryException`, with no transaction
+     * open or event reported.
      *
      * @param  \Closure(): mixed  $call
      * @return void
@@ -516,9 +481,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * A `sign_in` start whose result resolves to nothing and holds no linking
-     * email, so its completion stops at the provisioning boundary, and goes on
-     * to an unlinked handoff.
+     * A `sign_in` start whose completion ends on an unlinked handoff.
      *
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      */
@@ -559,8 +522,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * Assert the request is consumed, T1 having committed, and neither verified
-     * nor finished, with no code.
+     * Assert the request is consumed but not verified or finished.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
      * @return void
@@ -576,10 +538,10 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * Assert the request is verified, T2 having committed and reported, and not
-     * finished, with no code. A listener of `ResultUnlinked` that throws comes
-     * before the recorder, which listens to the interface, so it passes the
-     * events the recorder saw.
+     * Assert the request is verified but not finished.
+     *
+     * A throwing `ResultUnlinked` listener runs before the interface-bound
+     * recorder.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
      * @param  list<class-string<\SineMacula\Laravel\Sso\Contracts\SsoEvent>>  $events
@@ -609,8 +571,7 @@ final class DatabaseFailureServiceTest extends LinkingTestCase
     }
 
     /**
-     * Link the person to the driver's subject, and bind a session contract with
-     * one session on that link.
+     * Link the person and bind a session contract with one session on the link.
      *
      * @return \Tests\Fixtures\Linking\RecordingSessions
      */
