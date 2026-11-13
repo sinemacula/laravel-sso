@@ -76,9 +76,11 @@ transaction; and the gate an adapter calls before refusing a session it could ex
      (`connection_ids` `required`), and each a connection of this tenant through `Connections\ConnectionFinder`
      (`connection_ids.<n>` `unknown`, the same for another tenant's connection as for an id with no connection, so no
      other tenant is revealed); any violation is `invalid` (`settings_invalid`) with every violation, in position order;
-  3. the stored rule: the same switch and the same set of ids, in any order, looks `unchanged`, and skips step 5; it is
-     answered `unchanged` only once step 6's locked read agrees, since the first read may come from the snapshot of a
-     transaction the caller opened, and a change found there asks freshness before it is made;
+  3. the stored rule: the same switch and the same set of ids, in any order, looks `unchanged`, and skips step 5, but a
+     tenant with no rule always stores its first, an off rule included, which an inheritance contract may read as the
+     tenant's own rule stopping an ancestor's; it is answered `unchanged` only once step 6's locked read agrees, since
+     the first read may come from the snapshot of a transaction the caller opened, and a change found there asks
+     freshness before it is made;
   4. turning it on: one of the connections given must be enabled with `has_completed_sign_in` set, so a misconfigured
      connection cannot lock the tenant out (SSO-4.3), else `completed_sign_in_required`; turning it off needs none;
   5. freshness: `Freshness\FreshnessGate::check(FreshnessOperation::ENFORCEMENT_UPDATE)`, `sso.enforcement.update` with
