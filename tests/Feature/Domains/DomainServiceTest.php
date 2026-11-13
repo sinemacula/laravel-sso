@@ -150,6 +150,66 @@ final class DomainServiceTest extends DomainServiceTestCase
     }
 
     /**
+     * A claim of an unknown connection, or of a malformed domain, is refused
+     * before anything is locked.
+     *
+     * @return void
+     */
+    public function testAClaimIsRefusedForAnUnknownConnectionOrAMalformedDomain(): void
+    {
+        $unknown   = $this->domains()->claim(self::TENANT, '01jbzzzzzzzzzzzzzzzzzzzzzz', 'example.com', $this->client, $this->actor);
+        $malformed = $this->domains()->claim(self::TENANT, $this->connection->id, 'not a domain', $this->client, $this->actor);
+
+        self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $unknown->reason);
+        self::assertSame([['setting' => 'domain', 'code' => 'invalid_format']], $malformed->jsonSerialize()['violations']);
+        self::assertSame([], $this->freshness->asked());
+    }
+
+    /**
+     * An expired claim is refused and a verified one unchanged, neither looked
+     * up.
+     *
+     * @return void
+     */
+    public function testAnExpiredOrVerifiedClaimIsJudgedWithoutALookup(): void
+    {
+        $this->claimDomain('example.org');
+        $this->clock->advance(604800);
+
+        $expired = $this->domains()->verify(self::TENANT, $this->connection->id, 'example.org', $this->client, $this->actor);
+
+        $this->dns->publishes(self::summaryOf($this->claimDomain()));
+
+        self::assertSame(DomainStatus::VERIFIED, $this->verifyDomain()->status);
+
+        $again = $this->domains()->verify(self::TENANT, $this->connection->id, 'example.com', $this->client, $this->actor);
+
+        self::assertSame(FailureReason::DOMAIN_CLAIM_EXPIRED, $expired->reason);
+        self::assertSame(DomainStatus::UNCHANGED, $again->status);
+        $this->dns->assertLookedUp(self::RECORD, 1);
+    }
+
+    /**
+     * A caller found stale under the lock, though fresh before the lookup, is
+     * refused and nothing is verified.
+     *
+     * @return void
+     */
+    public function testAVerificationAsksAgainUnderTheLock(): void
+    {
+        $this->dns->publishes(self::summaryOf($this->claimDomain()));
+
+        $this->freshness->onCheck = function (): void {
+            $this->freshness->onCheck = fn () => $this->freshness->answer(FreshnessOutcome::STALE);
+        };
+
+        $result = $this->domains()->verify(self::TENANT, $this->connection->id, 'example.com', $this->client, $this->actor);
+
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
+        self::assertSame(DomainState::PENDING, $this->domains()->get(self::TENANT, $this->connection->id, 'example.com')?->state);
+    }
+
+    /**
      * A change for no client, as from the console, reports no IP address or
      * user agent.
      *

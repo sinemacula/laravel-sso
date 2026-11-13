@@ -73,10 +73,9 @@ code issued before a disable is never redeemed after the enable. A refused or un
 - `Connections\ConnectionLifecycle` (`@api`, final, readonly, resolved per request) is scoped to a tenant as
   `ConnectionService` is: another tenant's connection is `connection_not_found`, exactly as an unknown one, and an
   empty or overlong tenant id is an `InvalidArgumentException`.
-- Both go in one order: the connection is found by a plain read on the write connection (`connection_not_found`); then
-  one transaction on the storage connection (a savepoint inside the caller's) reads the connection again with
-  `lockForUpdate()`, is `connection_not_found` when it has gone since, and asks the freshness contract
-  (`freshness_required`) before anything else.
+- Both go in one order: one transaction on the storage connection (a savepoint inside the caller's) reads the
+  connection with `lockForUpdate()`, is `connection_not_found` without it, and asks the freshness contract
+  (`freshness_required`) before anything else; a deletion locks the connection's domain claims first.
 - `disable()` asks `sso.connection.disable`, with its own maximum age, even of a disabled connection. It reads
   `enabled` from the locked row: a disabled connection is `unchanged`, writing, voiding, revoking and reporting
   nothing, so the answer of the first read is always confirmed under the lock. Otherwise it sets `enabled` off, voids

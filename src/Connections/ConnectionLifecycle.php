@@ -102,10 +102,6 @@ final readonly class ConnectionLifecycle
      */
     public function disable(string $tenantId, string $connectionId, ClientContext $client, ?Caller $caller = null): ConnectionResult
     {
-        if ($this->finder->find($tenantId, $connectionId) === null) {
-            return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
-        }
-
         return $this->transaction(function () use ($tenantId, $connectionId, $client, $caller): ConnectionResult {
 
             $locked = $this->finder->findForUpdate($tenantId, $connectionId);
@@ -144,10 +140,6 @@ final readonly class ConnectionLifecycle
      */
     public function delete(string $tenantId, string $connectionId, ClientContext $client, ?Caller $caller = null): ConnectionResult
     {
-        if ($this->finder->find($tenantId, $connectionId) === null) {
-            return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
-        }
-
         return $this->transaction(function () use ($tenantId, $connectionId, $client, $caller): ConnectionResult {
 
             $locked = $this->finder->findForUpdate($tenantId, $connectionId);

@@ -471,6 +471,22 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
+     * A change refused on the first read takes no lock, so leaves no row.
+     *
+     * @return void
+     */
+    public function testAChangeRefusedOnTheFirstReadLeavesNoRow(): void
+    {
+        $invalid = $this->turnOn(['01jbzzzzzzzzzzzzzzzzzzzzzz']);
+        $untried = $this->turnOn([$this->untried->id]);
+
+        self::assertTrue($invalid->isInvalid());
+        self::assertSame(FailureReason::COMPLETED_SIGN_IN_REQUIRED, $untried->reason);
+        self::assertSame(0, TenantEnforcement::query()->count());
+        self::assertSame([], $this->freshness->asked());
+    }
+
+    /**
      * A stale caller is refused and nothing changes.
      *
      * @return void
