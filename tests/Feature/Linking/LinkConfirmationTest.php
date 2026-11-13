@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Linking;
 
+use Illuminate\Database\DeadlockException;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Events\TransactionBeginning;
 use Illuminate\Support\Facades\DB;
@@ -329,7 +330,7 @@ final class LinkConfirmationTest extends LinkingTestCase
 
     /**
      * A domain link in a connection the plain read missed throws for a retry,
-     * with the code unspent.
+     * as Laravel's 40001 deadlock from the caller's transaction, code unspent.
      *
      * @return void
      *
@@ -363,7 +364,16 @@ final class LinkConfirmationTest extends LinkingTestCase
         try {
             $this->connection->getConnection()->transaction(fn (): RedemptionResult => $this->admit($completion, $start, Purpose::LINK, $this->person));
             self::fail('The redemption went on over a link it did not lock.');
-        } catch (LinkCandidatesChanged $exception) {
+        } catch (DeadlockException $exception) {
+            $cause = $exception;
+
+            while ($cause instanceof DeadlockException) {
+                self::assertSame(40001, $cause->getCode());
+
+                $cause = $cause->getPrevious();
+            }
+
+            self::assertInstanceOf(LinkCandidatesChanged::class, $cause);
             self::assertSame('An identity\'s verified domain links changed before they were locked; retry the whole transaction.', $exception->getMessage());
         }
 
@@ -524,11 +534,11 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * A standalone `link` whose candidates change restarts once, then redeems.
+     * A standalone `link` whose candidates change is tried again, then redeems.
      *
      * @return void
      */
-    public function testAStandaloneLinkRestartsOnceWhenItsCandidatesChanged(): void
+    public function testAStandaloneLinkIsTriedAgainWhenItsCandidatesChanged(): void
     {
         $start      = $this->start(Purpose::LINK, $this->person);
         $completion = $this->complete();
@@ -573,14 +583,14 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
-     * A standalone `link` whose candidates change again propagates
-     * `LinkCandidatesChanged`.
+     * A standalone `link` whose candidates change on every try propagates
+     * `LinkCandidatesChanged` after the third.
      *
      * @return void
      *
      * @throws \Throwable
      */
-    public function testAStandaloneLinkRestartsOnlyOnce(): void
+    public function testAStandaloneLinkIsTriedAtMostThreeTimes(): void
     {
         $start      = $this->start(Purpose::LINK, $this->person);
         $completion = $this->complete();
@@ -620,9 +630,9 @@ final class LinkConfirmationTest extends LinkingTestCase
 
         try {
             $redemption->redeem(Purpose::LINK, 'web', $this->connection->id, $code, $verifier, Clients::browser(), new Caller($this->person));
-            self::fail('A standalone link restarted more than once.');
+            self::fail('A standalone link went on over links it did not lock.');
         } catch (LinkCandidatesChanged) {
-            self::assertSame(2, $guards);
+            self::assertSame(3, $guards);
         }
 
         self::assertSame(0, Link::query()->count());

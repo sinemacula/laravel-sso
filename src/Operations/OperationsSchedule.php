@@ -47,11 +47,11 @@ final readonly class OperationsSchedule
     /**
      * Add each task with a cadence; nothing while the package is not in use.
      *
+     * A malformed setting is reported and skipped, so it stops neither the rest
+     * of the schedule nor any console command; `sso:check` names it.
+     *
      * @param  \Illuminate\Console\Scheduling\Schedule  $schedule
      * @return void
-     *
-     * @throws \InvalidArgumentException
-     * @throws \LogicException
      */
     public function register(Schedule $schedule): void
     {
@@ -59,11 +59,17 @@ final readonly class OperationsSchedule
             return;
         }
 
-        $mutexes = $this->settings->usesCacheMutexes();
+        $mutexMinutes = $this->mutexMinutes();
 
         foreach (self::COMMANDS as $task => $command) {
 
-            $cadence = $this->settings->cadence($task);
+            try {
+                $cadence = $this->settings->cadence($task);
+            } catch (\InvalidArgumentException $exception) {
+                report($exception);
+
+                continue;
+            }
 
             if ($cadence === null) {
                 continue;
@@ -71,11 +77,28 @@ final readonly class OperationsSchedule
 
             $event = $schedule->command($command)->cron($cadence);
 
-            if (!$mutexes) {
+            if ($mutexMinutes === null) {
                 continue;
             }
 
-            $event->withoutOverlapping($this->settings->mutexMinutes())->onOneServer();
+            $event->withoutOverlapping($mutexMinutes)->onOneServer();
+        }
+    }
+
+    /**
+     * How long a mutex holds, or `null` for none, which a malformed setting
+     * falls back to since every task is safe on several servers.
+     *
+     * @return ?int
+     */
+    private function mutexMinutes(): ?int
+    {
+        try {
+            return $this->settings->usesCacheMutexes() ? $this->settings->mutexMinutes() : null;
+        } catch (\InvalidArgumentException $exception) {
+            report($exception);
+
+            return null;
         }
     }
 }
