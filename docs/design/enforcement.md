@@ -122,7 +122,9 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   nothing answers `not_exempt` with nothing asked or reported. Otherwise it asks `EnforcementExemption`, resolved from
   the container on each call; `exempt` is reported once through `EnforcementEvents::exemptionUsed()` (`ExemptionUsed`,
   after the storage connection's open transaction commits, at once when none is open) and returned. An exception from
-  the contract propagates: the gate never answers `exempt` when it cannot tell.
+  the contract propagates: the gate never answers `exempt` when it cannot tell. `judge($policy, $application,
+  $identity)` answers exactly as `admit()` does and reports nothing, for a session judged again whose exemption was
+  reported when it was admitted.
 - Every outcome of a change is an `Enforcement\EnforcementResult` (status `Enforcement\Enums\EnforcementStatus`):
   `updated` or `unchanged` with an `EnforcementSummary`; `refused` with `feature_disabled`, `freshness_required` or
   `completed_sign_in_required`; `invalid` with `settings_invalid` and its `Connections\SettingViolation`s. A violation
