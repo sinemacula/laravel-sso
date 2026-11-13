@@ -774,7 +774,10 @@ answers, the session provenance and the redemption result, never by asking a pro
 
 ## Acceptance scenarios
 
-An adapter ships only when each holds, on SQLite, MySQL and PostgreSQL, with the races on the two real engines.
+An adapter ships only when each holds, on SQLite, MySQL and PostgreSQL, with the races on the two real engines. The
+contract kits ([Testing your own bindings](testing.md#testing-your-own-bindings)) cover the guarantees of
+`Freshness`, `ReauthenticationSessions`, `SessionRevocation`, `EnforcementInheritance`, `LinkEmailMatcher` and
+`LinkConfirmation` that need no second connection.
 
 ### Transaction checks
 
