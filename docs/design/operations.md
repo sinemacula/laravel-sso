@@ -14,7 +14,10 @@ what makes each safe on several servers at once. How a domain is rechecked and h
 - `Operations\OperationsSchedule::register()` adds `sso:prune`, `sso:domains:recheck`, `sso:metadata:refresh` and
   `sso:keys:expiring` to the schedule given, each on `sso.operations.cadence.<task>`: a cron expression, by default
   hourly, hourly, every five minutes and daily, or `null` or empty to leave the task to the application. It registers
-  nothing while no protocol is on, when the tables a command reads may not exist.
+  nothing while no protocol is on, when the tables a command reads may not exist. A malformed cadence is reported
+  through the exception handler and its task skipped, and a malformed mutex setting is reported and every task runs
+  with no mutex, so `register()` never throws: the application calls it as each console command starts, `sso:check`
+  among them, and that names the setting.
 - Every command is correct under duplicate execution by what it does in the database, so by default each runs on every
   server and no task registered reads or writes a cache. A stale mutex can never suppress maintenance (SSO-11.6).
 - `schedule:run` itself is the framework's. On Laravel 13 it reads its pause signal from the default cache before any

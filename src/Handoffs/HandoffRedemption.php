@@ -13,7 +13,6 @@ use SineMacula\Laravel\Sso\Contracts\SingleUseStore;
 use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
-use SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\S256Challenge;
 use SineMacula\Laravel\Sso\Flows\Verifier;
@@ -161,28 +160,12 @@ final readonly class HandoffRedemption
         $admitted = $database->transactionLevel() > 0;
         $tenantId = Connection::query()->useWritePdo()->whereKey($found->connection_id)->value('tenant_id');
         $tenantId = is_string($tenantId) ? $tenantId : null;
-        $attempt  = fn (): RedemptionResult => RetriedTransaction::run(
+
+        return RetriedTransaction::run(
             $database,
             fn (): RedemptionResult => $this->locked($found, $tenantId, $mismatch, $caller, $admitted, $purpose, $client),
             self::ATTEMPTS,
         );
-
-        return $admitted ? $attempt() : self::restartedOnce($attempt);
-    }
-
-    /**
-     * Run the standalone redemption again once if its link candidates changed.
-     *
-     * @param  \Closure(): \SineMacula\Laravel\Sso\Handoffs\RedemptionResult  $attempt
-     * @return \SineMacula\Laravel\Sso\Handoffs\RedemptionResult
-     */
-    private static function restartedOnce(\Closure $attempt): RedemptionResult
-    {
-        try {
-            return $attempt();
-        } catch (LinkCandidatesChanged) {
-            return $attempt();
-        }
     }
 
     /**
