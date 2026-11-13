@@ -388,9 +388,7 @@ final class TrustedCertificatesTest extends TestCase
      */
     public function testACertificateTrustedMeanwhileIsADuplicate(): void
     {
-        $this->freshness->onCheck = function (): void {
-            $this->trust(Certificates::distinct(0));
-        };
+        $this->beforeTheNextTransaction(fn (): mixed => $this->trust(Certificates::distinct(0)));
 
         $result = $this->trust(Certificates::distinct(0));
 

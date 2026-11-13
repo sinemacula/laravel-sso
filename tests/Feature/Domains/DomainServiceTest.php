@@ -118,8 +118,10 @@ final class DomainServiceTest extends DomainServiceTestCase
         self::assertSame(DomainStatus::VERIFIED, $this->domains()->verify(self::TENANT, $this->connection->id, 'example.com', $this->client, $caller)->status);
         self::assertSame(DomainStatus::REMOVED, $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com', $this->client, $caller)->status);
 
-        self::assertSame([FreshnessOperation::DOMAIN_CLAIM, FreshnessOperation::DOMAIN_VERIFY, FreshnessOperation::DOMAIN_REMOVE], $this->freshness->operations());
-        self::assertSame([$caller, $caller, $caller], $this->freshness->callers());
+        $verify = FreshnessOperation::DOMAIN_VERIFY;
+
+        self::assertSame([FreshnessOperation::DOMAIN_CLAIM, $verify, $verify, FreshnessOperation::DOMAIN_REMOVE], $this->freshness->operations());
+        self::assertSame([$caller, $caller, $caller, $caller], $this->freshness->callers());
         self::assertSame('42', $this->recordedEvents()[0]->context()->actingIdentityId);
     }
 

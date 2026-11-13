@@ -176,7 +176,8 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A stale caller costs the reads before freshness is asked, and no write.
+     * A stale caller costs the reads before freshness is asked, under the lock
+     * but for a key's addition, and no write.
      *
      * @return void
      */
@@ -189,9 +190,9 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
         $this->freshness->answer(FreshnessOutcome::STALE);
 
         $refusals = [
-            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser())),
+            $this->assertQueryBudget(3, 0, fn (): KeyResult => $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser())),
             $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_ENCRYPTION, Clients::browser())),
-            $this->assertQueryBudget(2, 0, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser())),
+            $this->assertQueryBudget(3, 0, fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser())),
         ];
 
         foreach ($refusals as $refusal) {

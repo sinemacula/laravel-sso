@@ -128,7 +128,9 @@ final readonly class KeyService
         $generated = $this->generator->generate($type, $connection->id);
         $encrypted = $this->encrypter->encrypt($generated->privateKey->reveal());
 
-        return $this->change($tenantId, $connectionId, fn (Connection $locked): KeyResult => $this->insertOwnKey($locked, $use, $generated, $encrypted, $caller, $client));
+        $insert = fn (Connection $locked): KeyResult => $this->insertOwnKey($locked, $use, $generated, $encrypted, $caller, $client);
+
+        return $this->change($tenantId, $connectionId, $use->freshness(), $caller, $insert);
     }
 
     /**
@@ -210,13 +212,15 @@ final readonly class KeyService
         ?Caller $caller = null,
         KeyUse $use = KeyUse::IDP_SIGNING,
     ): KeyResult {
-        $facts = $this->trustPrechecked($tenantId, $connectionId, $certificate, $use, $caller);
+        $facts = $this->trustPrechecked($tenantId, $connectionId, $certificate, $use);
 
         if ($facts instanceof KeyResult) {
             return $facts;
         }
 
-        return $this->change($tenantId, $connectionId, fn (Connection $locked): KeyResult => $this->insertTrusted($locked, $facts, $use, $caller, $client));
+        $insert = fn (Connection $locked): KeyResult => $this->insertTrusted($locked, $facts, $use, $caller, $client);
+
+        return $this->change($tenantId, $connectionId, $use->freshness(), $caller, $insert);
     }
 
     /**
@@ -386,12 +390,11 @@ final readonly class KeyService
      * @param  string  $connectionId
      * @param  string  $certificate
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
-     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return CertificateFacts|\SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      */
-    private function trustPrechecked(string $tenantId, string $connectionId, string $certificate, KeyUse $use, ?Caller $caller): array|KeyResult
+    private function trustPrechecked(string $tenantId, string $connectionId, string $certificate, KeyUse $use): array|KeyResult
     {
         if (!$use->isTrustedCertificate()) {
             throw new \InvalidArgumentException(sprintf('A certificate is trusted as [idp_signing] or [metadata_signing], never as [%s].', $use->value));
@@ -412,16 +415,15 @@ final readonly class KeyService
         $violation = $facts === null ? null : self::trustViolation($connection, $facts, $use);
 
         return match (true) {
-            $facts === null                                                 => KeyResult::invalid($inspected['violations']),
-            $violation !== null                                             => KeyResult::invalid([$violation]),
-            !$this->freshness->check($use->freshness(), $caller)->isFresh() => KeyResult::refused(FailureReason::FRESHNESS_REQUIRED),
-            default                                                         => $facts,
+            $facts === null     => KeyResult::invalid($inspected['violations']),
+            $violation !== null => KeyResult::invalid([$violation]),
+            default             => $facts,
         };
     }
 
     /**
-     * Check the key and the caller's freshness, then check the key again under
-     * the connection's lock and write.
+     * Check the key, then under the connection's lock ask freshness, check the
+     * key again and write.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -440,14 +442,11 @@ final readonly class KeyService
         $connection = $this->connections->find($tenantId, $connectionId);
         $key        = $connection === null ? null : self::checkedKey(self::keyOf($connection, $keyId), $found, $allowed);
 
-        $refusal = match (true) {
-            $key === null                                                        => KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND),
-            $key instanceof KeyResult                                            => $key,
-            !$this->freshness->check($key->use->freshness(), $caller)->isFresh() => KeyResult::refused(FailureReason::FRESHNESS_REQUIRED),
-            default                                                              => null,
-        };
+        if ($key === null || $key instanceof KeyResult) {
+            return $key ?? KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND);
+        }
 
-        return $refusal ?? $this->change($tenantId, $connectionId, static function (Connection $locked) use ($keyId, $found, $allowed, $write): KeyResult {
+        return $this->change($tenantId, $connectionId, $key->use->freshness(), $caller, static function (Connection $locked) use ($keyId, $found, $allowed, $write): KeyResult {
 
             $key = self::checkedKey(self::keyOf($locked, $keyId, true), $found, $allowed);
 
@@ -457,23 +456,29 @@ final readonly class KeyService
 
     /**
      * Run the change in one transaction against the connection read again
-     * locked for update.
+     * locked for update, asking freshness once it is locked.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
+     * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\Connection): \SineMacula\Laravel\Sso\Keys\KeyResult  $change
      * @return \SineMacula\Laravel\Sso\Keys\KeyResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    private function change(string $tenantId, string $connectionId, \Closure $change): KeyResult
+    private function change(string $tenantId, string $connectionId, FreshnessOperation $operation, ?Caller $caller, \Closure $change): KeyResult
     {
-        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $connectionId, $change): KeyResult {
+        return DB::connection(StorageConnection::name())->transaction(function () use ($tenantId, $connectionId, $operation, $caller, $change): KeyResult {
 
             $locked = $this->connections->findForUpdate($tenantId, $connectionId);
 
-            return $locked === null ? KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND) : $change($locked);
+            return match (true) {
+                $locked === null                                         => KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND),
+                !$this->freshness->check($operation, $caller)->isFresh() => KeyResult::refused(FailureReason::FRESHNESS_REQUIRED),
+                default                                                  => $change($locked),
+            };
         });
     }
 

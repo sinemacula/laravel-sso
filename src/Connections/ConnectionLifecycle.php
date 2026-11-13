@@ -102,14 +102,16 @@ final readonly class ConnectionLifecycle
      */
     public function disable(string $tenantId, string $connectionId, ClientContext $client, ?Caller $caller = null): ConnectionResult
     {
-        $refusal = $this->refusal($tenantId, $connectionId, FreshnessOperation::CONNECTION_DISABLE, $caller);
+        if ($this->finder->find($tenantId, $connectionId) === null) {
+            return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
+        }
 
-        return $refusal ?? $this->transaction(function () use ($tenantId, $connectionId, $client, $caller): ConnectionResult {
+        return $this->transaction(function () use ($tenantId, $connectionId, $client, $caller): ConnectionResult {
 
-            $locked = $this->finder->findForUpdate($tenantId, $connectionId);
+            $locked = $this->locked($tenantId, $connectionId, FreshnessOperation::CONNECTION_DISABLE, $caller);
 
-            if ($locked === null || !$locked->enabled) {
-                return $locked === null ? ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND) : ConnectionResult::unchanged($this->summary($locked));
+            if ($locked instanceof ConnectionResult || !$locked->enabled) {
+                return $locked instanceof ConnectionResult ? $locked : ConnectionResult::unchanged($this->summary($locked));
             }
 
             $locked->forceFill(['enabled' => false])->save();
@@ -136,14 +138,16 @@ final readonly class ConnectionLifecycle
      */
     public function delete(string $tenantId, string $connectionId, ClientContext $client, ?Caller $caller = null): ConnectionResult
     {
-        $refusal = $this->refusal($tenantId, $connectionId, FreshnessOperation::CONNECTION_DELETE, $caller);
+        if ($this->finder->find($tenantId, $connectionId) === null) {
+            return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
+        }
 
-        return $refusal ?? $this->transaction(function () use ($tenantId, $connectionId, $client, $caller): ConnectionResult {
+        return $this->transaction(function () use ($tenantId, $connectionId, $client, $caller): ConnectionResult {
 
-            $locked = $this->finder->findForUpdate($tenantId, $connectionId);
+            $locked = $this->locked($tenantId, $connectionId, FreshnessOperation::CONNECTION_DELETE, $caller);
 
-            if ($locked === null) {
-                return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
+            if ($locked instanceof ConnectionResult) {
+                return $locked;
             }
 
             $this->withdrawDomains($locked);
@@ -163,23 +167,25 @@ final readonly class ConnectionLifecycle
     }
 
     /**
-     * Why the change cannot start, or `null`; checked before any lock.
+     * The connection locked for update, once the caller proves fresh, or why
+     * not.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
-     * @return ?\SineMacula\Laravel\Sso\Connections\ConnectionResult
+     * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult|\SineMacula\Laravel\Sso\Models\Connection
      *
      * @throws \InvalidArgumentException
-     * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    private function refusal(string $tenantId, string $connectionId, FreshnessOperation $operation, ?Caller $caller): ?ConnectionResult
+    private function locked(string $tenantId, string $connectionId, FreshnessOperation $operation, ?Caller $caller): Connection|ConnectionResult
     {
+        $locked = $this->finder->findForUpdate($tenantId, $connectionId);
+
         return match (true) {
-            $this->finder->find($tenantId, $connectionId) === null   => ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND),
+            $locked === null                                         => ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND),
             !$this->freshness->check($operation, $caller)->isFresh() => ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED),
-            default                                                  => null,
+            default                                                  => $locked,
         };
     }
 

@@ -10,6 +10,8 @@ use SineMacula\Laravel\Sso\Administration\MetadataEvents;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
+use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Freshness\FreshnessGate;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -32,6 +34,7 @@ final readonly class RefreshWriter
      * @param  \SineMacula\Laravel\Sso\Administration\MetadataEvents  $events
      * @param  \SineMacula\Laravel\Sso\Metadata\MetadataSettings  $settings
      * @param  \SineMacula\Laravel\Sso\Contracts\Clock  $clock
+     * @param  \SineMacula\Laravel\Sso\Freshness\FreshnessGate  $freshness
      */
     public function __construct(
 
@@ -43,11 +46,15 @@ final readonly class RefreshWriter
 
         /** The clock every time is read from. */
         private Clock $clock,
+
+        /** Asks an administrator's refresh whether its caller is fresh. */
+        private FreshnessGate $freshness,
     ) {}
 
     /**
-     * Run the work on the claimed connection, locked, unless the claim was lost
-     * or the trust snapshot the source reads again under the lock changed.
+     * Run the work on the claimed connection, locked, unless the claim was
+     * lost, the trust snapshot the source reads again under the lock changed,
+     * or the claim asks freshness and the caller is stale.
      *
      * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @param  \Closure(\SineMacula\Laravel\Sso\Models\Connection): array<string, mixed>  $lockedTrust
@@ -66,6 +73,10 @@ final readonly class RefreshWriter
 
             if ($locked === null || !self::isUnchanged($locked, $claim) || $lockedTrust($locked) !== $claim->trusted) {
                 return $this->conflict($claim, $locked, $caller, $client);
+            }
+
+            if ($claim->asksFreshness && !$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
+                return $this->stale($locked);
             }
 
             return $work($locked);
@@ -182,6 +193,20 @@ final readonly class RefreshWriter
         }
 
         return RefreshResult::conflict($claim->connection->id);
+    }
+
+    /**
+     * Release the claim of a caller found stale under the lock, writing nothing
+     * else and reporting nothing.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
+     */
+    private function stale(Connection $locked): RefreshResult
+    {
+        $locked->forceFill(['metadata_claimed_until' => null, 'metadata_claim_token' => null])->save();
+
+        return RefreshResult::refused(FailureReason::FRESHNESS_REQUIRED, $locked->id);
     }
 
     /**

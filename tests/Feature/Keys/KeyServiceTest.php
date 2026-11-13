@@ -393,7 +393,8 @@ final class KeyServiceTest extends TestCase
         $rotate = [FreshnessOperation::KEYS_ROTATE, 120];
         $trust  = [FreshnessOperation::CONNECTION_TRUST, 90];
 
-        self::assertSame([$rotate, $rotate, $rotate, $rotate, $trust, $trust], $this->freshness->asked());
+        // Adding a key asks before generating the pair, then under the lock
+        self::assertSame([$rotate, $rotate, $rotate, $rotate, $rotate, $rotate, $trust, $trust], $this->freshness->asked());
     }
 
     /**
@@ -668,17 +669,13 @@ final class KeyServiceTest extends TestCase
         $current = $this->add();
         $next    = $this->add();
 
-        $this->freshness->onCheck = function () use ($next): void {
-            $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser());
-        };
+        $this->beforeTheNextTransaction(fn (): mixed => $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser()));
 
         self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser())->reason);
 
         $newer = $this->add();
 
-        $this->freshness->onCheck = function () use ($newer): void {
-            $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $newer->id, Clients::browser());
-        };
+        $this->beforeTheNextTransaction(fn (): mixed => $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $newer->id, Clients::browser()));
 
         self::assertSame(FailureReason::KEY_STATE_CONFLICT, $this->keys()->retire(self::TENANT, $this->connection->id, $newer->id, Clients::browser())->reason);
         self::assertSame(KeyState::RETIRING, ConnectionKey::query()->findOrFail($current->id)->state);
@@ -696,9 +693,7 @@ final class KeyServiceTest extends TestCase
 
         $next = $this->add();
 
-        $this->freshness->onCheck = function () use ($next): void {
-            $this->keys()->retire(self::TENANT, $this->connection->id, $next->id, Clients::browser());
-        };
+        $this->beforeTheNextTransaction(fn (): mixed => $this->keys()->retire(self::TENANT, $this->connection->id, $next->id, Clients::browser()));
 
         self::assertSame(FailureReason::KEY_NOT_FOUND, $this->keys()->makeCurrent(self::TENANT, $this->connection->id, $next->id, Clients::browser())->reason);
     }

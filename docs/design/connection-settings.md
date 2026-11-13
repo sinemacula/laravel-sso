@@ -60,9 +60,9 @@ their own.
 - Every helper is scoped to a tenant (an opaque id of 1 to 255 bytes; anything else is an `InvalidArgumentException`)
   and finds a connection only through `Connections\ConnectionFinder`, on the write connection: another tenant's
   connection is `connection_not_found` to a change and `null` to `get()`.
-- A change follows `outcomes.md`'s order: find the connection, locked; refuse an unavailable protocol; validate the
-  whole connection as it would be stored; ask `Freshness\FreshnessGate`; write through the model, in one transaction on
-  the storage connection; report through `Administration\AdministrationEvents` inside it. A refusal writes and reports
+- A change follows `outcomes.md`'s order, in one transaction on the storage connection: find the connection, locked;
+  refuse an unavailable protocol; validate the whole connection as it would be stored; ask `Freshness\FreshnessGate`;
+  write through the model; report through `Administration\AdministrationEvents` inside it. A refusal writes and reports
   nothing. The result is a `Connections\ConnectionResult`: `created`, `updated` (with the names that changed),
   `unchanged`, `enabled`, `refused` (`freshness_required`, `connection_not_found`, `protocol_unavailable`,
   `connection_has_links`) or `invalid` (`settings_invalid`, with every violation); `connection-lifecycle.md` adds

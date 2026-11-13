@@ -189,8 +189,8 @@ complete; it is used only once they are.
 $result = $lifecycle->disable($tenant->id, $connectionId, $client, $caller);
 ```
 
-Disabling asks the freshness contract with `sso.connection.disable`, every time, then, in one transaction: turns the
-connection off, voids what is in flight through it, revokes every session established through it through the session
+Disabling locks the connection and asks the freshness contract with `sso.connection.disable`, every time, then, in the
+same transaction: turns the connection off, voids what is in flight through it, revokes every session established through it through the session
 revocation contract (see [Revoking sessions](enforcement.md#revoking-sessions)), and reports `ConnectionDisabled`. Its
 domains, links and keys are kept, so enabling it again restores it. Disabling a disabled connection succeeds as
 `unchanged`, and writes, revokes and reports nothing.
@@ -203,8 +203,8 @@ domains, links and keys are kept, so enabling it again restores it. Disabling a 
 $result = $lifecycle->delete($tenant->id, $connectionId, $client, $caller);
 ```
 
-Deleting asks the freshness contract with `sso.connection.delete`, then, in one transaction: withdraws what depends on
-each of its verified domains, voids what is in flight, deletes the connection with its domains, links, keys, sign-ins in
+Deleting locks the connection and asks the freshness contract with `sso.connection.delete`, then, in the same
+transaction: withdraws what depends on each of its verified domains, voids what is in flight, deletes the connection with its domains, links, keys, sign-ins in
 progress and handoff codes, revokes every session established through it, and reports one `ConnectionDeleted` (no event
 is reported for each link). It cannot be undone; the result is `deleted` and carries no summary.
 

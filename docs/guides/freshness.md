@@ -165,9 +165,14 @@ match on its stable name, never on its position.
 
 ## The order every change follows
 
-Each change finds what it changes, validates what it was given, asks the contract, and only then writes, in one
-transaction, reporting the change inside it. So a refusal never leaves a partial change or an event behind, and asking
-for fresh authentication inside a transaction your application opened is safe: nothing is written before the answer.
+Each change finds what it changes and validates what it was given; then, in one transaction on the storage connection,
+it takes its locks, asks the contract, and only then writes, reporting the change inside it. So a refusal never leaves
+a partial change or an event behind, and your contract is asked after every lock the package takes for the change: it
+may lock the caller's session row there, with a current read, and keep that lock until the change commits.
+
+Verifying a domain, adding a key and refreshing metadata now also ask once before their DNS lookup, key generation or
+fetch, so a stale caller spends none of them; the answer under the locks still decides. Answer each question afresh: a
+transaction retried after a deadlock asks again.
 
 ## Testing with `FakeFreshness`
 

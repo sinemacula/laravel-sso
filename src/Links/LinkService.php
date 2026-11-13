@@ -99,16 +99,12 @@ final readonly class LinkService
             return LinkResult::refused(FailureReason::LINK_NOT_FOUND);
         }
 
-        if (!$this->freshness->check(FreshnessOperation::LINK_REMOVE, $caller)->isFresh()) {
-            return LinkResult::refused(FailureReason::FRESHNESS_REQUIRED);
-        }
-
         return DB::connection(StorageConnection::name())->transaction(fn (): LinkResult => $this->delete($link, $reference, $caller, $client));
     }
 
     /**
-     * Under the connection's lock, delete the link if still the identity's,
-     * revoke the sessions, and report it.
+     * Under the connection's lock, ask freshness, then delete the link if still
+     * the identity's, revoke the sessions, and report it.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Link  $found
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
@@ -123,14 +119,14 @@ final readonly class LinkService
     {
         $connection = Connection::query()->useWritePdo()->whereKey($found->connection_id)->lockForUpdate()->first();
 
-        if ($connection === null) {
+        $locked = $connection === null ? null : self::owned($found->id, $identity, true);
+
+        if ($connection === null || $locked === null) {
             return LinkResult::refused(FailureReason::LINK_NOT_FOUND);
         }
 
-        $locked = self::owned($found->id, $identity, true);
-
-        if ($locked === null) {
-            return LinkResult::refused(FailureReason::LINK_NOT_FOUND);
+        if (!$this->freshness->check(FreshnessOperation::LINK_REMOVE, $caller)->isFresh()) {
+            return LinkResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
         $locked->delete();
