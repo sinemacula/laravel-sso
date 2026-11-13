@@ -7,6 +7,7 @@ namespace Tests\Feature\Operations;
 use Illuminate\Console\Scheduling\CallbackEvent;
 use Illuminate\Console\Scheduling\Event as ScheduledEvent;
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Support\Facades\Exceptions;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Operations\OperationsCheck;
@@ -162,8 +163,7 @@ final class OperationsScheduleTest extends TestCase
     }
 
     /**
-     * A malformed setting fails closed in the schedule and the boot check
-     * alike.
+     * A malformed setting fails the boot check.
      *
      * @param  string  $setting
      * @param  mixed  $value
@@ -186,13 +186,80 @@ final class OperationsScheduleTest extends TestCase
         }
 
         self::assertSame([$message], $problems);
+    }
 
-        $this->expectException(\InvalidArgumentException::class);
-        $this->expectExceptionMessage($message);
+    /**
+     * A malformed cadence is reported and its task skipped; the rest still run.
+     *
+     * @return void
+     */
+    public function testAMalformedCadenceSkipsOnlyItsTask(): void
+    {
+        Exceptions::fake();
 
-        app(OperationsSchedule::class)->register(app(Schedule::class));
+        config()->set('sso.operations.cadence.prune', 'hourly');
 
-        app(OperationsSettings::class)->mutexMinutes();
+        self::assertSame(['sso:domains:recheck', 'sso:metadata:refresh', 'sso:keys:expiring'], array_keys($this->registered()));
+
+        $message = 'sso.operations.cadence.prune must be a cron expression, or null or empty for none.';
+
+        Exceptions::assertReported(static fn (\InvalidArgumentException $exception): bool => $exception->getMessage() === $message);
+        Exceptions::assertReportedCount(1);
+    }
+
+    /**
+     * Rows of `[setting, value]`: malformed mutex settings.
+     *
+     * @return iterable<string, array{0: string, 1: mixed}>
+     */
+    public static function provideMalformedMutexSettings(): iterable
+    {
+        yield 'the switch' => ['cache_mutexes', 'perhaps'];
+        yield 'the minutes' => ['mutex_minutes', 0];
+    }
+
+    /**
+     * A malformed mutex setting is reported and every task runs without one.
+     *
+     * @param  string  $setting
+     * @param  mixed  $value
+     * @return void
+     */
+    #[DataProvider('provideMalformedMutexSettings')]
+    public function testAMalformedMutexSettingRunsEveryTaskWithoutOne(string $setting, mixed $value): void
+    {
+        Exceptions::fake();
+
+        config()->set('sso.operations.cache_mutexes', true);
+        config()->set("sso.operations.{$setting}", $value);
+
+        $events = $this->registered();
+
+        self::assertCount(4, $events);
+
+        foreach ($events as $event) {
+            self::assertFalse($event->withoutOverlapping);
+            self::assertFalse($event->onOneServer);
+        }
+
+        Exceptions::assertReported(\InvalidArgumentException::class);
+        Exceptions::assertReportedCount(1);
+    }
+
+    /**
+     * Mutex minutes are not read while the mutexes are off.
+     *
+     * @return void
+     */
+    public function testMutexMinutesAreIgnoredWhileTheMutexesAreOff(): void
+    {
+        Exceptions::fake();
+
+        config()->set('sso.operations.mutex_minutes', 0);
+
+        self::assertCount(4, $this->registered());
+
+        Exceptions::assertNothingReported();
     }
 
     /**
