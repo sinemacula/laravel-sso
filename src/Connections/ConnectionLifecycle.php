@@ -108,10 +108,16 @@ final readonly class ConnectionLifecycle
 
         return $this->transaction(function () use ($tenantId, $connectionId, $client, $caller): ConnectionResult {
 
-            $locked = $this->locked($tenantId, $connectionId, FreshnessOperation::CONNECTION_DISABLE, $caller);
+            $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
-            if ($locked instanceof ConnectionResult || !$locked->enabled) {
-                return $locked instanceof ConnectionResult ? $locked : ConnectionResult::unchanged($this->summary($locked));
+            if ($locked === null) {
+                return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
+            }
+
+            $refusal = $this->staleRefusal(FreshnessOperation::CONNECTION_DISABLE, $caller) ?? ($locked->enabled ? null : ConnectionResult::unchanged($this->summary($locked)));
+
+            if ($refusal !== null) {
+                return $refusal;
             }
 
             $locked->forceFill(['enabled' => false])->save();
@@ -144,13 +150,22 @@ final readonly class ConnectionLifecycle
 
         return $this->transaction(function () use ($tenantId, $connectionId, $client, $caller): ConnectionResult {
 
-            $locked = $this->locked($tenantId, $connectionId, FreshnessOperation::CONNECTION_DELETE, $caller);
+            $locked = $this->finder->findForUpdate($tenantId, $connectionId);
 
-            if ($locked instanceof ConnectionResult) {
-                return $locked;
+            if ($locked === null) {
+                return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
             }
 
-            $this->withdrawDomains($locked);
+            // The claims are locked before freshness, which may lock the
+            // caller's session last
+            $claims  = Domain::query()->useWritePdo()->where('connection_id', $locked->id)->orderBy('id')->lockForUpdate()->get()->all();
+            $refusal = $this->staleRefusal(FreshnessOperation::CONNECTION_DELETE, $caller);
+
+            if ($refusal !== null) {
+                return $refusal;
+            }
+
+            $this->withdrawDomains($locked, $claims);
             $this->voider->voidFor($locked);
 
             foreach (self::OWNED as $model) {
@@ -167,39 +182,29 @@ final readonly class ConnectionLifecycle
     }
 
     /**
-     * The connection locked for update, once the caller proves fresh, or why
-     * not.
+     * The refusal of a caller whose authentication is stale, `null` when fresh.
      *
-     * @param  string  $tenantId
-     * @param  string  $connectionId
      * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
-     * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult|\SineMacula\Laravel\Sso\Models\Connection
+     * @return ?\SineMacula\Laravel\Sso\Connections\ConnectionResult
      *
      * @throws \InvalidArgumentException
      */
-    private function locked(string $tenantId, string $connectionId, FreshnessOperation $operation, ?Caller $caller): Connection|ConnectionResult
+    private function staleRefusal(FreshnessOperation $operation, ?Caller $caller): ?ConnectionResult
     {
-        $locked = $this->finder->findForUpdate($tenantId, $connectionId);
-
-        return match (true) {
-            $locked === null                                         => ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND),
-            !$this->freshness->check($operation, $caller)->isFresh() => ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED),
-            default                                                  => $locked,
-        };
+        return $this->freshness->check($operation, $caller)->isFresh() ? null : ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
     }
 
     /**
-     * Lock the domain claims in id order, by a locking read so a claim verified
-     * since the snapshot is seen, and withdraw each verified one.
+     * Withdraw each verified claim of those locked in id order, by a locking
+     * read so a claim verified since the snapshot is seen.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  array<int, \SineMacula\Laravel\Sso\Models\Domain>  $claims
      * @return void
      */
-    private function withdrawDomains(Connection $locked): void
+    private function withdrawDomains(Connection $locked, array $claims): void
     {
-        $claims = Domain::query()->useWritePdo()->where('connection_id', $locked->id)->orderBy('id')->lockForUpdate()->get()->all();
-
         foreach ($claims as $claim) {
 
             if ($claim->state !== DomainState::VERIFIED) {

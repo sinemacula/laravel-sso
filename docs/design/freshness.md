@@ -60,10 +60,11 @@ each, the default that refuses, and the gate every listed mutation calls before 
   contract is asked after every lock the package takes for the change, and an implementation may lock the caller's
   session row there, last, with a current read. A change's operations come from the settings it touches
   (`Contracts\ProtocolSettings::freshnessFor()`) and from what a key row is for (`Keys\Enums\KeyUse::freshness()`).
-- Three changes do outward or costly work before their transaction, and ask the gate before it too, so a stale caller
-  spends nothing: `DomainService::verify()` before its rate limited DNS lookup, `KeyService::addNext()` before it
-  generates a key pair, and `MetadataRefresher::refreshNow()` before its claim and fetch. The answer under the locks
-  decides; the first only spares the work. A metadata refresh asks under `Metadata\RefreshWriter::locked()`'s lock, and
+- Three changes do outward or costly work before their transaction, and ask the gate before it too, when no transaction
+  is open on the storage connection, so a stale caller spends nothing and the answer holds no lock:
+  `DomainService::verify()` before its rate limited DNS lookup, `KeyService::addNext()` before it generates a key pair,
+  and `MetadataRefresher::refreshNow()` before its claim and fetch. The answer under the locks decides; the first only
+  spares the work. A metadata refresh asks under `Metadata\RefreshWriter::locked()`'s lock, and
   a caller found stale there releases the claim and writes nothing else.
 - A link start asks before it stores its request, in no transaction, and the redemption asks again under its own
   locks (`Handoffs\Redemption\LinkBranch`).

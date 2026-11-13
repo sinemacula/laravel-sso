@@ -374,10 +374,14 @@ final readonly class KeyService
             $typeAllowed ? null : new SettingViolation('key_type', ViolationCode::NOT_ALLOWED),
         ], static fn (?SettingViolation $violation): bool => $violation !== null));
 
+        // Asked before the key pair is generated only outside any transaction,
+        // where the answer holds no lock; the answer under the locks decides
+        $upFront = DB::connection(StorageConnection::name())->transactionLevel() === 0;
+
         return match (true) {
             $violations !== []                                                                                   => KeyResult::invalid($violations),
             self::query($connection)->where('use', $use->value)->where('state', KeyState::NEXT->value)->exists() => KeyResult::refused(FailureReason::KEY_STATE_CONFLICT),
-            !$this->freshness->check($use->freshness(), $caller)->isFresh()                                      => KeyResult::refused(FailureReason::FRESHNESS_REQUIRED),
+            $upFront && !$this->freshness->check($use->freshness(), $caller)->isFresh()                          => KeyResult::refused(FailureReason::FRESHNESS_REQUIRED),
             default                                                                                              => $connection,
         };
     }
@@ -474,11 +478,13 @@ final readonly class KeyService
 
             $locked = $this->connections->findForUpdate($tenantId, $connectionId);
 
-            return match (true) {
-                $locked === null                                         => KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND),
-                !$this->freshness->check($operation, $caller)->isFresh() => KeyResult::refused(FailureReason::FRESHNESS_REQUIRED),
-                default                                                  => $change($locked),
-            };
+            if ($locked === null) {
+                return KeyResult::refused(FailureReason::CONNECTION_NOT_FOUND);
+            }
+
+            // The key rows the change locks after freshness are taken only
+            // under their connection's lock, so they cannot close a cycle
+            return $this->freshness->check($operation, $caller)->isFresh() ? $change($locked) : KeyResult::refused(FailureReason::FRESHNESS_REQUIRED);
         });
     }
 

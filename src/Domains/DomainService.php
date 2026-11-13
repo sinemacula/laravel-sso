@@ -349,10 +349,10 @@ final readonly class DomainService
     private function verificationRefusal(Domain $found, ?Caller $caller): ?DomainResult
     {
         return match (true) {
-            DomainStanding::isPendingExpired($found, $this->clock->now()) => DomainResult::refused(FailureReason::DOMAIN_CLAIM_EXPIRED),
-            !$this->isFresh(FreshnessOperation::DOMAIN_VERIFY, $caller)   => DomainResult::refused(FailureReason::FRESHNESS_REQUIRED),
-            $found->state === DomainState::VERIFIED                       => DomainResult::unchanged(DomainSummary::of($found)),
-            default                                                       => $this->lookupRefusal($found),
+            DomainStanding::isPendingExpired($found, $this->clock->now())     => DomainResult::refused(FailureReason::DOMAIN_CLAIM_EXPIRED),
+            $this->isStaleUpFront(FreshnessOperation::DOMAIN_VERIFY, $caller) => DomainResult::refused(FailureReason::FRESHNESS_REQUIRED),
+            $found->state === DomainState::VERIFIED                           => DomainResult::unchanged(DomainSummary::of($found)),
+            default                                                           => $this->lookupRefusal($found),
         };
     }
 
@@ -507,6 +507,21 @@ final readonly class DomainService
 
             return $locked === null ? DomainResult::refused(FailureReason::CONNECTION_NOT_FOUND) : $change($locked);
         }, self::ATTEMPTS);
+    }
+
+    /**
+     * Whether the caller is stale, asked before the lookup only outside any
+     * transaction, where the answer holds no lock; the locked answer decides.
+     *
+     * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
+     * @return bool
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function isStaleUpFront(FreshnessOperation $operation, ?Caller $caller): bool
+    {
+        return DB::connection(StorageConnection::name())->transactionLevel() === 0 && !$this->isFresh($operation, $caller);
     }
 
     /**

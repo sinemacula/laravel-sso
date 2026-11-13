@@ -170,9 +170,9 @@ it takes its locks, asks the contract, and only then writes, reporting the chang
 a partial change or an event behind, and your contract is asked after every lock the package takes for the change: it
 may lock the caller's session row there, with a current read, and keep that lock until the change commits.
 
-Verifying a domain, adding a key and refreshing metadata now also ask once before their DNS lookup, key generation or
-fetch, so a stale caller spends none of them; the answer under the locks still decides. Answer each question afresh: a
-transaction retried after a deadlock asks again.
+Verifying a domain, adding a key and refreshing metadata also ask once before their DNS lookup, key generation or
+fetch, when no transaction is open, so a stale caller spends none of them; the answer under the locks still decides.
+Answer each question afresh: a transaction retried after a deadlock asks again.
 
 ## Testing with `FakeFreshness`
 

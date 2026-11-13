@@ -69,14 +69,16 @@ final readonly class RefreshWriter
     {
         return DB::connection(StorageConnection::name())->transaction(function () use ($claim, $lockedTrust, $work, $caller, $client): RefreshResult {
 
-            $locked = self::lockedConnection($claim);
+            $locked  = self::lockedConnection($claim);
+            $trusted = $locked === null ? null : $lockedTrust($locked);
 
-            if ($locked === null || !self::isUnchanged($locked, $claim) || $lockedTrust($locked) !== $claim->trusted) {
-                return $this->conflict($claim, $locked, $caller, $client);
+            // Asked once every row is locked, and before a conflict is reported
+            if ($locked !== null && $claim->asksFreshness && !$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
+                return $this->stale($locked, $claim);
             }
 
-            if ($claim->asksFreshness && !$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
-                return $this->stale($locked);
+            if ($locked === null || !self::isUnchanged($locked, $claim) || $trusted !== $claim->trusted) {
+                return $this->conflict($claim, $locked, $caller, $client);
             }
 
             return $work($locked);
@@ -196,15 +198,18 @@ final readonly class RefreshWriter
     }
 
     /**
-     * Release the claim of a caller found stale under the lock, writing nothing
-     * else and reporting nothing.
+     * Release the claim of a caller found stale under the lock, if it is still
+     * this refresh's, writing nothing else and reporting nothing.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      */
-    private function stale(Connection $locked): RefreshResult
+    private function stale(Connection $locked, RefreshClaim $claim): RefreshResult
     {
-        $locked->forceFill(['metadata_claimed_until' => null, 'metadata_claim_token' => null])->save();
+        if (self::isOwned($locked, $claim)) {
+            $locked->forceFill(['metadata_claimed_until' => null, 'metadata_claim_token' => null])->save();
+        }
 
         return RefreshResult::refused(FailureReason::FRESHNESS_REQUIRED, $locked->id);
     }
@@ -252,9 +257,20 @@ final readonly class RefreshWriter
     private static function isUnchanged(Connection $locked, RefreshClaim $claim): bool
     {
         $claimed = $claim->connection;
-        $owned   = is_string($locked->metadata_claim_token) && ConstantTime::equals($locked->metadata_claim_token, $claim->token);
 
-        return $owned && $locked->metadata_version === $claimed->metadata_version && $locked->trust_version === $claimed->trust_version;
+        return self::isOwned($locked, $claim) && $locked->metadata_version === $claimed->metadata_version && $locked->trust_version === $claimed->trust_version;
+    }
+
+    /**
+     * Whether the locked connection still holds the claim's token.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
+     * @param  \SineMacula\Laravel\Sso\Metadata\RefreshClaim  $claim
+     * @return bool
+     */
+    private static function isOwned(Connection $locked, RefreshClaim $claim): bool
+    {
+        return is_string($locked->metadata_claim_token) && ConstantTime::equals($locked->metadata_claim_token, $claim->token);
     }
 
     /**

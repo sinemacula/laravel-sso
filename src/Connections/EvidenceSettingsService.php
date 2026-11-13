@@ -80,7 +80,7 @@ final readonly class EvidenceSettingsService
 
     /**
      * Replace the whole policy; an empty one clears it. Freshness is asked
-     * before the lock so nothing slow runs under it.
+     * under the connection's lock.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId

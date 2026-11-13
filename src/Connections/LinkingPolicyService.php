@@ -141,8 +141,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * Change the named settings and keep the rest; freshness is asked before
-     * the lock so nothing slow runs under it.
+     * Change the named settings and keep the rest; freshness is asked under the
+     * connection's lock.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
