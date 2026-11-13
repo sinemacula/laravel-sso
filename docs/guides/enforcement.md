@@ -58,7 +58,8 @@ The ids you give are the tenant's connections that satisfy the rule: a session e
 is still enabled complies. Turning the rule on asks the freshness contract with `sso.enforcement.update` (see
 [Freshness](freshness.md)), and needs at least one of the connections given to be enabled and to have completed a
 sign-in, so a connection that was never tried cannot lock the tenant out. Turning it off (`false`) needs no completed
-sign-in and revokes nothing.
+sign-in and revokes nothing. Turning off a tenant with no rule stores an off rule, so an inheritance can tell a tenant
+that opted out of its ancestor's rule from one that never set its own.
 
 | Result                                                            | Why                                                                                               |
 |-------------------------------------------------------------------|---------------------------------------------------------------------------------------------------|
