@@ -41,7 +41,11 @@ MySQL: on PostgreSQL its guard fails to serialise first, since whatever changed 
 transaction that read before it redeemed or widened has such a snapshot. The package's standalone redemption never does:
 it reads the connection's tenant before its transaction opens, so for a `link` the guard is the first statement in it
 and every plain read after it sees what the guard's previous holder committed; should it reach `LinkCandidatesChanged`
-all the same, it restarts once from its transaction, and a second time propagates.
+all the same, it is tried again as a serialisation failure.
+
+`LinkCandidatesChanged` is a `PDOException` whose code is SQLSTATE 40001 as an integer, so Laravel reads it as a
+serialisation failure: an outermost `transaction()` given attempts runs again from its start, and a nested one rethrows
+it as `Illuminate\Database\DeadlockException` with the same code and it as the previous exception.
 
 The guard's cost falls only on flows that touch linking. An ordinary linked sign-in reads its row, takes no guard and
 locks no claim; a sign-in with the feature or the connection's linking off reads neither. A transaction holds one

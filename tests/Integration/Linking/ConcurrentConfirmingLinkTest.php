@@ -843,10 +843,12 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
             }
 
             $outcome .= '|' . $this->confirmationsReported();
-        } catch (LinkCandidatesChanged) {
-            $outcome = self::RETRY;
         } catch (\Throwable $e) {
-            $outcome = self::isSerializationFailure($e) ? self::SERIALIZATION : 'error: ' . $e::class . ': ' . $e->getMessage();
+            $outcome = match (true) {
+                self::changedCandidates($e)      => self::RETRY,
+                self::isSerializationFailure($e) => self::SERIALIZATION,
+                default                          => 'error: ' . $e::class . ': ' . $e->getMessage(),
+            };
         }
 
         file_put_contents("{$this->signals}/outcome-{$process}", $outcome);
@@ -920,6 +922,24 @@ final class ConcurrentConfirmingLinkTest extends LinkingTestCase
         for ($error = $exception; $error !== null; $error = $error->getPrevious()) {
             if ((string) $error->getCode() === '40001') {
                 return DB::connection()->getDriverName() === 'pgsql';
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Whether the error chain holds `LinkCandidatesChanged`, which a nested
+     * transaction rethrows as `DeadlockException`.
+     *
+     * @param  \Throwable  $exception
+     * @return bool
+     */
+    private static function changedCandidates(\Throwable $exception): bool
+    {
+        for ($error = $exception; $error !== null; $error = $error->getPrevious()) {
+            if ($error instanceof LinkCandidatesChanged) {
+                return true;
             }
         }
 
