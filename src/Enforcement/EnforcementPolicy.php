@@ -38,43 +38,45 @@ final readonly class EnforcementPolicy implements \JsonSerializable
         /** The enabled connections that satisfy it, in id order. */
         public array $connectionIds,
 
-        /** Changes with every change to the rule, `null` when none is stored. */
+        /** Changes with the rule and with which of its connections are enabled; `null` when no rule is stored. */
         public ?string $version,
     ) {}
 
     /**
-     * Sessions active in the tenant need not come through a connection.
+     * Sessions active in the tenant need not come through a connection; the
+     * rule's own version is `null` when none is stored.
      *
      * @param  string  $tenantId
      * @param  string  $enforcingTenantId
-     * @param  ?string  $version
+     * @param  ?string  $ruleVersion
      * @return self
      *
      * @throws \InvalidArgumentException
      */
-    public static function notRequired(string $tenantId, string $enforcingTenantId, ?string $version = null): self
+    public static function notRequired(string $tenantId, string $enforcingTenantId, ?string $ruleVersion = null): self
     {
         self::assertTenants($tenantId, $enforcingTenantId);
 
-        return new self($tenantId, $enforcingTenantId, false, [], $version);
+        return new self($tenantId, $enforcingTenantId, false, [], $ruleVersion === null ? null : self::fingerprint($ruleVersion, []));
     }
 
     /**
-     * Sessions in the tenant must come through one of the connections given.
+     * Sessions in the tenant must come through one of the connections given,
+     * under the rule of the version given.
      *
      * @param  string  $tenantId
      * @param  string  $enforcingTenantId
      * @param  list<string>  $connectionIds
-     * @param  string  $version
+     * @param  string  $ruleVersion
      * @return self
      *
      * @throws \InvalidArgumentException
      */
-    public static function required(string $tenantId, string $enforcingTenantId, array $connectionIds, string $version): self
+    public static function required(string $tenantId, string $enforcingTenantId, array $connectionIds, string $ruleVersion): self
     {
         self::assertTenants($tenantId, $enforcingTenantId);
 
-        if ($version === '') {
+        if ($ruleVersion === '') {
             throw new \InvalidArgumentException('A required enforcement has a version.');
         }
 
@@ -82,7 +84,7 @@ final readonly class EnforcementPolicy implements \JsonSerializable
 
         sort($ids, SORT_STRING);
 
-        return new self($tenantId, $enforcingTenantId, true, $ids, $version);
+        return new self($tenantId, $enforcingTenantId, true, $ids, self::fingerprint($ruleVersion, $ids));
     }
 
     /**
@@ -137,5 +139,18 @@ final readonly class EnforcementPolicy implements \JsonSerializable
         if ($tenantId === '' || $enforcingTenantId === '') {
             throw new \InvalidArgumentException('An enforcement policy names its tenant and the tenant whose rule applies.');
         }
+    }
+
+    /**
+     * The lower-case hex SHA-256 of the rule's version and the connections that
+     * satisfy it.
+     *
+     * @param  string  $ruleVersion
+     * @param  list<string>  $connectionIds
+     * @return string
+     */
+    private static function fingerprint(string $ruleVersion, array $connectionIds): string
+    {
+        return hash('sha256', implode("\0", [$ruleVersion, ...$connectionIds]));
     }
 }

@@ -550,14 +550,14 @@ final class DefaultBindingsFlowsTest extends StandaloneTestCase
 
         self::assertTrue($after->isRequired());
         self::assertSame([$satisfying->id], $after->connectionIds);
-        self::assertSame($version, $after->version);
+        self::assertSame(self::policyVersion($version, [$satisfying->id]), $after->version);
 
         $this->assertFailedFlow($this->completeFlow($outside, $this->startedFlow($outside)), FailureReason::ENFORCEMENT_UNSATISFIED);
 
         $held = $this->startedFlow($satisfying);
         $kept = $this->completedCode($this->completeFlow($satisfying, $held));
 
-        self::assertSame($version, $this->flowRedeem($satisfying, 'sign_in', $kept, $held['verifier'])->assertOk()->json('enforcement_version'));
+        self::assertSame($after->version, $this->flowRedeem($satisfying, 'sign_in', $kept, $held['verifier'])->assertOk()->json('enforcement_version'));
         $this->assertDefaultBindings();
     }
 

@@ -344,7 +344,9 @@ final class ProvenanceCaptureTest extends LinkingTestCase
 
         $answer = $this->signIn();
 
-        self::assertSame(['enforcement-7', 'enforcement-7'], [$answer->enforcementVersion, $answer->provenance?->enforcementVersion]);
+        $version = self::policyVersion('enforcement-7');
+
+        self::assertSame([$version, $version], [$answer->enforcementVersion, $answer->provenance?->enforcementVersion]);
     }
 
     /**
@@ -390,8 +392,10 @@ final class ProvenanceCaptureTest extends LinkingTestCase
         $answer = $this->admit($completion, $start);
 
         self::assertTrue($answer->isRedeemed());
-        self::assertSame(['enforcement-8', 'enforcement-8'], [$answer->enforcementVersion, $answer->provenance?->enforcementVersion]);
-        self::assertSame('enforcement-8', AuthenticationContext::of($answer->provenance)[AuthenticationContext::ENFORCEMENT_VERSION]);
+        $version = self::policyVersion('enforcement-8');
+
+        self::assertSame([$version, $version], [$answer->enforcementVersion, $answer->provenance?->enforcementVersion]);
+        self::assertSame($version, AuthenticationContext::of($answer->provenance)[AuthenticationContext::ENFORCEMENT_VERSION]);
     }
 
     /**

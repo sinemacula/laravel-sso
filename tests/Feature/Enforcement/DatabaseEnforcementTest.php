@@ -126,7 +126,7 @@ final class DatabaseEnforcementTest extends TestCase
 
         self::assertFalse($policy->isRequired());
         self::assertSame([], $policy->connectionIds);
-        self::assertSame($enforcement->version, $policy->version);
+        self::assertSame(self::policyVersion($enforcement->version), $policy->version);
     }
 
     /**
@@ -149,7 +149,7 @@ final class DatabaseEnforcementTest extends TestCase
         self::assertSame(self::TENANT, $policy->tenantId);
         self::assertSame(self::TENANT, $policy->enforcingTenantId);
         self::assertSame($expected, $policy->connectionIds);
-        self::assertSame($enforcement->version, $policy->version);
+        self::assertSame(self::policyVersion($enforcement->version, $expected), $policy->version);
         self::assertTrue($policy->isSatisfiedBy($first->id));
     }
 
@@ -198,9 +198,9 @@ final class DatabaseEnforcementTest extends TestCase
         $none  = $this->enforcement()->policy('ACME', self::APPLICATION);
 
         self::assertTrue($acme->isRequired());
-        self::assertSame($lower->version, $acme->version);
+        self::assertSame(self::policyVersion($lower->version, $acme->connectionIds), $acme->version);
         self::assertFalse($other->isRequired());
-        self::assertSame($upper->version, $other->version);
+        self::assertSame(self::policyVersion($upper->version), $other->version);
         self::assertFalse($none->isRequired());
         self::assertNull($none->version);
     }
@@ -224,7 +224,7 @@ final class DatabaseEnforcementTest extends TestCase
             $policy = $this->enforcement()->policy(self::TENANT, self::APPLICATION);
 
             self::assertTrue($result->isChanged(), (string) json_encode($result));
-            self::assertSame($result->enforcement?->version, $policy->version);
+            self::assertSame(self::policyVersion($result->enforcement?->version, $policy->connectionIds), $policy->version);
             self::assertSame($enabled, $policy->isRequired());
 
             $versions[] = $policy->version;
@@ -234,7 +234,8 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * Each call reads the row afresh.
+     * Each call reads the row and its connections afresh, and the version moves
+     * when a connection is enabled again.
      *
      * @return void
      */
@@ -257,10 +258,14 @@ final class DatabaseEnforcementTest extends TestCase
 
         self::assertTrue($before->isRequired());
         self::assertFalse($after->isRequired());
-        self::assertSame('01jbchangedchangedchanged0', $after->version);
+        self::assertSame(self::policyVersion('01jbchangedchangedchanged0'), $after->version);
         self::assertTrue($last->isRequired());
         self::assertSame([], $last->connectionIds);
-        self::assertSame('01jbchangedchangedchanged1', $last->version);
+        self::assertSame(self::policyVersion('01jbchangedchangedchanged1'), $last->version);
+
+        $connection->forceFill(['enabled' => true])->save();
+
+        self::assertSame(self::policyVersion('01jbchangedchangedchanged1', [$connection->id]), $contract->policy(self::TENANT, self::APPLICATION)->version);
     }
 
     /**
@@ -313,7 +318,7 @@ final class DatabaseEnforcementTest extends TestCase
         self::assertSame('child', $child->tenantId);
         self::assertSame('parent', $child->enforcingTenantId);
         self::assertSame([$connection->id], $child->connectionIds);
-        self::assertSame($enforcement->version, $child->version);
+        self::assertSame(self::policyVersion($enforcement->version, [$connection->id]), $child->version);
         self::assertSame('parent', $parent->enforcingTenantId);
     }
 

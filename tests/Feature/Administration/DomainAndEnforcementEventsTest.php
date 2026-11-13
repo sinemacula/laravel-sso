@@ -139,7 +139,7 @@ final class DomainAndEnforcementEventsTest extends TestCase
         $event = $this->recordedEvents()[0] ?? null;
 
         self::assertInstanceOf(ExemptionUsed::class, $event);
-        self::assertSame('01jbversion000000000000003', $event->enforcementVersion);
+        self::assertSame($policy->version, $event->enforcementVersion);
         self::assertSame('parent-1', $event->context->connectionTenantId);
         self::assertSame('child-1', $event->context->tenantId);
         self::assertSame('web', $event->context->application);

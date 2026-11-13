@@ -150,8 +150,10 @@ final class EnforcementServiceTest extends TestCase
         self::assertSame(RevocationScopeKind::TENANT, $scope->kind);
         self::assertSame(RevocationReason::ENFORCEMENT_CHANGED, $scope->reason);
         self::assertSame(self::TENANT, $scope->tenantId);
+        $version = self::policyVersion($summary->version, $ids);
+
         self::assertSame(
-            ['tenant_id' => self::TENANT, 'enforcing_tenant_id' => self::TENANT, 'required' => true, 'connection_ids' => $ids, 'version' => $summary->version],
+            ['tenant_id' => self::TENANT, 'enforcing_tenant_id' => self::TENANT, 'required' => true, 'connection_ids' => $ids, 'version' => $version],
             $scope->policy?->jsonSerialize(),
         );
 
@@ -199,8 +201,10 @@ final class EnforcementServiceTest extends TestCase
 
         self::assertCount(2, $scopes);
         self::assertNotSame($first->version, $second->version);
-        self::assertSame($second->version, $scopes[1]->policy?->version);
-        self::assertSame(self::sortedIds([$this->completed->id, $this->untried->id]), $scopes[1]->policy?->connectionIds);
+        $ids = self::sortedIds([$this->completed->id, $this->untried->id]);
+
+        self::assertSame(self::policyVersion($second->version, $ids), $scopes[1]->policy?->version);
+        self::assertSame($ids, $scopes[1]->policy->connectionIds);
 
         $this->assertEventSequence([EnforcementChanged::class, EnforcementChanged::class]);
 
