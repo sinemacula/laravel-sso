@@ -200,9 +200,12 @@ whose sessions do not record their link revokes the identity's sessions through 
 
 `Exceptions\LinkCandidatesChanged` means your transaction's snapshot was older than a link or a reservation it found
 under the lock, which on MySQL's `REPEATABLE READ` happens when your transaction read before it called `widened()` or
-redeemed. Retry your whole transaction. The package's standalone `link` redemption reads nothing before it takes the
-identity's guard, and restarts itself once if it comes to it. It tries its own transaction again, at most three times
-in all, when the database rolls it back as a deadlock, a lock wait timeout or a serialisation failure. A change to
+redeemed. Retry your whole transaction. Its code is SQLSTATE 40001, so Laravel treats it as a serialisation failure:
+`DB::transaction($callback, $attempts)` runs your callback again, and from inside a nested transaction it reaches you
+as `Illuminate\Database\DeadlockException` with the same code, with it as the previous exception. The package's
+standalone `link` redemption reads nothing before it takes the identity's guard. It tries its own transaction again,
+at most three times in all, when it comes to this or the database rolls it back as a deadlock, a lock wait timeout or a
+serialisation failure. A change to
 several identities' principals in one transaction, such as moving a subtree of tenants, passes them all to one
 `widened()` call, which takes their guards in ascending order of `Linking\IdentityLock::digest()`, then locks the
 connections holding any of their links together. Calling it once per identity would lock one identity's connections
