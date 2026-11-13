@@ -57,8 +57,10 @@ each, the default that refuses, and the gate every listed mutation calls before 
 - Every mutation follows one order: find what it changes on the write connection and validate what it was given; then,
   in one transaction on the storage connection, take its locks, judge again what they hold, ask the gate with each
   operation the change is, and write, reporting through `Administration\AdministrationEvents` inside it. So the
-  contract is asked after every lock the package takes for the change, and an implementation may lock the caller's
-  session row there, last, with a current read. A change's operations come from the settings it touches
+  contract is asked after the locks the package takes for the change, and an implementation may lock the caller's
+  session row there, last, with a current read. The one exception is a key change, which locks its key rows after the
+  answer; every path that locks a connection's key rows holds that connection's row first, so none can close a cycle
+  through a session row. A change's operations come from the settings it touches
   (`Contracts\ProtocolSettings::freshnessFor()`) and from what a key row is for (`Keys\Enums\KeyUse::freshness()`).
 - Three changes do outward or costly work before their transaction, and ask the gate before it too, when no transaction
   is open on the storage connection, so a stale caller spends nothing and the answer holds no lock:

@@ -167,7 +167,7 @@ match on its stable name, never on its position.
 
 Each change finds what it changes and validates what it was given; then, in one transaction on the storage connection,
 it takes its locks, asks the contract, and only then writes, reporting the change inside it. So a refusal never leaves
-a partial change or an event behind, and your contract is asked after every lock the package takes for the change: it
+a partial change or an event behind, and your contract is asked after the locks the package takes for the change: it
 may lock the caller's session row there, with a current read, and keep that lock until the change commits.
 
 Verifying a domain, adding a key and refreshing metadata also ask once before their DNS lookup, key generation or
