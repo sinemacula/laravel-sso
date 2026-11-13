@@ -175,7 +175,8 @@ and `fromStored($provenance->toArray())` answer identical arrays. `Provenance` k
 
 ## Implementation Anchors
 
-- `src/Sessions/Provenance.php`, `src/Sessions/AuthenticationContext.php`.
+- `src/Sessions/Provenance.php`, `src/Sessions/AuthenticationContext.php`, `src/Sessions/Enums/ContextKey.php`,
+  `src/Sessions/Enums/ContextValueType.php`.
 - `src/Handoffs/HandoffRedemption.php` (`redeemed()`), `src/Handoffs/RedemptionResult.php` (`$provenance`).
 - `src/Handoffs/HandoffRecheck.php` (`admit()`), `src/Handoffs/Redemption/Judgement.php`, `Admission.php`,
   `RedemptionContext.php`, `SignInBranch.php`; `src/Contracts/PurposeBranch.php`.
