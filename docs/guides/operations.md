@@ -30,8 +30,9 @@ Nothing is registered while no protocol is on, since the tables the commands rea
 | `metadata_refresh` | `sso:metadata:refresh` | `*/5 * * * *` | `sso.operations.cadence.metadata_refresh` | `SSO_OPERATIONS_METADATA_REFRESH_CADENCE` |
 | `expiry_report`    | `sso:keys:expiring`    | `0 0 * * *`   | `sso.operations.cadence.expiry_report`    | `SSO_OPERATIONS_EXPIRY_REPORT_CADENCE`    |
 
-Each is a cron expression. Set one to `null` or empty to leave that task to your own schedule; a malformed one fails
-`php artisan sso:check` under `[operations]`.
+Each is a cron expression. Set one to `null` or empty to leave that task to your own schedule. A malformed one fails
+`php artisan sso:check` under `[operations]`; the schedule reports it to your exception handler and runs the other
+tasks without it.
 
 > [!IMPORTANT]
 > Linking by email stops 24 hours after a domain's last successful check, whatever the schedule, and sooner if
@@ -59,7 +60,8 @@ SSO_OPERATIONS_MUTEX_MINUTES=60
 ```
 
 They save work and guarantee nothing, and they need a cache every server shares, whose driver supports locks. They use
-the store your schedule uses, which `Schedule::useCache()` chooses.
+the store your schedule uses, which `Schedule::useCache()` chooses. A malformed value of either is reported to your
+exception handler, and the four run without mutexes.
 
 #### Recovering from a stuck mutex
 
