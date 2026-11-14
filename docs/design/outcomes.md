@@ -56,8 +56,8 @@ the same way:
   says so, writes nothing and reports nothing.
 - The order is fixed: find the connection (and the key) on the write connection; validate what was given; then, in one
   transaction on the storage connection, lock, ask the freshness contract with each operation the change is
-  (`Freshness\FreshnessGate`), write, and report through `Administration\AdministrationEvents` inside it. A refusal at any step
-  writes nothing and dispatches nothing.
+  (`Freshness\FreshnessGate`), write, and report through `Administration\AdministrationEvents` inside it. A refusal at
+  any step writes nothing and dispatches nothing.
 - A read answers `null` for a connection it did not find (`get()`), and a list, possibly empty, otherwise.
 - The domain helpers (`Domains\DomainService`) answer a `Domains\DomainResult` the same way, with the domain
   reasons of `FailureReason` (`domain_not_found`, `domain_unavailable`, `domain_claim_expired`,
