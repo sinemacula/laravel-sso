@@ -78,15 +78,15 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
-     * The connection, again locked; then the connection, its requests, codes,
-     * trust version and reservations. Already disabled, the reads alone.
+     * The connection, locked; then the connection, its requests, codes, trust
+     * version and reservations. Already disabled, the read alone.
      *
      * @return void
      */
-    public function testDisablingIsTwoReadsAndFiveWrites(): void
+    public function testDisablingIsOneReadAndFiveWrites(): void
     {
-        $disabled = $this->assertQueryBudget(2, 5, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser()));
-        $again    = $this->assertQueryBudget(2, 0, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser()));
+        $disabled = $this->assertQueryBudget(1, 5, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser()));
+        $again    = $this->assertQueryBudget(1, 0, fn (): ConnectionResult => $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser()));
 
         self::assertSame(ConnectionStatus::DISABLED, $disabled->status);
         self::assertSame(ConnectionStatus::UNCHANGED, $again->status);
@@ -95,16 +95,16 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
-     * The connection, again locked, and its claims locked; the voiding's four
-     * writes, the owned rows' five deletes and the connection's.
+     * The connection and its claims, locked; the voiding's four writes, the
+     * owned rows' five deletes and the connection's.
      *
      * @return void
      */
-    public function testDeletingIsThreeReadsAndTenWrites(): void
+    public function testDeletingIsTwoReadsAndTenWrites(): void
     {
         $this->makeLinks();
 
-        $result = $this->assertQueryBudget(3, 10, fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->connection->id, Clients::browser()));
+        $result = $this->assertQueryBudget(2, 10, fn (): ConnectionResult => $this->lifecycle()->delete(self::TENANT, $this->connection->id, Clients::browser()));
 
         self::assertSame(ConnectionStatus::DELETED, $result->status);
         self::assertSame(0, Link::query()->count());

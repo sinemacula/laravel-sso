@@ -80,7 +80,7 @@ final readonly class EvidenceSettingsService
 
     /**
      * Replace the whole policy; an empty one clears it. Freshness is asked
-     * before the lock so nothing slow runs under it.
+     * under the connection's lock.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -97,10 +97,6 @@ final readonly class EvidenceSettingsService
     {
         if ($this->finder->find($tenantId, $connectionId) === null) {
             return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
-        }
-
-        if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
-            return ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
         return DB::connection(StorageConnection::name())->transaction(fn (): ConnectionResult => $this->setLocked($tenantId, $connectionId, $policy, $caller, $client));
@@ -164,6 +160,10 @@ final readonly class EvidenceSettingsService
 
         if ($locked === null || !$this->protocols->isAvailable($locked->protocol)) {
             return ConnectionResult::refused($locked === null ? FailureReason::CONNECTION_NOT_FOUND : FailureReason::PROTOCOL_UNAVAILABLE);
+        }
+
+        if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
+            return ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
         $violations = EvidenceRules::violations($policy, $locked->protocol, $this->settings->evidenceMaxAgeSeconds());

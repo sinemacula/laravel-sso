@@ -64,7 +64,7 @@ final class DomainVerificationTest extends DomainServiceTestCase
         self::assertNull($summary->pendingExpiresAt);
         self::assertSame('example.com', Domain::query()->findOrFail($claimed->id)->verified_domain);
         self::assertSame(1, Domain::query()->findOrFail($claimed->id)->verification_generation);
-        self::assertSame([[FreshnessOperation::DOMAIN_VERIFY, 300]], $this->freshness->asked());
+        self::assertSame([[FreshnessOperation::DOMAIN_VERIFY, 300], [FreshnessOperation::DOMAIN_VERIFY, 300]], $this->freshness->asked());
         $this->dns->assertLookedUp(self::RECORD, 1);
 
         $this->assertEventSequence([DomainVerified::class]);

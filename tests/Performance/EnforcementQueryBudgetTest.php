@@ -132,7 +132,7 @@ final class EnforcementQueryBudgetTest extends PerformanceContractTestCase
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $stale = $this->assertQueryBudget(2, 0, fn (): EnforcementResult => $this->service()->update(self::TENANT, false, [$this->connection->id], Clients::browser()));
+        $stale = $this->assertQueryBudget(4, 0, fn (): EnforcementResult => $this->service()->update(self::TENANT, false, [$this->connection->id], Clients::browser()));
 
         Config::set('sso.features.enforcement', false);
 

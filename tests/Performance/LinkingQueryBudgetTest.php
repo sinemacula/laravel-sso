@@ -282,7 +282,7 @@ final class LinkingQueryBudgetTest extends PerformanceContractTestCase
 
         $this->app?->instance(Freshness::class, FakeFreshness::stale());
 
-        self::assertTrue($this->assertQueryBudget(1, 0, static fn (): ConnectionResult => $change(['enabled' => false]))->isRefused());
+        self::assertTrue($this->assertQueryBudget(2, 0, static fn (): ConnectionResult => $change(['enabled' => false]))->isRefused());
     }
 
     /**

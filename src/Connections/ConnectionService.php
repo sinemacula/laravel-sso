@@ -167,11 +167,19 @@ final readonly class ConnectionService
             ...$map->violations(),
         ];
 
-        $refusal = $violations === []
-            ? $this->staleRefusal(self::operations($typed, [...array_keys($values), ...array_keys($given)], [FreshnessOperation::CONNECTION_TRUST]), $caller)
-            : ConnectionResult::invalid($violations);
+        if ($violations !== []) {
+            return ConnectionResult::invalid($violations);
+        }
 
-        return $refusal ?? $this->transaction(function () use ($tenantId, $protocol, $name, $typed, $given, $map, $client, $caller): ConnectionResult {
+        $operations = self::operations($typed, [...array_keys($values), ...array_keys($given)], [FreshnessOperation::CONNECTION_TRUST]);
+
+        return $this->transaction(function () use ($tenantId, $protocol, $name, $typed, $given, $map, $operations, $client, $caller): ConnectionResult {
+
+            $refusal = $this->staleRefusal($operations, $caller);
+
+            if ($refusal !== null) {
+                return $refusal;
+            }
 
             $connection = new Connection;
 

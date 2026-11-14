@@ -484,6 +484,22 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
+     * A change refused on the first read takes no lock, so leaves no row.
+     *
+     * @return void
+     */
+    public function testAChangeRefusedOnTheFirstReadLeavesNoRow(): void
+    {
+        $invalid = $this->turnOn(['01jbzzzzzzzzzzzzzzzzzzzzzz']);
+        $untried = $this->turnOn([$this->untried->id]);
+
+        self::assertTrue($invalid->isInvalid());
+        self::assertSame(FailureReason::COMPLETED_SIGN_IN_REQUIRED, $untried->reason);
+        self::assertSame(0, TenantEnforcement::query()->count());
+        self::assertSame([], $this->freshness->asked());
+    }
+
+    /**
      * A stale caller is refused and nothing changes.
      *
      * @return void
@@ -497,7 +513,7 @@ final class EnforcementServiceTest extends TestCase
         self::assertTrue($result->isRefused());
         self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
         self::assertSame([FreshnessOperation::ENFORCEMENT_UPDATE], $this->freshness->operations());
-        self::assertSame(0, TenantEnforcement::query()->count());
+        $this->assertNoRuleStored();
         self::assertSame([], $this->revocation->calls());
         $this->assertNoEvents();
     }
@@ -650,9 +666,7 @@ final class EnforcementServiceTest extends TestCase
      */
     public function testTheLockedRecheckSeesAConnectionDisabledMeanwhile(): void
     {
-        $this->freshness->onCheck = function (): void {
-            Connection::query()->whereKey($this->completed->id)->update(['enabled' => false]);
-        };
+        $this->beforeTheNextTransaction(fn (): mixed => Connection::query()->whereKey($this->completed->id)->update(['enabled' => false]));
 
         $result = $this->turnOn([$this->completed->id, $this->untried->id]);
 
@@ -673,9 +687,7 @@ final class EnforcementServiceTest extends TestCase
 
         $this->startRecordingEvents();
 
-        $this->freshness->onCheck = function (): void {
-            Connection::query()->whereKey($this->untried->id)->delete();
-        };
+        $this->beforeTheNextTransaction(fn (): mixed => Connection::query()->whereKey($this->untried->id)->delete());
 
         $result = $this->turnOn([$this->completed->id, $this->untried->id]);
 
@@ -691,9 +703,9 @@ final class EnforcementServiceTest extends TestCase
      */
     public function testTheLockedRecheckSeesTheSameChangeMadeMeanwhile(): void
     {
-        $this->freshness->onCheck = function (): void {
-            $this->makeEnforcement(['enabled' => true, 'connection_ids' => [$this->completed->id], 'version' => '01jbmeanwhilemeanwhile0000']);
-        };
+        $meanwhile = ['enabled' => true, 'connection_ids' => [$this->completed->id], 'version' => '01jbmeanwhilemeanwhile0000'];
+
+        $this->beforeTheNextTransaction(fn (): mixed => $this->makeEnforcement($meanwhile));
 
         $result = $this->turnOn([$this->completed->id]);
 
@@ -739,15 +751,11 @@ final class EnforcementServiceTest extends TestCase
      */
     public function testAChangeAfterARefusedFirstChangeReportsNoPreviousVersion(): void
     {
-        $this->freshness->onCheck = function (): void {
-            Connection::query()->whereKey($this->completed->id)->update(['enabled' => false]);
-        };
+        $this->beforeTheNextTransaction(fn (): mixed => Connection::query()->whereKey($this->completed->id)->update(['enabled' => false]));
 
         self::assertSame(FailureReason::COMPLETED_SIGN_IN_REQUIRED, $this->turnOn([$this->completed->id])->reason);
 
         $this->assertNoRuleStored();
-
-        $this->freshness->onCheck = null;
 
         Connection::query()->whereKey($this->completed->id)->update(['enabled' => true]);
 

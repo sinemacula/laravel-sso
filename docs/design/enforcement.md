@@ -78,19 +78,19 @@ transaction; and the gate an adapter calls before refusing a session it could ex
      (`connection_ids` `required`), and each a connection of this tenant through `Connections\ConnectionFinder`
      (`connection_ids.<n>` `unknown`, the same for another tenant's connection as for an id with no connection, so no
      other tenant is revealed); any violation is `invalid` (`settings_invalid`) with every violation, in position order;
-  3. the stored rule: the same switch and the same set of ids, in any order, looks `unchanged`, and skips step 5, but a
-     tenant with no rule always stores its first, an off rule included, which an inheritance contract may read as the
-     tenant's own rule stopping an ancestor's; it is answered `unchanged` only once step 6's locked read agrees, since
-     the first read may come from the snapshot of a transaction the caller opened, and a change found there asks
-     freshness before it is made;
+  3. the stored rule: the same switch and the same set of ids, in any order, looks `unchanged`, but a tenant with no
+     rule always stores its first, an off rule included, which an inheritance contract may read as the tenant's own
+     rule stopping an ancestor's; it is answered `unchanged` only once step 6's locked read agrees, since the first
+     read may come from the snapshot of a transaction the caller opened;
   4. turning it on: one of the connections given must be enabled with `has_completed_sign_in` set, so a misconfigured
      connection cannot lock the tenant out (SSO-4.3), else `completed_sign_in_required`; turning it off needs none;
-  5. freshness: `Freshness\FreshnessGate::check(FreshnessOperation::ENFORCEMENT_UPDATE)`, `sso.enforcement.update` with
-     its configured maximum age (SSO-2.12); `stale` is `freshness_required`;
+  5. freshness, asked in step 6 once the rows are locked and only of a change that goes ahead:
+     `Freshness\FreshnessGate::check(FreshnessOperation::ENFORCEMENT_UPDATE)`, `sso.enforcement.update` with its
+     configured maximum age (SSO-2.12); `stale` is `freshness_required`;
   6. one transaction on the storage connection (retried up to three times after a deadlock when it is the outermost):
-     lock the tenant's row, then the connections given, steps 2 to 4 judged again on the locked rows, the write through
-     the model (`enabled`, `connection_ids` sorted and unique, a new `version`, `changed_at` from the clock), the
-     revocation when the rule is now on, and the report.
+     lock the tenant's row, then the connections given, steps 2 to 4 judged again on the locked rows, step 5, the write
+     through the model (`enabled`, `connection_ids` sorted and unique, a new `version`, `changed_at` from the clock),
+     the revocation when the rule is now on, and the report.
 - Lock order: a tenant's enforcement row, then connection rows in id order (one locking statement by id, ordered by
   id, with the tenant compared byte for byte in PHP), then (for an admission) its request or code. Every read under the
   lock that decides the write is a locking read, since a plain read answers from the snapshot of a transaction the

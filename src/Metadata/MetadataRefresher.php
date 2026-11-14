@@ -161,12 +161,14 @@ final readonly class MetadataRefresher
 
         $attempt = $this->limiter->attempt(AttemptSubject::metadata($connection->id));
 
-        return $attempt->retryAfter !== null ? RefreshResult::rateLimited($connection->id, $attempt->retryAfter) : $this->refresh($connection, $caller, $client, true);
+        return $attempt->retryAfter !== null
+            ? RefreshResult::rateLimited($connection->id, $attempt->retryAfter)
+            : $this->refresh($connection, $caller, $client, true, $this->asksFreshness($connection));
     }
 
     /**
      * Why an administrator may not refresh the connection now, or `null` when
-     * they may.
+     * they may; a fresh caller is asked again under the write's lock.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -177,17 +179,26 @@ final readonly class MetadataRefresher
      */
     private function refusalNow(Connection $connection, Caller $caller): ?RefreshResult
     {
-        if (!$this->isRefreshable($connection)) {
-            return RefreshResult::refused(FailureReason::FEATURE_DISABLED, $connection->id);
-        }
+        return match (true) {
+            !$this->isRefreshable($connection)                                                 => RefreshResult::refused(FailureReason::FEATURE_DISABLED, $connection->id),
+            !$this->asksFreshness($connection)                                                 => null,
+            !$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh() => RefreshResult::refused(FailureReason::FRESHNESS_REQUIRED, $connection->id),
+            default                                                                            => null,
+        };
+    }
 
-        if (Features::enabled(Feature::METADATA_REFRESH) && $this->refreshes($connection)) {
-            return null;
-        }
-
-        $fresh = $this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh();
-
-        return $fresh ? null : RefreshResult::refused(FailureReason::FRESHNESS_REQUIRED, $connection->id);
+    /**
+     * Whether an administrator's refresh needs a fresh caller: not of one the
+     * schedule refreshes anyway.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @return bool
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function asksFreshness(Connection $connection): bool
+    {
+        return !Features::enabled(Feature::METADATA_REFRESH) || !$this->refreshes($connection);
     }
 
     /**
@@ -198,18 +209,23 @@ final readonly class MetadataRefresher
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  bool  $asked
+     * @param  bool  $asksFreshness
      * @return \SineMacula\Laravel\Sso\Metadata\RefreshResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    private function refresh(Connection $connection, ?Caller $caller, ClientContext $client, bool $asked): RefreshResult
+    private function refresh(Connection $connection, ?Caller $caller, ClientContext $client, bool $asked, bool $asksFreshness = false): RefreshResult
     {
         $source = $this->sourceOf($connection);
         $claim  = $source->claim($connection);
 
         if ($claim === null) {
             return $asked ? RefreshResult::inProgress($connection->id) : RefreshResult::skipped($connection->id);
+        }
+
+        if ($asksFreshness) {
+            $claim = $claim->askingFreshness();
         }
 
         $fetched = $source->fetch($claim);

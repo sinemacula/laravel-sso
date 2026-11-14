@@ -57,15 +57,29 @@ each, the default that refuses, and the gate every listed mutation calls before 
   alone; a `link` redemption gives the caller it was made for. Scheduled and console work passes no caller: a metadata
   refresh the schedule or the queue makes asks no freshness at all, and an administrator's `refreshNow()` requires its
   caller.
-- Every mutation follows one order: find what it changes on the write connection; validate what it was given; ask the
-  gate with each operation the change is; then write, in one transaction on the storage connection, reporting through
-  `Administration\AdministrationEvents` inside it. A change's operations come from the settings it touches
+- Every mutation follows one order: find what it changes on the write connection and validate what it was given; then,
+  in one transaction on the storage connection, take its locks, judge again what they hold, ask the gate with each
+  operation the change is, and write, reporting through `Administration\AdministrationEvents` inside it. So the
+  contract is asked after the locks the package takes for the change, and an implementation may lock the caller's
+  session row there, last, with a current read. The one exception is a key change, which locks its key rows after the
+  answer; every path that locks a connection's key rows holds that connection's row first, so none can close a cycle
+  through a session row. A change's operations come from the settings it touches
   (`Contracts\ProtocolSettings::freshnessFor()`) and from what a key row is for (`Keys\Enums\KeyUse::freshness()`).
+- Three changes do outward or costly work before their transaction, and ask the gate before it too, when no transaction
+  is open on the storage connection, so a stale caller spends nothing and the answer holds no lock:
+  `DomainService::verify()` before its rate limited DNS lookup, `KeyService::addNext()` before it generates a key pair,
+  and `MetadataRefresher::refreshNow()` before its claim and fetch. The answer under the locks decides; the first only
+  spares the work. A metadata refresh asks under `Metadata\RefreshWriter::locked()`'s lock, and
+  a caller found stale there releases the claim and writes nothing else.
+- A link start asks before it stores its request, in no transaction, and the redemption asks again under its own
+  locks (`Handoffs\Redemption\LinkBranch`).
 - A refusal writes nothing and reports nothing: a `stale` answer ends the helper with a result whose reason is
   `FailureReason::FRESHNESS_REQUIRED` (`freshness_required`), so the application can ask the caller to authenticate
-  again and retry. No row changes, no event is dispatched, and no failure event is reported for it.
-- The gate may be asked inside a transaction the application opened, since it reads configuration and calls the
-  contract only; but nothing is written before the answer, so a refusal has nothing to roll back.
+  again and retry. No row changes, no event is dispatched, and no failure event is reported for it. The one row a
+  refusal can leave is the unconfigured guard row an enforcement change locks, which stores no rule (`enforcement.md`).
+- The gate is asked inside the package's transaction, a savepoint of one the application opened, and the contract may
+  be asked again when that transaction is retried after a deadlock. An implementation keeps nothing of one answer for
+  the next.
 - `[freshness]` (`Freshness\FreshnessCheck`) applies while the package is in use (`Config\Features::isInUse()`): the
   block must be an array (else `` `sso.freshness.max_age_seconds` must be an array of maximum ages by operation. ``),
   with no key that names no operation (else one problem naming every such key and listing the operations, since a

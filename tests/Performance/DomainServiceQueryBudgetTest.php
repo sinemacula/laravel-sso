@@ -68,7 +68,7 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * The connection, then it and the domain's claims locked, and the insert; a
-     * duplicate writes nothing, a stale caller reads once.
+     * duplicate and a stale caller, asked under the locks, write nothing.
      *
      * @return void
      */
@@ -79,7 +79,7 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $stale = $this->assertQueryBudget(1, 0, fn (): DomainResult => $this->claimDomain('example.org'));
+        $stale = $this->assertQueryBudget(3, 0, fn (): DomainResult => $this->claimDomain('example.org'));
 
         self::assertSame(DomainStatus::CLAIMED, $claimed->status);
         self::assertTrue($duplicate->isInvalid());

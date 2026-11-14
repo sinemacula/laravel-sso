@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
+use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
@@ -888,7 +889,7 @@ final class MetadataRefresherTest extends TestCase
 
     /**
      * A fresh administrator can refresh with the feature or switch off, asked
-     * once for the connection's trust.
+     * for the connection's trust before the fetch and again under the lock.
      *
      * @param  bool  $feature
      * @param  ?bool  $switch
@@ -905,7 +906,46 @@ final class MetadataRefresherTest extends TestCase
         config()->set('sso.features.metadata_refresh', $feature);
 
         self::assertSame(RefreshOutcome::REFRESHED, $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser())->outcome);
-        self::assertSame([FreshnessOperation::CONNECTION_TRUST], array_column($freshness->asked(), 'operation'));
+        self::assertSame([FreshnessOperation::CONNECTION_TRUST, FreshnessOperation::CONNECTION_TRUST], array_column($freshness->asked(), 'operation'));
+    }
+
+    /**
+     * An administrator found stale under the lock applies nothing, reports
+     * nothing and releases the claim.
+     *
+     * @return void
+     */
+    public function testAnAdministratorStaleUnderTheLockAppliesNothing(): void
+    {
+        $connection = $this->saml(['metadata_refresh' => false]);
+
+        $this->app?->instance(Freshness::class, new class implements Freshness {
+            /** @var int How many times freshness was asked. */
+            private int $asked = 0;
+
+            /**
+             * Fresh before the fetch, stale under the lock.
+             *
+             * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
+             * @param  int  $maxAgeSeconds
+             * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
+             * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
+             */
+            #[\Override]
+            public function check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller $caller): FreshnessOutcome
+            {
+                unset($operation, $maxAgeSeconds, $caller);
+
+                return ++$this->asked === 1 ? FreshnessOutcome::FRESH : FreshnessOutcome::STALE;
+            }
+        });
+
+        $result = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
+        $row    = $this->row($connection);
+
+        self::assertSame([RefreshOutcome::REFUSED, FailureReason::FRESHNESS_REQUIRED, $connection->id], [$result->outcome, $result->reason, $result->connectionId]);
+        self::assertSame([0, 0, null, null], [$row->metadata_version, $row->metadata_refresh_failures, $row->metadata_claimed_until, $row->metadata_claim_token]);
+        $this->assertNoEvents();
     }
 
     /**

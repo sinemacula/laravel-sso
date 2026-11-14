@@ -20,7 +20,6 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Evidence\ConnectionEvidencePolicy;
 use SineMacula\Laravel\Sso\Evidence\EvidenceRules;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
-use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
@@ -514,36 +513,7 @@ final class EvidenceSettingsServiceTest extends LinkingTestCase
     {
         $id = $this->makeConnection(['protocol' => VerifyingDriver::NAME, 'settings' => ['issuer' => VerifyingDriver::ISSUER]])->id;
 
-        $this->app?->instance(Freshness::class, new readonly class ($id) implements Freshness {
-            /**
-             * Constructor.
-             *
-             * @param  string  $id
-             */
-            public function __construct(
-
-                /** The connection to delete. */
-                private string $id,
-            ) {}
-
-            /**
-             * Delete the connection, and answer fresh.
-             *
-             * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
-             * @param  int  $maxAgeSeconds
-             * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
-             * @return \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome
-             */
-            #[\Override]
-            public function check(FreshnessOperation $operation, int $maxAgeSeconds, ?Caller $caller): FreshnessOutcome
-            {
-                unset($operation, $maxAgeSeconds, $caller);
-
-                Connection::query()->whereKey($this->id)->delete();
-
-                return FreshnessOutcome::FRESH;
-            }
-        });
+        $this->beforeTheNextTransaction(static fn (): mixed => Connection::query()->whereKey($id)->delete());
 
         self::assertSame(FailureReason::CONNECTION_NOT_FOUND, self::service()->set('tenant-1', $id, self::POLICY, Clients::browser())->reason);
 

@@ -30,6 +30,7 @@ use SineMacula\Laravel\Sso\Contracts\TenantMembership;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Domains\DomainService;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
+use SineMacula\Laravel\Sso\Enforcement\EnforcementLock;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementService;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
@@ -64,6 +65,7 @@ use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
+use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
@@ -725,14 +727,16 @@ final class DefaultBindingsRefusalsTest extends StandaloneTestCase
     }
 
     /**
-     * Turning enforcement on is `sso.enforcement.update`, asked after
-     * validation.
+     * Turning enforcement on is `sso.enforcement.update`, asked under the
+     * tenant's lock; the unconfigured guard row the lock takes stores no rule.
      *
      * @return ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason
      */
     private function updateEnforcement(): ?FailureReason
     {
         $connection = $this->makeConnection(['enabled' => true, 'has_completed_sign_in' => true]);
+
+        DB::connection(StorageConnection::name())->transaction(static fn (): TenantEnforcement => app(EnforcementLock::class)->acquire(self::TENANT));
 
         return $this->withNothingWritten(static fn (): ?FailureReason => app(EnforcementService::class)->update(self::TENANT, true, [$connection->id], Clients::browser())->reason);
     }

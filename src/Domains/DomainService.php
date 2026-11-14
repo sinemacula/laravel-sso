@@ -110,7 +110,7 @@ final readonly class DomainService
     {
         $name       = DomainName::normalize($domain);
         $recordName = $this->settings->recordName();
-        $refusal    = $this->claimRefusal($tenantId, $connectionId, $this->claimViolation($domain, $name, $recordName), $caller);
+        $refusal    = $this->claimRefusal($tenantId, $connectionId, $this->claimViolation($domain, $name, $recordName));
 
         if ($refusal !== null || $name === null) {
             return $refusal ?? DomainResult::invalid([new SettingViolation(self::DOMAIN, ViolationCode::INVALID_FORMAT)]);
@@ -170,10 +170,6 @@ final readonly class DomainService
             return $found;
         }
 
-        if (!$this->freshness->check(FreshnessOperation::DOMAIN_REMOVE, $caller)->isFresh()) {
-            return DomainResult::refused(FailureReason::FRESHNESS_REQUIRED);
-        }
-
         return $this->change($tenantId, $connectionId, fn (Connection $locked): DomainResult => $this->deleteClaim($locked, $found->domain, $caller, $client));
     }
 
@@ -217,18 +213,16 @@ final readonly class DomainService
      * @param  string  $tenantId
      * @param  string  $connectionId
      * @param  ?\SineMacula\Laravel\Sso\Connections\Enums\ViolationCode  $violation
-     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return ?\SineMacula\Laravel\Sso\Domains\DomainResult
      *
      * @throws \InvalidArgumentException
      */
-    private function claimRefusal(string $tenantId, string $connectionId, ?ViolationCode $violation, ?Caller $caller): ?DomainResult
+    private function claimRefusal(string $tenantId, string $connectionId, ?ViolationCode $violation): ?DomainResult
     {
         return match (true) {
-            $this->connections->find($tenantId, $connectionId) === null                    => DomainResult::refused(FailureReason::CONNECTION_NOT_FOUND),
-            $violation !== null                                                            => DomainResult::invalid([new SettingViolation(self::DOMAIN, $violation)]),
-            !$this->freshness->check(FreshnessOperation::DOMAIN_CLAIM, $caller)->isFresh() => DomainResult::refused(FailureReason::FRESHNESS_REQUIRED),
-            default                                                                        => null,
+            $this->connections->find($tenantId, $connectionId) === null => DomainResult::refused(FailureReason::CONNECTION_NOT_FOUND),
+            $violation !== null                                         => DomainResult::invalid([new SettingViolation(self::DOMAIN, $violation)]),
+            default                                                     => null,
         };
     }
 
@@ -290,6 +284,8 @@ final readonly class DomainService
             $claims->isVerifiedOtherThan($locked->id)                                => DomainResult::refused(FailureReason::DOMAIN_UNAVAILABLE),
             default                                                                  => null,
         };
+
+        $refusal ??= $this->isFresh(FreshnessOperation::DOMAIN_CLAIM, $caller) ? null : DomainResult::refused(FailureReason::FRESHNESS_REQUIRED);
 
         if ($refusal !== null) {
             return $refusal;
@@ -354,10 +350,10 @@ final readonly class DomainService
     private function verificationRefusal(Domain $found, ?Caller $caller): ?DomainResult
     {
         return match (true) {
-            DomainStanding::isPendingExpired($found, $this->clock->now())                   => DomainResult::refused(FailureReason::DOMAIN_CLAIM_EXPIRED),
-            !$this->freshness->check(FreshnessOperation::DOMAIN_VERIFY, $caller)->isFresh() => DomainResult::refused(FailureReason::FRESHNESS_REQUIRED),
-            $found->state === DomainState::VERIFIED                                         => DomainResult::unchanged(DomainSummary::of($found)),
-            default                                                                         => $this->lookupRefusal($found),
+            DomainStanding::isPendingExpired($found, $this->clock->now())     => DomainResult::refused(FailureReason::DOMAIN_CLAIM_EXPIRED),
+            $this->isStaleUpFront(FreshnessOperation::DOMAIN_VERIFY, $caller) => DomainResult::refused(FailureReason::FRESHNESS_REQUIRED),
+            $found->state === DomainState::VERIFIED                           => DomainResult::unchanged(DomainSummary::of($found)),
+            default                                                           => $this->lookupRefusal($found),
         };
     }
 
@@ -422,8 +418,8 @@ final readonly class DomainService
     }
 
     /**
-     * Mark the claim verified from now, unless the unique index finds the
-     * domain verified for another connection.
+     * Mark the claim verified from now, once the caller proves fresh, unless
+     * the unique index finds the domain verified for another connection.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  \SineMacula\Laravel\Sso\Models\Domain  $claim
@@ -438,6 +434,10 @@ final readonly class DomainService
      */
     private function markVerified(Connection $locked, Domain $claim, CarbonImmutable $now, ?Caller $caller, ClientContext $client): DomainResult
     {
+        if (!$this->isFresh(FreshnessOperation::DOMAIN_VERIFY, $caller)) {
+            return DomainResult::refused(FailureReason::FRESHNESS_REQUIRED);
+        }
+
         $claim->forceFill([
             'state'                    => DomainState::VERIFIED,
             'verified_domain'          => $claim->domain,
@@ -476,6 +476,10 @@ final readonly class DomainService
             return DomainResult::refused(FailureReason::DOMAIN_NOT_FOUND);
         }
 
+        if (!$this->isFresh(FreshnessOperation::DOMAIN_REMOVE, $caller)) {
+            return DomainResult::refused(FailureReason::FRESHNESS_REQUIRED);
+        }
+
         $summary = DomainSummary::of($claim);
 
         $this->withdrawal->linkingWithdrawn($locked, $claim);
@@ -507,6 +511,35 @@ final readonly class DomainService
 
             return $locked === null ? DomainResult::refused(FailureReason::CONNECTION_NOT_FOUND) : $change($locked);
         }, self::ATTEMPTS);
+    }
+
+    /**
+     * Whether the caller is stale, asked before the lookup only outside any
+     * transaction, where the answer holds no lock; the locked answer decides.
+     *
+     * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
+     * @return bool
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function isStaleUpFront(FreshnessOperation $operation, ?Caller $caller): bool
+    {
+        return DB::connection(StorageConnection::name())->transactionLevel() === 0 && !$this->isFresh($operation, $caller);
+    }
+
+    /**
+     * Whether the caller authenticated recently enough for the operation.
+     *
+     * @param  \SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation  $operation
+     * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
+     * @return bool
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function isFresh(FreshnessOperation $operation, ?Caller $caller): bool
+    {
+        return $this->freshness->check($operation, $caller)->isFresh();
     }
 
     /**

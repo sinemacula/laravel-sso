@@ -129,10 +129,11 @@ final readonly class EnforcementService
 
         // An apparently unchanged rule is confirmed under the lock, since the
         // first read may come from the caller's stale transaction snapshot
-        $unchanged = $refusal?->status === EnforcementStatus::UNCHANGED;
-        $refusal   = $unchanged ? null : ($refusal ?? $this->staleRefusal($caller));
+        if ($refusal !== null && $refusal->status !== EnforcementStatus::UNCHANGED) {
+            return $refusal;
+        }
 
-        return $refusal ?? $this->change($tenantId, $stored !== null, $enabled, $ids, $caller, $client, !$unchanged);
+        return $this->change($tenantId, $stored !== null, $enabled, $ids, $caller, $client);
     }
 
     /**
@@ -201,7 +202,8 @@ final readonly class EnforcementService
     }
 
     /**
-     * Lock, judge again and write the change in one retried transaction.
+     * Lock, judge again, ask freshness and write the change in one retried
+     * transaction.
      *
      * @param  string  $tenantId
      * @param  bool  $exists
@@ -209,17 +211,16 @@ final readonly class EnforcementService
      * @param  array<int, string>  $ids
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @param  bool  $freshnessAsked
      * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementResult
      *
      * @throws \InvalidArgumentException
      * @throws \Throwable
      */
-    private function change(string $tenantId, bool $exists, bool $enabled, array $ids, ?Caller $caller, ClientContext $client, bool $freshnessAsked): EnforcementResult
+    private function change(string $tenantId, bool $exists, bool $enabled, array $ids, ?Caller $caller, ClientContext $client): EnforcementResult
     {
         $connection = DB::connection(StorageConnection::name());
 
-        return RetriedTransaction::run($connection, function () use ($tenantId, $exists, $enabled, $ids, $caller, $client, $freshnessAsked): EnforcementResult {
+        return RetriedTransaction::run($connection, function () use ($tenantId, $exists, $enabled, $ids, $caller, $client): EnforcementResult {
 
             $locked      = $this->locked($tenantId, $exists);
             $stored      = EnforcementLock::isConfigured($locked) ? $locked : null;
@@ -230,7 +231,7 @@ final readonly class EnforcementService
                 ? self::ruleRefusal($tenantId, $stored, $enabled, $ids, $connections)
                 : EnforcementResult::invalid(array_values($unknown));
 
-            $refusal ??= $freshnessAsked ? null : $this->staleRefusal($caller);
+            $refusal ??= $this->staleRefusal($caller);
 
             return $refusal ?? $this->write($locked, $stored?->version, $enabled, $ids, $connections, $caller, $client);
         }, self::ATTEMPTS);

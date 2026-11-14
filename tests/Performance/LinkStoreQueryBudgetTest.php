@@ -109,7 +109,8 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * The link, then the connection and link locked, the delete and the links
-     * version; a link not found and a stale caller stop at the first read.
+     * version; a link not found stops at the first read, a stale caller at the
+     * locks.
      *
      * @return void
      */
@@ -121,7 +122,7 @@ final class LinkStoreQueryBudgetTest extends PerformanceContractTestCase
 
         $this->freshness->answer(FreshnessOutcome::STALE);
 
-        $stale = $this->assertQueryBudget(1, 0, fn (): LinkResult => $this->service()->remove($this->identity, $id, Clients::browser()));
+        $stale = $this->assertQueryBudget(3, 0, fn (): LinkResult => $this->service()->remove($this->identity, $id, Clients::browser()));
 
         $this->freshness->answer(FreshnessOutcome::FRESH);
 
