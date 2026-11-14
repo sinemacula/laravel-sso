@@ -26,7 +26,10 @@ each, the default that refuses, and the gate every listed mutation calls before 
   `sso.domain.claim`, `sso.domain.verify`, `sso.domain.remove`, `sso.enforcement.update`, `sso.link.create` and
   `sso.link.remove`. Enabling and disabling a connection are separate operations, each with its own name and maximum
   age, so a policy can treat restoring access differently from removing it. A name is stable once released: it is
-  never renamed or reused, since an adapter (`laravel-iam`'s among them) may key its own policy on it.
+  never renamed or reused, since an adapter (`laravel-iam`'s among them) may key its own policy on it. Each is also an
+  `Administration\Enums\AdministrativeOperation` of the same name, the stable names of every administrative operation
+  an application's authorisation grants; the two stay separate, since an operation may ask several freshness
+  operations or none.
 - Each operation has its own maximum age, read by `Freshness\MaximumAges::for()` from
   `sso.freshness.max_age_seconds.<key>` on each call, where the key is `FreshnessOperation::configKey()`: the name after
   `sso.`, with the dots as underscores (`sso.connection.trust` is `connection_trust`). Each defaults to 300 seconds

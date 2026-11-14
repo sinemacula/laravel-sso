@@ -433,7 +433,10 @@ choice of principal, on every switch and on refresh:
    `Enforcement\ExemptionGate::admit($policy, $application, $identity, $client, $sessionId)`, with the client of the
    request being judged, which asks the exemption contract and reports `ExemptionUsed` for an exemption it grants. This
    gate is the only place the exemption is asked: the package's own completion and redemption refuse a sign-in through
-   an unlisted connection as `enforcement_unsatisfied` without asking ([Enforcement](enforcement.md#exemptions)).
+   an unlisted connection as `enforcement_unsatisfied` without asking ([Enforcement](enforcement.md#exemptions)). A
+   session judged again (`TenantPolicyContext::$rejudging`) asks `ExemptionGate::judge($policy, $application,
+   $identity)` instead, which answers the same and reports nothing, since its exemption was reported when it was
+   admitted.
 4. A non-compliant session is refused as `sso_required` (reported), with no pending continuation.
 
 The redemption rechecks enforcement under its locks, and the version it judged there, never the one the
@@ -691,8 +694,8 @@ $this->app->make(ContextContributors::class)->register('sso', SsoContextContribu
   `laravel-mfa`'s); authentication registers neither, so the adapter registers `sso` exactly once, under
   `AuthenticationContext::NAMESPACE`.
 - **The keys.** Each is answered without the namespace and is a lower-case letter and then up to 63 lower-case letters,
-  digits or underscores (`/^[a-z][a-z0-9_]{0,63}$/`), so no key holds the dot that joins it to its namespace. Every key
-  of `AuthenticationContext::KEYS`, with `sso.` removed, fits: `connection`, `tenant`, `protocol`,
+  digits or underscores (`/^[a-z][a-z0-9_]{0,63}$/`), so no key holds the dot that joins it to its namespace. Every
+  `Sessions\Enums\ContextKey`, with `sso.` removed, fits: `connection`, `tenant`, `protocol`,
   `provider_auth_time`, `provider_amr`, `provider_acr`, `provider_authn_context_class_ref` (32 characters, the longest),
   `link`, `link_provenance`, `provider_session_deadline`, `session_not_after` and `enforcement_version`. A policy reads
   them back by their full names, `Auth::context()?->get('sso.connection')`; authentication's own examples write

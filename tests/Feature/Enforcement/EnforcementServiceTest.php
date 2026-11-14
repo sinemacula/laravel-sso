@@ -335,18 +335,27 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
-     * Turning off a tenant with no rule is unchanged and stores no rule.
+     * Turning off a tenant with no rule stores an off rule, once.
      *
      * @return void
      */
-    public function testTurningOffATenantWithNoRuleIsUnchanged(): void
+    public function testTurningOffATenantWithNoRuleStoresAnOffRule(): void
     {
-        $result = $this->service()->update(self::TENANT, false, [], Clients::browser());
+        $summary = self::summaryOf($this->service()->update(self::TENANT, false, [], Clients::browser()), EnforcementStatus::UPDATED);
 
-        self::assertEquals(new EnforcementSummary(self::TENANT, false, []), self::summaryOf($result, EnforcementStatus::UNCHANGED));
-        $this->assertNoRuleStored();
-        self::assertSame([], $this->freshness->asked());
-        $this->assertNoEvents();
+        self::assertFalse($summary->enabled);
+        self::assertSame([], $summary->connectionIds);
+        self::assertNotNull($summary->version);
+        self::assertSame($summary->version, $this->stored()->version);
+        self::assertFalse($this->stored()->enabled);
+        self::assertSame([FreshnessOperation::ENFORCEMENT_UPDATE], $this->freshness->operations());
+        self::assertSame([], $this->revocation->scopes());
+        $this->assertEventSequence([EnforcementChanged::class]);
+        self::assertNull($this->changedEvent()->previousVersion);
+
+        $again = $this->service()->update(self::TENANT, false, [], Clients::browser());
+
+        self::assertEquals($summary, self::summaryOf($again, EnforcementStatus::UNCHANGED));
     }
 
     /**

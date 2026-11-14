@@ -38,7 +38,8 @@ final readonly class ExemptionGate
     ) {}
 
     /**
-     * Whether the identity may have a session without a satisfying connection.
+     * Whether the identity may have a session without a satisfying connection,
+     * reporting an exemption granted.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
      * @param  string  $application
@@ -52,19 +53,36 @@ final readonly class ExemptionGate
      */
     public function admit(EnforcementPolicy $policy, string $application, IdentityReference $identity, ClientContext $client, ?string $sessionId = null): ExemptionOutcome
     {
-        self::assertApplication($application);
-
-        if (!$policy->isRequired()) {
-            return ExemptionOutcome::NOT_EXEMPT;
-        }
-
-        $outcome = $this->container->make(EnforcementExemption::class)->exemption($policy, $application, $identity);
+        $outcome = $this->judge($policy, $application, $identity);
 
         if ($outcome->isExempt()) {
             $this->events->exemptionUsed($policy, $application, $identity, $client, $sessionId);
         }
 
         return $outcome;
+    }
+
+    /**
+     * As `admit()` judges, reporting nothing: for a session judged again whose
+     * exemption was reported when it was admitted.
+     *
+     * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy  $policy
+     * @param  string  $application
+     * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @return \SineMacula\Laravel\Sso\Enforcement\Enums\ExemptionOutcome
+     *
+     * @throws \InvalidArgumentException
+     * @throws \Illuminate\Contracts\Container\BindingResolutionException
+     */
+    public function judge(EnforcementPolicy $policy, string $application, IdentityReference $identity): ExemptionOutcome
+    {
+        self::assertApplication($application);
+
+        if (!$policy->isRequired()) {
+            return ExemptionOutcome::NOT_EXEMPT;
+        }
+
+        return $this->container->make(EnforcementExemption::class)->exemption($policy, $application, $identity);
     }
 
     /**

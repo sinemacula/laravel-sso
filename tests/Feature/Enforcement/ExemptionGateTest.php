@@ -112,6 +112,29 @@ final class ExemptionGateTest extends TestCase
     }
 
     /**
+     * Judging asks the contract as admitting does and reports nothing.
+     *
+     * @return void
+     */
+    public function testJudgingAsksTheContractAndReportsNothing(): void
+    {
+        $exemption = new ListedExemption([$this->administrator]);
+        $policy    = self::required();
+
+        $this->app?->instance(EnforcementExemption::class, $exemption);
+
+        self::assertSame(ExemptionOutcome::EXEMPT, $this->gate()->judge($policy, self::APPLICATION, $this->administrator));
+        self::assertSame(ExemptionOutcome::NOT_EXEMPT, $this->gate()->judge($policy, self::APPLICATION, $this->member));
+        self::assertSame(ExemptionOutcome::NOT_EXEMPT, $this->gate()->judge(EnforcementPolicy::notRequired('child', 'parent'), self::APPLICATION, $this->administrator));
+        self::assertCount(2, $exemption->asked());
+        $this->assertNoEvents();
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->gate()->judge($policy, '', $this->administrator);
+    }
+
+    /**
      * A policy that requires nothing asks the contract nothing.
      *
      * @return void

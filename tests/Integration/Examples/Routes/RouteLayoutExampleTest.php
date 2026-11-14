@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Events\ConnectionDeleted;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
+use SineMacula\Laravel\Sso\Sessions\Enums\ContextKey;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
@@ -134,12 +135,12 @@ final class RouteLayoutExampleTest extends ExampleTestCase
         // How the session began, projected from the provenance written with it
         $context = $this->signIns->context($sessionId);
 
-        self::assertSame($this->connectionId, $context[AuthenticationContext::CONNECTION]);
-        self::assertSame(self::TENANT, $context[AuthenticationContext::TENANT]);
-        self::assertSame('saml2', $context[AuthenticationContext::PROTOCOL]);
-        self::assertSame($linkId, $context[AuthenticationContext::LINK]);
-        self::assertSame('link_purpose', $context[AuthenticationContext::LINK_PROVENANCE]);
-        self::assertSame([], $context[AuthenticationContext::PROVIDER_AMR]);
+        self::assertSame($this->connectionId, $context[ContextKey::CONNECTION->value]);
+        self::assertSame(self::TENANT, $context[ContextKey::TENANT->value]);
+        self::assertSame('saml2', $context[ContextKey::PROTOCOL->value]);
+        self::assertSame($linkId, $context[ContextKey::LINK->value]);
+        self::assertSame('link_purpose', $context[ContextKey::LINK_PROVENANCE->value]);
+        self::assertSame([], $context[ContextKey::PROVIDER_AMR->value]);
         self::assertSame([], $this->signIns->context('a-session-the-package-did-not-establish'));
 
         $this->clock->advance(3600);
@@ -151,7 +152,7 @@ final class RouteLayoutExampleTest extends ExampleTestCase
 
         self::assertSame('2026-11-01T10:30:00Z', $this->sessions->authenticatedAt($sessionId)?->toIso8601ZuluString());
         $renewed = $this->signIns->context($sessionId);
-        $began   = $renewed[AuthenticationContext::PROVIDER_AUTH_TIME];
+        $began   = $renewed[ContextKey::PROVIDER_AUTH_TIME->value];
 
         // The renewal leaves the provenance of the sign-in alone
         self::assertSame($context, $renewed);
