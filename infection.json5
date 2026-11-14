@@ -3,6 +3,11 @@
     source: {
         directories: [
             "src"
+        ],
+        // The contract kits are assertions a binder's tests run; their own
+        // tests prove each against a binding that breaks it
+        excludes: [
+            "Testing/Seams"
         ]
     },
     logs: {
