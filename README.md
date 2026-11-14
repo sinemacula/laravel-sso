@@ -21,10 +21,7 @@ Works on its own, or alongside the rest of the Sine Macula identity and access p
 controllers or views: the application's own endpoints call one helper each, and the package never issues the
 application's tokens or creates its sessions.
 
-> [!NOTE]
-> The package is under active development and has no release yet. This README describes its intended scope.
-
-## Concepts
+## Core Concept
 
 | Concept             | What it is                                                                                         |
 |---------------------|----------------------------------------------------------------------------------------------------|
@@ -39,33 +36,12 @@ with where to send the browser), **complete** (at the assertion consumer service
 redirect carrying a handoff code) and **redeem** (the code and the client's verifier, inside your transaction, answered
 with the identity to sign in).
 
-## Scope
-
-- SAML 2.0 and OpenID Connect connections per tenant, with metadata and discovery import, scheduled refresh, presets for
-  Google Workspace, Microsoft Entra ID, Okta and Auth0, key and certificate rotation, and secrets encrypted at rest.
-- SAML responses are schema-checked, with signature-wrapping defences, replay protection and optional encrypted
-  assertions. OIDC uses PKCE, and ID tokens are held to pinned algorithms and exact key selection.
-- Domains are verified by a DNS TXT record and rechecked on a schedule. Discovery routes an email address to its
-  tenant's identity provider without revealing whether the person has an account.
-- SSO-only enforcement per tenant, with break-glass exemptions and a synchronous revocation hook.
-- Linking by issuer and subject, through an explicit link flow, just-in-time provisioning, or a verified domain for
-  moving a tenant's existing members.
-- The handoff code is bound to the client that started the flow and to the endpoint's purpose, and admitted inside
-  your own transaction.
-- Re-authentication at the identity provider for a session. The provider's authentication context is offered to your
-  further-factor policy, never accepted by default.
-- Session provenance (connection, tenant, protocol, accepted evidence, link and provider deadline) is captured inside
-  the redemption and projected into `sso.*` authentication context keys.
-- IdP-initiated sign-in by re-initiation, never by consuming an unsolicited assertion.
-- Events for every flow, failure and administrative change, with one shared context and no secrets.
-- Pruning, domain rechecks, metadata refresh and key expiry warnings run on the schedule, safe on several servers,
-  with read replicas and Octane.
-- Fake SAML and OpenID providers, a fake DNS resolver and fetcher, fake freshness and a frozen clock, so your flows
-  run in tests without a network.
-- The pages a completion shows translate through your `lang` files; every other answer is a code your application
-  words.
-- Every policy is a contract with a default that fails closed, which `laravel-iam` binds to `laravel-authentication`
-  and `laravel-mfa`.
+A sign-in reaches only the identity linked to its connection's issuer and subject. Links are made through the `link`
+purpose, just-in-time provisioning, or, for a tenant's existing members, a verified domain. Tenants can require SSO,
+with break-glass exemptions, and a session can be sent back to its identity provider to re-authenticate. Every policy is
+a contract with a default that fails closed, which `laravel-iam` binds to `laravel-authentication` and `laravel-mfa`.
+Each flow and opt-in, with what turning it on costs, is in [Opt-in features and their
+risks](docs/guides/opt-in-features.md).
 
 ## Installation
 
