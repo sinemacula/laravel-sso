@@ -864,6 +864,28 @@ The hostile SAML responses (`Saml\SignatureWrapping`, duplicate ids, comments in
 tokens (`Oidc\HostileIdTokens`) are the package's adversarial suite; your tests need them only to show your own code
 handles the failure each ends with.
 
+## Testing your own bindings
+
+When you bind one of the package's contracts yourself, a contract kit runs the guarantees the package relies on against
+your binding. Each is a trait under `SineMacula\Laravel\Sso\Testing\Seams\Concerns`: use it in a test case of your
+binding and implement the methods it declares, which hand it your binding and set up the state it judges, through your
+own models.
+
+| Kit                                | What it proves of your binding                                                                                                                                                                                                                                                           |
+|------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `FreshnessContract`                | `stale` for no caller and another identity's session, and for a caller with no session unless `judgesSessions()` says otherwise; `fresh` only within the age asked; the same answer inside a transaction                                                                                 |
+| `ReauthenticationSessionsContract` | A session stands only for its own identity, live, under its exact link and not another of its identity's; a renewal moves only that session, never backwards                                                                                                                             |
+| `SessionRevocationContract`        | Each scope ends exactly its sessions, twice as once: a rule its tenant's and inheriting tenants' noncompliant ones, keeping compliant and exempt ones; a connection's whichever tenant they are in now; a link's the identity's through it. A revocation rolls back with its transaction |
+| `EnforcementInheritanceContract`   | Each tenant answers the tenant whose rule applies, byte for byte, the same inside a transaction                                                                                                                                                                                          |
+| `LinkEmailMatcherContract`         | Inside a transaction, only a verified email matches, exactly; an unverified one or one differing by a subaddress or a dot matches nobody                                                                                                                                                 |
+| `LinkConfirmationContract`         | `independent` only for the caller's own session that no domain link made; `dependent` for one that did, another identity's session and no session                                                                                                                                        |
+
+A binding that records a renewal and writes it later, in the same transaction, overrides
+`ReauthenticationSessionsContract::completeRenewal()` to write it, and a freshness binding that judges an identity
+without a session overrides `FreshnessContract::judgesSessions()` to answer `false`. The kits ask inside a transaction on
+`sso.storage.connection` where the package does, and leave the database to your test case. They cannot prove what
+needs a second connection, such as a lock held until commit or a race; test those against MySQL and PostgreSQL yourself.
+
 ## Keeping the examples honest
 
 The examples run with the package's Integration suite. Two checks keep them what this guide says:
