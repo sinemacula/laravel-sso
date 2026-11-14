@@ -50,8 +50,8 @@ final class ResultPartsLoggingTest extends TestCase
         'the-session-value',
         'the-email-value',
         'the-organization-value',
-        '2031',
-        '2032',
+        '2031-02-03',
+        '2032-03-04',
     ];
 
     /**
