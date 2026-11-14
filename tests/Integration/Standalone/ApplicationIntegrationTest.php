@@ -356,7 +356,9 @@ final class ApplicationIntegrationTest extends StandaloneTestCase
         $start = $this->startedFlow($satisfying);
         $code  = $this->completedCode($this->completeFlow($satisfying, $start));
 
-        self::assertSame($changed->version, $this->flowRedeem($satisfying, 'sign_in', $code, $start['verifier'])->assertOk()->json('enforcement_version'));
+        $redeemed = $this->flowRedeem($satisfying, 'sign_in', $code, $start['verifier'])->assertOk();
+
+        self::assertSame(self::policyVersion($changed->version, [$satisfying->id]), $redeemed->json('enforcement_version'));
     }
 
     /**

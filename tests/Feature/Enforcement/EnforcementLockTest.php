@@ -273,7 +273,7 @@ final class EnforcementLockTest extends TestCase
         self::assertSame(['enforcement upsert', 'enforcement', 'connections ' . $connection->id], $this->lockOrder());
         self::assertSame($rule->id, $locked->rule?->id);
         self::assertSame(
-            ['tenant_id' => self::TENANT, 'enforcing_tenant_id' => self::TENANT, 'required' => false, 'connection_ids' => [], 'version' => $rule->version],
+            ['tenant_id' => self::TENANT, 'enforcing_tenant_id' => self::TENANT, 'required' => false, 'connection_ids' => [], 'version' => self::policyVersion($rule->version)],
             $locked->policy()->jsonSerialize(),
         );
     }
@@ -299,8 +299,10 @@ final class EnforcementLockTest extends TestCase
         $ids = ['00000000000000000000000000', '01jbgone000000000000000000', '11111111111111111111111111', '22222222222222222222222222', 'zzzzzzzzzzzzzzzzzzzzzzzzzz'];
 
         self::assertSame(['enforcement upsert', 'enforcement', 'connections ' . implode(', ', $ids)], $this->lockOrder());
+        $version = self::policyVersion($rule->version, [$first->id, $last->id]);
+
         self::assertSame(
-            ['tenant_id' => self::TENANT, 'enforcing_tenant_id' => self::TENANT, 'required' => true, 'connection_ids' => [$first->id, $last->id], 'version' => $rule->version],
+            ['tenant_id' => self::TENANT, 'enforcing_tenant_id' => self::TENANT, 'required' => true, 'connection_ids' => [$first->id, $last->id], 'version' => $version],
             $locked->policy()->jsonSerialize(),
         );
         self::assertSame(

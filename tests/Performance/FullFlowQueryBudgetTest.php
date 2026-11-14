@@ -162,7 +162,7 @@ final class FullFlowQueryBudgetTest extends PerformanceContractTestCase
 
         self::assertTrue($answer->isRedeemed());
         self::assertSame(['type' => self::IDENTITY_TYPE, 'id' => self::IDENTITY_ID], $answer->linkedIdentity?->jsonSerialize());
-        self::assertSame($version, $answer->enforcementVersion);
+        self::assertSame(self::policyVersion($version, [$connection->id]), $answer->enforcementVersion);
         self::assertSame(FakeOpenIdProvider::SUBJECT, $answer->result?->subject);
         self::assertTrue(Connection::query()->whereKey($connection->id)->sole()->has_completed_sign_in);
 
