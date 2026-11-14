@@ -2,16 +2,16 @@
 
 ## Purpose
 
-This note records what the package promises of the processes it runs in, and how the suite proves it (SSO-11.1 to
-SSO-11.4, SSO-11.6): no session, nothing kept from one request or job for the next under Octane or a queue worker, every
-read that decides admission on the write connection, a database error always a server error, and a cache that is never
-needed. It holds no new behaviour: each promise is kept where it is stated, and this note says where to look. The single
-use store's own guarantees are in `single-use-store.md`, the transactions a failure rolls back are in `linking.md`, and
-the schedule's are in `operations.md`.
+This note records what the package promises of the processes it runs in, and how the suite proves it: no session,
+nothing kept from one request or job for the next under Octane or a queue worker, every read that decides admission on
+the write connection, a database error always a server error, and a cache that is never needed. It holds no new
+behaviour: each promise is kept where it is stated, and this note says where to look. The single use store's own
+guarantees are in `single-use-store.md`, the transactions a failure rolls back are in `linking.md`, and the schedule's
+are in `operations.md`.
 
 ## Invariants
 
-### No session (SSO-11.1)
+### No session
 
 - No flow needs a session. A start, a completion at either endpoint, discovery, service provider metadata, public keys,
   a redemption of each purpose and a re-initiation each run on a route in no middleware group, and neither resolve nor
@@ -22,7 +22,7 @@ the schedule's are in `operations.md`.
   the provider is refused.
 - The client holds its reference and its verifier, and nothing else of the package's. No response sets a cookie.
 
-### Nothing kept (SSO-11.2)
+### Nothing kept
 
 - A binding that reads configuration or a connection is scoped, and one that holds nothing between calls a singleton.
   No service holds a connection, tenant, flow or result. No package class holds such a value in a static property.
@@ -51,7 +51,7 @@ the schedule's are in `operations.md`.
   `Events\ResultUnlinked` is dispatched synchronously and refuses to be serialised, so no provisioning listener can be
   queued. A job that throws is the queue worker's to record, and the next job runs.
 
-### The write connection (SSO-11.3)
+### The write connection
 
 - Whatever decides admission is read from the write connection, so a replica that contradicts the primary, in either
   direction, cannot fail a valid completion or pass a replay: a connection's switch and trust version, a request, a
@@ -61,7 +61,7 @@ the schedule's are in `operations.md`.
   candidates there too.
 - A flow never needs the replica: with its tables gone, every flow runs.
 
-### Database errors (SSO-11.4)
+### Database errors
 
 - A failing statement or commit propagates from every step of a flow, never as `failed`, `request_unknown`,
   `connection_unavailable`, an invalid response or a failed redemption, and reports no failure event. Through the kernel
@@ -78,7 +78,7 @@ the schedule's are in `operations.md`.
 - A console command exits non-zero and names the exception by its class alone, printing no statement, binding or
   message. `sso:check` opens no connection, so a failing database changes nothing it says.
 
-### The cache (SSO-11.6)
+### The cache
 
 - Nothing the package ships names or resolves a cache, but for `Operations\OperationsSchedule`, which names the
   scheduler's mutexes behind `sso.operations.cache_mutexes`. A flow with the cache down or lying calls it no time, and

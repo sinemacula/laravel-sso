@@ -2,12 +2,11 @@
 
 ## Purpose
 
-This note records how a flow starts and how its authorisation request is consumed (SSO-5.1, SSO-5.2, SSO-5.12,
-SSO-9.8): the fixed order of a start and the refusal each step answers, the protocol state the package generates and
-what of it is stored, the client's verifier and its challenge, the discovery fallback for a named connection that
-cannot be used (SSO-3.5), the events a start reports, and the one place a request is consumed, exactly once, whatever
-the race. The tables, the value types and the completion they feed are in `flows.md`; applications are in
-`applications.md`.
+This note records how a flow starts and how its authorisation request is consumed: the fixed order of a start and the
+refusal each step answers, the protocol state the package generates and what of it is stored, the client's verifier and
+its challenge, the discovery fallback for a named connection that cannot be used, the events a start reports, and the
+one place a request is consumed, exactly once, whatever the race. The tables, the value types and the completion they
+feed are in `flows.md`; applications are in `applications.md`.
 
 ## Invariants
 
@@ -18,8 +17,8 @@ the race. The tables, the value types and the completion they feed are in `flows
   (reference, navigation, the generated verifier or none), `refused` (reason) or `rate_limited` (`retryAfter`). Called
   inside a transaction open on the storage connection, it is a `LogicException` before anything else
   (`StorageConnection::assertNoTransaction()`): the driver it calls may reach the identity provider, and the caller's
-  transaction would keep the connection's lock all the while (SSO-11.5). Its steps run in this order, and each refusal
-  reports exactly one `FlowFailed(Flow::AUTHORIZATION_REQUEST, reason)` and writes nothing:
+  transaction would keep the connection's lock all the while. Its steps run in this order, and each refusal reports
+  exactly one `FlowFailed(Flow::AUTHORIZATION_REQUEST, reason)` and writes nothing:
   1. the purpose's caller (`Identities\Caller`, whose session id is 1 to 255 bytes when given): `sign_in` with no
      caller, `link` for a caller, on a session or not, `reauthenticate` for a caller on a session. Anything else is
      application code's mistake, an `InvalidArgumentException` naming the purpose's caller, before anything is counted
@@ -31,15 +30,15 @@ the race. The tables, the value types and the completion they feed are in `flows
      policy does not allow, alike;
   4. the client's challenge, when given, must have an S256 challenge's form (`S256Challenge::isWellFormed()`), else
      `challenge_invalid`; with none, the package generates a `Flows\Verifier` and keeps its challenge;
-  5. the connection, by exactly its id, of any tenant, read from the write connection (SSO-11.3): unknown, or not usable
+  5. the connection, by exactly its id, of any tenant, read from the write connection: unknown, or not usable
      (`ProtocolManager::isUsable()`: disabled, its protocol switched off, or incomplete), is `connection_unavailable`.
      When the application offers discovery (`discoveryEnabled` and the `discovery` feature on) the failure is still
      reported, but the answer is `fallback()`: `started`, in a start's shape, leading to the application's fallback;
-  6. a `link` asks `Freshness\FreshnessGate` with `sso.link.create` (SSO-2.12) for its caller, with the session it gave,
-     else `freshness_required`;
+  6. a `link` asks `Freshness\FreshnessGate` with `sso.link.create` for its caller, with the session it gave, else
+     `freshness_required`;
   7. a `reauthenticate` asks `Contracts\ReauthenticationSessions::standing()` with the caller's identity and session,
-     the application the flow is started for and the connection, else `session_ineligible` for anything but `signed_in`
-     (SSO-5.10); the default answers `not_signed_in` (steps 6 and 7 are `Flows\StartEligibility::refusal()`);
+     the application the flow is started for and the connection, else `session_ineligible` for anything but `signed_in`;
+     the default answers `not_signed_in` (steps 6 and 7 are `Flows\StartEligibility::refusal()`);
   8. the connection's `trust_version`, as step 5 read it, is captured; `Flows\ProtocolState::generate()`, then the
      driver's `start()` with a `Protocols\StartRequest` (purpose, application, reference, state, nonce, PKCE verifier),
      outside any transaction the start opens; a refused `Start` is refused with the driver's reason;
@@ -76,8 +75,8 @@ the race. The tables, the value types and the completion they feed are in `flows
   `nonceDigest()` and `codeChallenge()` (S256, RFC 7636 section 4.2); a dump and `json_encode()` show `[redacted]` for
   each, and it refuses to be serialised or unserialised.
 - The public reference, the state, the nonce, the PKCE verifier and the client's verifier are five independent random
-  values (SSO-5.2, SSO-5.12). The PKCE verifier never leaves the API; the client's verifier is returned once, in the
-  start response's body, when the package generated it, and only its challenge is stored.
+  values. The PKCE verifier never leaves the API; the client's verifier is returned once, in the start response's body,
+  when the package generated it, and only its challenge is stored.
 - Every answer carries `Cache-Control: no-store` (`StartResult::headers()`), and a rate limited one `Retry-After`.
 
 ### Consuming a request
@@ -86,9 +85,9 @@ the race. The tables, the value types and the completion they feed are in `flows
   is consumed (the completion's `ConsumeRequest` stage calls it, after `correlate()` and before `complete()`). It runs
   in a transaction of its own on the storage connection, a savepoint inside the caller's; the completion that calls it
   runs outside any.
-- The request is read with `lockForUpdate()` on the write connection: by `state_digest` when the correlation carries a
-  state, otherwise by (`connection_id` = the route connection, `saml_request_id`), compared again in PHP exactly. A
-  correlation that carries neither finds nothing, with no statement.
+- The request is read with `lockForUpdate()` on the write connection: by (`connection_id` = the route connection,
+  `saml_request_id`) when the correlation carries a SAML request id, compared again in PHP exactly, otherwise by
+  `state_digest` when it carries a state. A correlation that carries neither finds nothing, with no statement.
 - None is `unknown`. `consumed_at` already set, or `SingleUseStore::record('authorization_request', $request->id,
   max(expires_at, now + 1s))` answering `seen`, is `replayed`, writing nothing. Otherwise `consumed_at` is set to now
   and the key recorded, both in the transaction, so concurrent consumptions, plain or each inside its own open
@@ -96,14 +95,15 @@ the race. The tables, the value types and the completion they feed are in `flows
 - An application `ApplicationRegistry::find()` no longer finds is `refused(application_not_allowed)` with no
   application, ahead of every other reason; the request is terminal, so the same write that sets `consumed_at` sets
   `completed_at` too.
-- Once that commits the request is judged, in this order: a SAML request id given with a state that is not exactly
-  the stored one is `refused(request_unknown)`; `voided_at` set is `refused(connection_unavailable)`; a `connection_id`
-  other than the route connection's is `refused(connection_mismatch)`; `expires_at <= now` is
-  `refused(request_expired)`; otherwise `consumed`, with the model, a `Protocols\ConsumedRequest` (the PKCE verifier
-  still encrypted, with the `SecretEncrypter` that decrypts it into a `Secret` only when the driver calls
-  `codeVerifier()` to build the token request, so a SAML completion never decrypts it, the nonce digest, the issuer
-  data, the SAML request id, `startedAt` = `created_at`) and the `Applications\Application`. Every `refused` but the
-  first keeps the application, so the completion can redirect to it.
+- Once that commits the request is judged, in this order: a SAML request id given with no state, or with a state whose
+  digest is not the stored one, is `refused(request_mismatch)`; `voided_at` set is `refused(connection_unavailable)`; a
+  `connection_id` other than the route connection's is `refused(connection_mismatch)`; a `trust_version` other than the
+  locked route connection's is `refused(connection_unavailable)`; `expires_at <= now` is `refused(request_expired)`;
+  otherwise `consumed`, with the model, a `Protocols\ConsumedRequest` (the PKCE verifier still encrypted, with the
+  `SecretEncrypter` that decrypts it into a `Secret` only when the driver calls `codeVerifier()` to build the token
+  request, so a SAML completion never decrypts it, the nonce digest, the issuer data, the SAML request id, `startedAt` =
+  `created_at`) and the `Applications\Application`. Every `refused` but the first keeps the application, so the
+  completion can redirect to it.
 - `Flows\ConsumptionResult` (`Flows\Enums\ConsumptionStatus`: `consumed`, `refused`, `unknown`, `replayed`) carries
   `request`, `consumed`, `application` and `reason` as they apply (`request_unknown` for `unknown` and `replayed`), and
   `hasRedirectTarget()`, true only when it carries the application. It shows only its status, reference, application
@@ -119,8 +119,8 @@ the race. The tables, the value types and the completion they feed are in `flows
   `request_reference`, and the identity and session stored. A `FlowFailed` names the purpose, the caller's identity and,
   for a `reauthenticate`, its session, and what the start had established: the application once admitted, the connection
   once found, the reference once generated. An application name that was not admitted is never reported.
-- The public reference is the only flow identifier either carries (SSO-9.8): never the state, the nonce, a verifier, a
-  challenge, a digest or a SAML request id.
+- The public reference is the only flow identifier either carries: never the state, the nonce, a verifier, a challenge,
+  a digest or a SAML request id.
 
 ## Success Path
 
@@ -144,9 +144,9 @@ the race. The tables, the value types and the completion they feed are in `flows
 - A start called inside a transaction open on the storage connection is a `LogicException`; nothing is counted,
   asked, written or reported.
 - A driver that answers a SAML request id the connection already holds is a driver's bug: the unique violation
-  propagates. A database error, a store that cannot answer and a malformed setting all propagate (SSO-11.4); a PKCE
-  verifier's ciphertext no key decrypts propagates from `codeVerifier()`, once the request is consumed, and only for a
-  driver that asks for it.
+  propagates. A database error, a store that cannot answer and a malformed setting all propagate; a PKCE verifier's
+  ciphertext no key decrypts propagates from `codeVerifier()`, once the request is consumed, and only for a driver that
+  asks for it.
 - A request is consumed whether its response then passes or fails; a second response for it, from any server, is
   `replayed`, as is one the single-use store has seen. A response whose SAML request id contradicts its state consumes
   the request it names and is refused.

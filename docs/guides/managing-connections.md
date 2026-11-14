@@ -111,12 +111,10 @@ writes nothing and reports nothing; a map given again in another key order, such
 stored, while a list such as `scopes` is compared in order. Otherwise `changedSettings` names what changed: settings,
 then secrets, then `display_name` and `attribute_mapping`.
 
-Only a change to a setting that could widen or redirect access asks the freshness contract: the issuer or entity id,
-the endpoints, the client id and secret, the subject settings, the algorithms, the SAML response policy
-(`want_assertions_signed`, `require_encrypted_assertions`, `requested_authn_context`,
-`max_authentication_age_seconds`) and metadata refresh (`metadata_url`, `metadata_refresh`) ask
-`sso.connection.trust`; IdP-initiated sign-in and its start URL ask `sso.connection.idp_initiated`; the scopes, extra
-parameters, request options (`sign_authn_requests`, `force_authn`), display name and mapping ask nothing.
+Only a change to a setting that could widen or redirect access asks the freshness contract. IdP-initiated sign-in and
+its start URL ask `sso.connection.idp_initiated`; the OIDC `scopes` and `extra_parameters`, the SAML request options
+(`sign_authn_requests`, `force_authn`), the display name and the mapping ask nothing; every other setting, and a
+secret, asks `sso.connection.trust`.
 
 ### Trust changes and sign-ins in progress
 
@@ -415,7 +413,7 @@ Mapped values are profile data, never what selects the identity a sign-in belong
 - `email`, `given_name`, `family_name` and `display_name` take one value, the first of a list;
 - `groups` is always a list, passed on as the provider sent it, for your application to interpret; this package never
   changes anything because of them. When `laravel-iam`'s group mapping is bound, its provisioning listener maps groups
-  to grants at provisioning, and re-syncing them at later sign-ins is your application's opt-in (IAM-7.2).
+  to grants at provisioning, and re-syncing them at later sign-ins is your application's opt-in.
 
 | Key                         | Default | Range                                  | Env                            |
 |-----------------------------|---------|----------------------------------------|--------------------------------|

@@ -9,10 +9,10 @@ the convention is the shape.
 
 ## Invariants
 
-- Expected refusals are values. A refusal of untrusted input (a response, a callback, a code, a verifier) or of
-  policy (a disabled connection, an application that does not allow external sign-in, throttling) is returned, never
-  thrown. Exceptions mean a misconfiguration, an invalid argument from application code (`InvalidArgumentException`,
-  `LogicException`) or a server error (a database error, a store that cannot answer), which propagates (SSO-11.4).
+- Expected refusals are values. A refusal of untrusted input (a response, a callback, a code, a verifier) or of policy
+  (a disabled connection, an application that does not allow external sign-in, throttling) is returned, never thrown.
+  Exceptions mean a misconfiguration, an invalid argument from application code (`InvalidArgumentException`,
+  `LogicException`) or a server error (a database error, a store that cannot answer), which propagates.
 - A result object answers when success carries a payload or the operation can be throttled. It is `final readonly`,
   built only through named constructors (one per outcome), says which outcome it is through `is...()` predicates,
   carries its payload in nullable public properties set only for the outcome that has it, names a refusal by `reason`
@@ -39,7 +39,7 @@ the convention is the shape.
   `RateLimiting\AttemptResult`: allowed, or `rate_limited` with `retryAfter` of at least one second.
 - `Contracts\SecretEncrypter` answers strings; a ciphertext that cannot be decrypted is a server error, thrown.
 
-### Management helpers (SSO-2.11, SSO-2.12)
+### Management helpers
 
 The helpers that change connections, keys and certificates follow one shape, so an administration screen handles them
 the same way:
@@ -73,7 +73,7 @@ the same way:
 - An application's mistake (an empty tenant id, a caller with an empty session id) is an `InvalidArgumentException`; a
   database error, a `SecretEncrypter` that cannot encrypt or a key OpenSSL cannot generate propagates.
 
-### Flow, link, handoff and completion operations (SSO-5, SSO-8, SSO-9)
+### Flow, link, handoff and completion operations
 
 The operations a flow goes through answer the same way: a result object for each, with `status` wherever there are
 more than two outcomes, a `reason` from `FailureReason` on every refusal, and `retryAfter` (at least one second)
@@ -99,14 +99,14 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   `Completion\Enums\CompletionStatus`: `completed` (the redirect URI, the delivery, the reference and the issued
   handoff), `failed` (a refusal with a trusted redirect target: the reason, redirected to the application), `rejected`
   (a refusal with none: `request_unknown`, `connection_unavailable` or `application_not_allowed`, a 400), `rate_limited`
-  (`retryAfter`, a 429) or `reinitiated` (SSO-5.8). A failure carries the reason of the step that refused: the
-  consumption's above, a driver's (`signature_invalid`, `issuer_mismatch` and the other protocol reasons),
-  `enforcement_unsatisfied`, the purpose's rules (`link_suspended`, `principal_scope_unknown`, `link_reserved`,
-  `link_ineligible`, `subject_already_linked`, `identity_mismatch` and `authentication_expired`), `unlinked` and
-  `application_not_allowed`. A listener's or a contract's exception is no refusal: it propagates, and the request stays
-  consumed and unfinished. `Responses\CompletionResponses` turns it into the response value the application answers
-  with. A completion called inside a transaction open on the storage connection is a `LogicException`. See
-  `completion.md` and `completion-responses.md`.
+  (`retryAfter`, a 429) or `reinitiated`. A failure carries the reason of the step that refused: the consumption's
+  above, a driver's (`signature_invalid`, `issuer_mismatch` and the other protocol reasons), `enforcement_unsatisfied`,
+  the purpose's rules (`link_suspended`, `principal_scope_unknown`, `link_reserved`, `link_ineligible`,
+  `subject_already_linked`, `identity_mismatch` and `authentication_expired`), `unlinked` and `application_not_allowed`.
+  A listener's or a contract's exception is no refusal: it propagates, and the request stays consumed and unfinished.
+  `Responses\CompletionResponses` turns it into the response value the application answers with. A completion called
+  inside a transaction open on the storage connection is a `LogicException`. See `completion.md` and
+  `completion-responses.md`.
 - Redeeming a handoff. `Handoffs\HandoffRedemption::admit()`, the session-admission path, which needs the caller's
   open transaction on the storage connection, and `redeem()`, standalone only for a `link`, answer a
   `Handoffs\RedemptionResult`, status `Handoffs\Enums\RedemptionStatus`: `redeemed` (the verified result and what the
@@ -143,8 +143,8 @@ with the flow and the same reason; a link helper's refusal reports nothing.
 
 ## Failure / Edge Cases
 
-- A failure reason is a stable code (`FailureReason`), never prose; the application words it (SSO-12.6). A failure
-  redirect, a failure event and a refused result carry the same code.
+- A failure reason is a stable code (`FailureReason`), never prose; the application words it. A failure redirect, a
+  failure event and a refused result carry the same code.
 - A fetch's detail (the host that did not resolve, the TLS error) goes to the logs only; the result carries the code.
 - A database error is never turned into a refusal: it propagates, and the application answers it as a server error.
 

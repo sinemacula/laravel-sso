@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This note records how the SAML driver starts an SP-initiated sign-in (SSO-5.3, SSO-5.10): the `AuthnRequest` it writes,
-the HTTP-Redirect and HTTP-POST bindings it sends it by (SAML 2.0 Bindings §3.4 and §3.5), how it is signed, what
-`RelayState` carries, and how a `reauthenticate` forces fresh authentication. How the start is stored and reported is
-in `authorization-requests.md`; how the response is correlated with the request is in `saml-responses.md`; the
-adapter the request is written through is in `saml-adapter.md`.
+This note records how the SAML driver starts an SP-initiated sign-in: the `AuthnRequest` it writes, the HTTP-Redirect
+and HTTP-POST bindings it sends it by (SAML 2.0 Bindings sections 3.4 and 3.5), how it is signed, what `RelayState`
+carries, and how a `reauthenticate` forces fresh authentication. How the start is stored and reported is in
+`authorization-requests.md`; how the response is correlated with the request is in `saml-responses.md`; the adapter the
+request is written through is in `saml-adapter.md`.
 
 ## Invariants
 
@@ -19,15 +19,14 @@ adapter the request is written through is in `saml-adapter.md`.
   `Correlation::MAX_REQUEST_ID_LENGTH`), fresh for every start, so two starts never share one.
 - `Version` is `2.0`. `IssueInstant` is the package's clock (`Contracts\Clock`) in UTC, to the second.
 - `Issuer` is the service provider entity id and `AssertionConsumerServiceURL` the connection's assertion consumer
-  service, both from `Contracts\EndpointResolver`, never from the request (SSO-5.5). `ProtocolBinding` is HTTP-POST:
-  responses are accepted at the assertion consumer service by HTTP-POST only, and the artifact binding is not
-  supported.
+  service, both from `Contracts\EndpointResolver`, never from the request. `ProtocolBinding` is HTTP-POST: responses are
+  accepted at the assertion consumer service by HTTP-POST only, and the artifact binding is not supported.
 - `Destination` is the connection's single sign-on URL (`sso_url`), exactly as configured.
 - `NameIDPolicy` carries the connection's NameID format (`persistent`, `email` or `unspecified`, as its URI) with
   `AllowCreate="true"`. The transient format is never requested: the settings refuse it.
-- `ForceAuthn="true"` when the connection's `force_authn` is on, and always for the `reauthenticate` purpose
-  (SSO-5.10); otherwise the attribute is absent. The response's `AuthnInstant` is then held to the request's creation
-  by the response validation.
+- `ForceAuthn="true"` when the connection's `force_authn` is on, and always for the `reauthenticate` purpose; otherwise
+  the attribute is absent. The response's `AuthnInstant` is then held to the request's creation by the response
+  validation.
 - `RequestedAuthnContext` is present only when the connection lists `requested_authn_context` classes: each as an
   `AuthnContextClassRef`, in the order listed, with `Comparison="exact"`. The response's class is checked against the
   same list.
@@ -35,10 +34,10 @@ adapter the request is written through is in `saml-adapter.md`.
 ### RelayState
 
 - `RelayState` is the flow's protocol state (`StartRequest::$state`, 43 base64url characters), never the public
-  reference, a verifier or a URL (SSO-5.2). A response is correlated by the digest of its `RelayState` against the
-  stored state digest, and its `InResponseTo` against `saml_request_id`; they must name the same request.
-- It is at most 80 bytes (SSO-5.3). A longer state is application code's mistake, a `LogicException` naming the limit,
-  never the value.
+  reference, a verifier or a URL. A response is correlated by the digest of its `RelayState` against the stored state
+  digest, and its `InResponseTo` against `saml_request_id`; they must name the same request.
+- It is at most 80 bytes. A longer state is application code's mistake, a `LogicException` naming the limit, never the
+  value.
 
 ### Bindings
 
@@ -75,7 +74,7 @@ adapter the request is written through is in `saml-adapter.md`.
   `RequestedAuthnContext`, and signs with the library's `SignatureAlgorithmFactory` and `PrivateKey`.
 - saml2 v6 writes no `ForceAuthn` (it compares the typed value with `true`), so the request is written by a subclass
   that adds the attribute before anything is signed, and names its element without reading its class name.
-- Nothing in the driver keeps anything between calls (SSO-11.2).
+- Nothing in the driver keeps anything between calls.
 
 ## Success Path
 

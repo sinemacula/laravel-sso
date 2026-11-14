@@ -2,18 +2,18 @@
 
 ## Purpose
 
-This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SSO-5.10, OpenID Connect Core 1.0
-§3.1.3.7): every check, the order they run in, and the reason each answers with. The driver as a whole is
-`oidc-driver.md`; the callback and the token request that bring the token are `oidc-callback.md`; the JOSE adapter is
-`jose-adapter.md`, and why the library decides none of this `jose-library.md`; the JWKS and their refetch are
-`oidc-discovery.md`; what is built from a validated token is `oidc-claims.md`.
+This note records how the `oidc` driver judges an ID token (OpenID Connect Core 1.0 section 3.1.3.7): every check, the
+order they run in, and the reason each answers with. The driver as a whole is `oidc-driver.md`; the callback and the
+token request that bring the token are `oidc-callback.md`; the JOSE adapter is `jose-adapter.md`, and why the library
+decides none of this `jose-library.md`; the JWKS and their refetch are `oidc-discovery.md`; what is built from a
+validated token is `oidc-claims.md`.
 
 ## Invariants
 
 - `Protocols\Oidc\IdTokenValidator::validate()` runs the checks below in this fixed order, and the first failure
   answers: a token failing two checks always reports the earlier. Every check is always on, whatever a connection's
   settings say. A refusal is a value, `IdTokenValidation::refused($reason)`; only a misconfiguration or a database error
-  propagates (SSO-11.4).
+  propagates.
 
   | Step | Check                                                                                            | Reason                                                            |
   |------|--------------------------------------------------------------------------------------------------|-------------------------------------------------------------------|
@@ -36,12 +36,11 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
   needs. It is answered `signature_invalid`, as any token no held key verifies is. Unverified claims never establish
   identity or choose a URL to fetch, and every step runs again after the signature.
 - The validator reads the clock once per call and the skew (`Clock\ClockSkew`) and the limits (`OidcLimits`) on each
-  call. It keeps nothing between calls (SSO-11.2), and its collaborators keep nothing either. It runs outside any
-  transaction, since step 2 may fetch; only the refetch's own claim and write touch a row.
+  call. It keeps nothing between calls, and its collaborators keep nothing either. It runs outside any transaction,
+  since step 2 may fetch; only the refetch's own claim and write touch a row.
 - It logs nothing: `ProviderKeys` logs how a refetch ended. Nothing it throws holds the token, and every array of claims
-  it passes along is `#[\SensitiveParameter]` (SSO-7.6, SSO-11.9). `TokenResponse`, `CompactToken` and
-  `ValidatedIdToken` keep the tokens, headers and claims in `\SensitiveParameterValue`, so a dump, a stack trace or a
-  log record cannot show them.
+  it passes along is `#[\SensitiveParameter]`. `TokenResponse`, `CompactToken` and `ValidatedIdToken` keep the tokens,
+  headers and claims in `\SensitiveParameterValue`, so a dump, a stack trace or a log record cannot show them.
 
 ### Algorithm and key (steps 1 to 3)
 
@@ -186,10 +185,10 @@ This note records how the `oidc` driver judges an ID token (SSO-7.3, SSO-7.4, SS
   JWKS fetches counted, wrong claims from the token endpoint, the honest control, and key rotation end to end.
 - `tests/Feature/Completion/OidcCompletionEventSequenceTest.php`: whole event sequences and contexts.
 - `tests/Integration/Logging/NoProviderTokensLeakTest.php`: events, logs, results, stored rows and dumps hold no
-  provider token, and the reference is the only flow identifier (SSO-7.6, SSO-11.9).
+  provider token, and the reference is the only flow identifier.
 - `tests/Integration/Completion/OidcTrustChangeRaceTest.php`: a completion whose token, JWKS or UserInfo request is in
   flight while the connection is disabled, its issuer migrated or its secret rotated.
-- `tests/Integration/Completion/OidcWorkerIsolationTest.php`: consecutive callbacks for different tenants (SSO-11.2).
+- `tests/Integration/Completion/OidcWorkerIsolationTest.php`: consecutive callbacks for different tenants.
 
 ## Change Triggers
 

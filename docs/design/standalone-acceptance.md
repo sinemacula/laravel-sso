@@ -2,8 +2,8 @@
 
 ## Purpose
 
-This note records how the package is shown to stand alone (CTX/a): what each seam's default does in an application with
-no sibling installed, what an application must supply before a flow goes further, and how the suite keeps default and
+This note records how the package is shown to stand alone: what each seam's default does in an application with no
+sibling installed, what an application must supply before a flow goes further, and how the suite keeps default and
 adapter acceptance apart, so that a fully faked happy path is never taken for proof of independence.
 
 ## Invariants
@@ -27,11 +27,9 @@ adapter acceptance apart, so that a fully faked happy path is never taken for pr
 - Nothing is shaped to one consumer's applications, tenant tree, identity providers or attribute names: presets hold
   only public providers' documented endpoints, shared issuers are listed by requirement, the tenant tree is the
   application's (`Contracts\EnforcementInheritance`) and custom mapping keys are the application's own
-  (`sso.mapping.custom_attributes`). No test can show a negative like this one, so it is proven by review
-  ([RD-35](requirements.md#recorded-decisions)): before each release, `src/`, `config/`, `lang/` and the presets are
-  read for a name, a default or a branch that only one consumer needs, and any change to the presets, the linking
-  settings or the inheritance seam triggers the same review (the requirement closure matrix's CTX/e and its change
-  triggers).
+  (`sso.mapping.custom_attributes`). No test can show a negative like this one, so it is proven by review: before each
+  release, `src/`, `config/`, `lang/` and the presets are read for a name, a default or a branch that only one consumer
+  needs, and any change to the presets, the linking settings or the inheritance seam triggers the same review.
 
 What each default does, and what an application supplies to go further:
 
@@ -55,7 +53,7 @@ What each default does, and what an application supplies to go further:
 | `ProviderSessionDeadline`  | `ProviderDeadlineLimitsSession` | The provider's deadline limits the session                                                           | An answer of its own, to keep sessions apart from the provider's                       |
 | `LinkLimit`                | `OneLinkPerConnection`          | One link per identity and connection                                                                 | A limit of its own                                                                     |
 | `Linker`                   | `NoLinks`                       | Resolves nothing, so a `sign_in` ends `unlinked`, or hands off unlinked where the application allows | `LinkStore`, or a wrapper providing `LinkStorage`, to link at all                      |
-| `Freshness`                | `RefusingFreshness`             | Refuses every operation of SSO-2.12, `freshness_required`                                            | How it judges its caller, before any management helper or `link` start                 |
+| `Freshness`                | `RefusingFreshness`             | Refuses every operation `FreshnessOperation` names, `freshness_required`                             | How it judges its caller, before any management helper or `link` start                 |
 | `LinkEligibility`          | `RefusingLinkEligibility`       | Refuses every `link`, `link_ineligible`                                                              | Who may link                                                                           |
 | `LinkConfirmation`         | `RefusingLinkConfirmation`      | Refuses a `link` of an identity holding a domain link, `independent_authentication_required`         | How a caller stands apart from those links                                             |
 | `LinkEmailMatcher`         | `NoEmailMatches`                | Matches nobody, so linking by a verified domain reserves nothing                                     | Whom an email belongs to                                                               |
@@ -129,7 +127,7 @@ What each default does, and what an application supplies to go further:
 - A new seam, or a new default for one: it joins `StandaloneTestCase::DEFAULT_BINDINGS`, the table above and a test of
   what it does alone.
 - A dependency on a sibling's class, interface or configuration, in any form.
-- A new operation of SSO-2.12: `DefaultBindingsRefusalsTest` fails until it makes that operation's change.
+- A new `FreshnessOperation`: `DefaultBindingsRefusalsTest` fails until it makes that operation's change.
 - A route, a session or a cache added to any flow.
 - A change to what a contract requires of an adapter: the fixture that conforms to it, and the test of its guarantee.
 - An event losing what a sibling needs to act on without querying back.

@@ -11,10 +11,10 @@ use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Contracts\Cache\Store;
 
 /**
- * A cache that answers falsely (SSO-11.6): it reports every write as made and
- * forgets it, or answers every read with the value given, whatever was asked,
- * and its locks are either always free or never, so a test can lie in whichever
- * direction would hurt: a mutex held for ever, or one that excludes nobody.
+ * A cache that answers falsely: it reports every write as made and forgets it,
+ * or answers every read with the value given, whatever was asked, and its locks
+ * are either always free or never, so a test can lie in whichever direction
+ * would hurt: a mutex held for ever, or one that excludes nobody.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

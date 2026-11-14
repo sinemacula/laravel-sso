@@ -118,8 +118,7 @@ nothing else and keep nothing.
   `Provenance` itself keeps its times as UTC `CarbonImmutable` instants.
 - The subject, the issuer, the provider session's id, an email, groups, mapped attributes and
   tokens are never captured or projected. Use `sso.connection` as the reference to the provider.
-- The key names are the constants on `AuthenticationContext` and, with their meanings and types, are
-  stable from 1.0.0.
+- The key names are the cases of `ContextKey` and, with their meanings and types, are stable from 1.0.0.
 
 > [!IMPORTANT]
 > These keys say how the session began. They never replace a current check: revocation through
@@ -132,17 +131,17 @@ nothing else and keep nothing.
 Under `laravel-iam`, its adapter does both halves: it hands the captured provenance to `laravel-authentication` with the
 session it starts, and its authentication context contributor calls `AuthenticationContext::fromStored()` for the `sso`
 namespace. That namespace is this package's: `laravel-authentication` exposes the session's provenance for reading and
-never writes into it. Its contributor seam (its PR #128: `Contracts\AuthenticationContextContributor`, registered with
+never writes into it. Its contributor seam (`Contracts\AuthenticationContextContributor`, registered with
 `Context\ContextContributors::register('sso', ...)`) holds plain values only, which every value of the projection
 already is, so the contributor answers each key without its `sso.` prefix and changes no value; see
 [The `sso` contributor](integrating-with-laravel-iam.md#the-sso-contributor).
 
-The provenance `laravel-authentication` keeps per session in its PR #127 (`Proofs\Provenance` and its
-`authentication_provenance` table) holds the connection, the tenant, the provider's authentication time to the whole
-second, one session deadline, the policy version, the link id and accepted evidence. It has no field for the protocol,
-the link's provenance or the provider's raw deadline as distinct from the cap, and it drops microseconds, so the
-projection never rebuilds the package's provenance from those fields. Its PR #129 adds an opaque provider context to
-that record, of at most 4,096 bytes as JSON, which the stored form always fits: the adapter passes `toArray()` as it,
-authentication keeps it with the session once and hands it back, and the contributor projects it. Against a
-`laravel-authentication` without PR #129, the adapter stores `toArray()` itself, beside the session. See
+The provenance `laravel-authentication` keeps per session (`Proofs\Provenance` and its `authentication_provenance`
+table) holds the connection, the tenant, the provider's authentication time to the whole second, one session deadline,
+the policy version, the link id and accepted evidence. It has no field for the protocol, the link's provenance or the
+provider's raw deadline as distinct from the cap, and it drops microseconds, so the projection never rebuilds the
+package's provenance from those fields. The record also holds an opaque provider context (`External\ProviderContext`),
+of at most 4,096 bytes as JSON, which the stored form always fits: the adapter passes `toArray()` as it, authentication
+keeps it with the session once and hands it back, and the contributor projects it. Against a `laravel-authentication`
+without that provider context, the adapter stores `toArray()` itself, beside the session. See
 [Integrating with `laravel-iam`](integrating-with-laravel-iam.md#keeping-the-stored-form).

@@ -169,9 +169,9 @@ in your code, not a refusal.
 ## Events
 
 A start reports `AuthorizationRequestStarted` once the request is stored and its transaction commits, with the
-connection, its tenant and protocol, the application, the purpose, the `request_reference`, and the identity and
-session given. A refusal reports exactly one `FlowFailed` with the flow `authorization_request` and its reason. No event
-carries the protocol state, the nonce, a verifier or the challenge (see [Events](events.md)).
+connection, its tenant and protocol, the application, the purpose, the `request_reference`, the identity given and,
+for a `reauthenticate`, the session. A refusal reports exactly one `FlowFailed` with the flow `authorization_request`
+and its reason. No event carries the protocol state, the nonce, a verifier or the challenge (see [Events](events.md)).
 
 ## Transactions
 

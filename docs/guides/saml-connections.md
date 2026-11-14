@@ -128,7 +128,7 @@ A `metadata_url` alone refreshes nothing, and `metadata_refresh` set `false` sta
 
 A federation (InCommon, eduGAIN, a national research network) may publish one signed aggregate of every member, tens
 of MiB. The package can read it once you raise the cap, which is 1 MiB by default (`sso.metadata.max_bytes`, up to 256
-MiB) and applies to metadata in place of the fetcher's own cap, which every other request keeps:
+MiB) and applies to metadata in place of the fetcher's own cap; no other request's cap changes with it:
 
 ```dotenv
 SSO_METADATA_MAX_BYTES=67108864
@@ -144,10 +144,11 @@ REDIS_QUEUE_RETRY_AFTER=660
 > piece, every time it is imported or refreshed: expect memory of several times the file's size and seconds of
 > processing for an aggregate of tens of MiB. Size each limit on the way for it:
 >
-> - the download: `SSO_FETCHER_TIMEOUT_SECONDS` bounds every fetch from connecting to the last byte, 10 seconds by
->   default and at most 60. It is shared by every outbound request (token, UserInfo, discovery, JWKS), so raising it
->   raises their deadline too. A file of 64 MiB needs a sustained 54 Mbit/s to arrive in 10 seconds, and 9 Mbit/s in
->   60; one that cannot arrive in 60 seconds fails every time (`fetch_failed`), so use a per-entity URL instead;
+> - the download: `SSO_FETCHER_TIMEOUT_SECONDS` bounds a fetch from connecting to the last byte, 10 seconds by default
+>   and at most 60. Discovery and JWKS requests share it, so raising it raises their deadline too; token and UserInfo
+>   requests keep their own (`sso.oidc.token_timeout_seconds`, `sso.oidc.userinfo_timeout_seconds`). A file of 64 MiB
+>   needs a sustained 54 Mbit/s to arrive in 10 seconds, and 9 Mbit/s in 60; one that cannot arrive in 60 seconds
+>   fails every time (`fetch_failed`), so use a per-entity URL instead;
 > - the job: `SSO_METADATA_QUEUE_TIMEOUT_SECONDS`, at most `SSO_METADATA_CLAIM_SECONDS`;
 > - the queue connection's `retry_after` (90 seconds in Laravel's stock `config/queue.php`), longer than the job's
 >   timeout, or a refresh still running is reserved by a second worker and recorded as a failed job; the boot check

@@ -68,15 +68,15 @@ person signs that person in to the first one's account.
 
 - **Trust a certificate only after comparing its fingerprint** with one the provider's administrator gave you through
   another channel than the metadata itself. A certificate carried in a response is never trusted for itself.
-- **The provider's certificate.** Trust the next certificate before the provider switches to it: both are trusted
-  during the overlap. Distrust the old one once the provider has switched; distrusting voids flows in flight. With a
-  metadata URL and a signing anchor (or the explicit `metadata_refresh` delegation), the scheduled refresh does this for
-  you ([SAML metadata](saml-metadata.md#refreshing-on-a-schedule)). An OIDC provider's keys come from its JWKS, refetched
-  on the schedule and when a token names a key the connection does not hold.
+- **The provider's certificate.** Trust the next certificate before the provider switches to it: both are trusted during
+  the overlap. Distrust the old one once the provider has switched; distrusting voids flows in flight. With a metadata
+  URL and a signing anchor (or the explicit `metadata_refresh` delegation), the scheduled refresh does this for you
+  ([SAML metadata](saml-metadata.md#refreshing-on-a-schedule)). An OIDC provider's keys come from its JWKS, refetched on
+  the schedule and when a token names a key the connection does not hold.
 - **Your own keys.** Add the next key, give the provider the description with both certificates, and make it current
-  only once the provider has the new one ([Keys and certificates](keys.md#generating-and-rotating-service-provider-keys)).
-  A provider that took an uploaded file must be given it again at every rotation; one that fetches the metadata URL or
-  the JWKS URL picks it up.
+  only once the provider has the new one ([Keys and
+  certificates](keys.md#generating-and-rotating-service-provider-keys)). A provider that took an uploaded file must be
+  given it again at every rotation; one that fetches the metadata URL or the JWKS URL picks it up.
 - **Client secrets expire** at some providers. Note the expiry, and update the connection's `client_secret` before it.
 
 ## Organisations that share an issuer

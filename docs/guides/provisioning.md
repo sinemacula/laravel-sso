@@ -148,8 +148,9 @@ Running the listener's transaction at `READ COMMITTED` takes no such gap locks, 
 
 ## The helper
 
-`ProvisioningHelper::link()` takes the grant, the exact result the event carried and the new identity, and answers a
-`ProvisioningResult`. A refusal is a value, never thrown, and writes nothing.
+`ProvisioningHelper::link()` takes the grant, the exact result the event carried, the new identity and the
+completion's `Http\ClientContext`, and answers a `ProvisioningResult`. A refusal is a value, never thrown, and writes
+nothing.
 
 | `status`                 | `reason()`                   | Why                                                                                                                                       |
 |--------------------------|------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|

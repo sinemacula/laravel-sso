@@ -2,12 +2,11 @@
 
 ## Purpose
 
-This note records how a completed flow's verified result reaches the client that started it (SSO-9.2, SSO-9.9,
-SSO-4.3, SSO-4.6, SSO-8.5, SSO-5.2): the package's own store, which issues a single-use code inside the completion's
-transaction; the package's own redemption, which consumes the code atomically, checks what it is bound to, and checks
-the connection, enforcement and the link again; and the recheck and acknowledgement an adapter calls when it redeems
-codes of its own. The tables, the value types and the lock order are in `flows.md`; how a code is issued during a
-completion is in `completion.md`.
+This note records how a completed flow's verified result reaches the client that started it: the package's own store,
+which issues a single-use code inside the completion's transaction; the package's own redemption, which consumes the
+code atomically, checks what it is bound to, and checks the connection, enforcement and the link again; and the recheck
+and acknowledgement an adapter calls when it redeems codes of its own. The tables, the value types and the lock order
+are in `flows.md`; how a code is issued during a completion is in `completion.md`.
 
 ## Invariants
 
@@ -24,21 +23,21 @@ completion is in `completion.md`.
 - The row holds `code_digest`, the lower-case hex SHA-256 of the code, never the code; `purpose`, `application`,
   `connection_id` and `request_reference`, from the result; `handoff_challenge`, the client's S256 challenge;
   `identity_type` and `identity_id` (`link`, `reauthenticate`) and `session_id` (`reauthenticate`), from the grant;
-  `linked_identity_type` and `linked_identity_id`, what the result's link resolved to at completion; `result`, the
-  JSON of `VerifiedResult::toArray()` encrypted through `Contracts\SecretEncrypter`; `trust_version`, the grant's
-  `trustVersion`; `session_not_after` (SSO-9.10); `expires_at`. No enforcement version is kept: the redemption answers
-  the version it judges under its own locks.
+  `linked_identity_type` and `linked_identity_id`, what the result's link resolved to at completion; `result`, the JSON
+  of `VerifiedResult::toArray()` encrypted through `Contracts\SecretEncrypter`; `trust_version`, the grant's
+  `trustVersion`; `session_not_after`; `expires_at`. No enforcement version is kept: the redemption answers the version
+  it judges under its own locks.
 - The grant's `trustVersion` is the connection's `trust_version` as the completion's lock holds its row, read by
   `IssueHandoff` in T2 (or in T3, after the provisioning boundary, from the row T3 locked again). Every store keeps it
   with the code and answers it back in the `HandoffBinding` it hands the recheck, which refuses a code whose version is
-  not the connection's under the redemption's lock, or a binding naming none (SSO-2.13). `Contracts\HandoffIssuer`
-  requires it of an application's store, with the grant's `sessionNotAfter`, which the store's redeemer caps the
-  session at and passes to `Sessions\Provenance::capture()`.
+  not the connection's under the redemption's lock, or a binding naming none. `Contracts\HandoffIssuer` requires it of
+  an application's store, with the grant's `sessionNotAfter`, which the store's redeemer caps the session at and passes
+  to `Sessions\Provenance::capture()`.
 - Times are kept to the whole second, so a code expires at most a second before its grant says; the returned
   `IssuedHandoff` carries the expiry as stored. The code is revealed once, on the completion's redirect, and is never
   logged or put in an event.
 - A database error, a result that cannot be encoded and an encrypter that cannot encrypt propagate, which refuses the
-  completion as a server error (SSO-11.4).
+  completion as a server error.
 
 ### Redeeming
 
@@ -50,10 +49,10 @@ gives it, as given, to freshness and the link confirmation. The steps run in thi
 refuses ends the redemption:
 
 1. The attempt is counted with `AttemptSubject::redemption()` against the IP address of the `Http\ClientContext` the
-   redemption is given (none for a client with none) (SSO-11.8): a full limit is `rate_limited`, with its wait.
+   redemption is given (none for a client with none): a full limit is `rate_limited`, with its wait.
 2. A code that is not `HandoffCode::isWellFormed()` is `handoff_unknown`.
 3. The row is read by `code_digest` on the write connection and matched again in constant time
-   (`HandoffCode::matches()`, SSO-11.9); none is `handoff_unknown`.
+   (`HandoffCode::matches()`); none is `handoff_unknown`.
 4. The code's connection's tenant is read by a plain read before the transaction opens (a connection's tenant never
    changes). Then, in a transaction on the storage connection (a savepoint inside the caller's), a connection gone is
    `connection_unavailable`, and `HandoffRecheck::lock()` takes the locks of `flows.md`'s order for that tenant, the
@@ -71,7 +70,7 @@ refuses ends the redemption:
 7. The code is consumed: its digest is recorded in the single-use store until `max(expires_at, now + 1s)` and its
    `redeemed_at` set, in the transaction.
 8. A code whose `expires_at` is not after now is `handoff_expired`.
-9. A code of another purpose than the one asked is `purpose_mismatch` (SSO-9.9).
+9. A code of another purpose than the one asked is `purpose_mismatch`.
 10. One of another application, compared exactly, is `application_mismatch`.
 11. One of another connection, compared exactly, is `connection_mismatch`.
 12. A verifier that is not `Verifier::isWellFormed()`, or does not satisfy the code's challenge (compared in constant
@@ -85,15 +84,15 @@ refuses ends the redemption:
 
 - Every refusal from step 8 on keeps the code consumed: a wrong purpose, application, connection or verifier spends
   the code, so a correct redemption after it is `replayed`. Refusals before step 7 write nothing but the attempt.
-- Every read that decides the redemption is on the write connection (SSO-11.3); the reads under step 4's locks are
-  locking reads, so a caller's older `REPEATABLE READ` snapshot never answers whether the rule is on, the connection
-  usable, or the code voided or redeemed. Step 3's read and the read of the tenant are plain: they give only the row's
-  id, connection and application and the connection's tenant, which the locked reads confirm, and a miss refuses
-  (fails closed). Both run before the redemption's transaction opens, so on the standalone path the identity guard of a
-  `link` is that transaction's first statement, and every plain read after it, under MySQL's `REPEATABLE READ`, sees
-  what the guard's previous holder committed. A standalone `link` that comes to `Exceptions\LinkCandidatesChanged` all
-  the same is tried again as a serialisation failure, below; inside a caller's transaction it propagates for a retry of
-  the whole, as a 40001 `DeadlockException` once a nested transaction has rethrown it.
+- Every read that decides the redemption is on the write connection; the reads under step 4's locks are locking reads,
+  so a caller's older `REPEATABLE READ` snapshot never answers whether the rule is on, the connection usable, or the
+  code voided or redeemed. Step 3's read and the read of the tenant are plain: they give only the row's id, connection
+  and application and the connection's tenant, which the locked reads confirm, and a miss refuses (fails closed). Both
+  run before the redemption's transaction opens, so on the standalone path the identity guard of a `link` is that
+  transaction's first statement, and every plain read after it, under MySQL's `REPEATABLE READ`, sees what the guard's
+  previous holder committed. A standalone `link` that comes to `Exceptions\LinkCandidatesChanged` all the same is tried
+  again as a serialisation failure, below; inside a caller's transaction it propagates for a retry of the whole, as a
+  40001 `DeadlockException` once a nested transaction has rethrown it.
 - A standalone transaction the database rolls back as a deadlock, a lock wait timeout or a serialisation failure, one in
   a savepoint inside it included, is tried again from its start, at most three times in all
   (`Database\RetriedTransaction`, `storage.md`). Laravel never runs it again once it has
@@ -141,7 +140,7 @@ refuses ends the redemption:
   `retryAfter`.
 - It holds the verified result, which carries personal data: a dump and `json_encode()` show only `status`, `reason`,
   `retry_after`, `purpose`, `connection_id` and `request_reference`, never the subject or an attribute, and it refuses
-  to be serialised or unserialised. The result itself stays serialisable (SSO-8.1).
+  to be serialised or unserialised. The result itself stays serialisable.
 - The restored result must name the code's purpose, application, connection and reference exactly. A stored result
   that is not JSON of a result, or names another, is an `UnexpectedValueException`; it, a ciphertext no key decrypts,
   a database error and a contract's exception propagate, roll the transaction back and leave the code unconsumed.
@@ -150,8 +149,8 @@ refuses ends the redemption:
 
 `Handoffs\HandoffRecheck` (`@api`, resolved per request) is what every redemption checks again, for the package's own
 redemption and for an application that issues and redeems codes of its own. Under `laravel-iam` there are none: the
-package issues, stores and redeems every handoff code (the reconciliation of AUTH-3.10 recorded as SSO-9.2/f), and the
-adapter redeems through `HandoffRedemption` (`docs/guides/integrating-with-laravel-iam.md`):
+package issues, stores and redeems every handoff code, and the adapter redeems through `HandoffRedemption`
+(`docs/guides/integrating-with-laravel-iam.md`):
 
 - `lock(string $tenantId, string $connectionId, string $application, ?string $reservationId = null, ?IdentityReference
   $confirming = null): Handoffs\RecheckLock` comes first, before the redeemer locks its own code. Given a reservation or
@@ -178,11 +177,11 @@ adapter redeems through `HandoffRedemption` (`docs/guides/integrating-with-larav
      observed at completion by its id, so a link removed and made again is told apart.
 - `RecheckOutcome` is `passed`, or a refusal of the same value as its `FailureReason`, and `reason()` answers the
   `FailureReason` a redemption refused by it reports, `null` for `passed`.
-- `acknowledgeSignIn(VerifiedResult $result, RecheckLock $lock)` sets the connection's `has_completed_sign_in`
-  (SSO-4.3), through the model, on the row the lock holds, and writes nothing when it is already set. A result of
-  another purpose is a `LogicException`, and so is a connection that is gone. The redeemer calls it after the recheck
-  passed, for a `sign_in` result linked to an identity; a `link` or `reauthenticate` code, an unlinked handoff and a
-  code issued but never redeemed never set the flag.
+- `acknowledgeSignIn(VerifiedResult $result, RecheckLock $lock)` sets the connection's `has_completed_sign_in`, through
+  the model, on the row the lock holds, and writes nothing when it is already set. A result of another purpose is a
+  `LogicException`, and so is a connection that is gone. The redeemer calls it after the recheck passed, for a `sign_in`
+  result linked to an identity; a `link` or `reauthenticate` code, an unlinked handoff and a code issued but never
+  redeemed never set the flag.
 - Every method runs only inside a transaction open on the storage connection; with none, each is a `LogicException`. An
   adapter writes its consumption and its session through the same Laravel connection, inside that transaction, so the
   locks, the checks, its consumption, the acknowledgement and the session commit or roll back together. The package's
@@ -202,11 +201,10 @@ adapter redeems through `HandoffRedemption` (`docs/guides/integrating-with-larav
 - refused: exactly one `FlowFailed(Flow::REDEMPTION, $reason)`, a full limit included.
 
 Before a code is found, the context names only the purpose asked. Once found, it names the code's connection,
-application, purpose and `request_reference`, the identity (the flow's for `link` and `reauthenticate`, the linked
-one for `sign_in`) and the session of a `reauthenticate`; once the connection's row was read, its tenant and protocol.
-Never the code, its digest, the verifier, the challenge, the subject or an attribute. Inside the redemption's
-transaction the events wait for its commit, and inside a caller's transaction for the caller's; a rollback reports
-nothing (SSO-10.5).
+application, purpose and `request_reference`, the identity (the flow's for `link` and `reauthenticate`, the linked one
+for `sign_in`) and the session of a `reauthenticate`; once the connection's row was read, its tenant and protocol. Never
+the code, its digest, the verifier, the challenge, the subject or an attribute. Inside the redemption's transaction the
+events wait for its commit, and inside a caller's transaction for the caller's; a rollback reports nothing.
 
 ## Success Path
 
@@ -239,7 +237,7 @@ nothing (SSO-10.5).
   `connection_unavailable`.
 - A link removed, reassigned or added since completion is `link_changed`.
 - A redemption inside the caller's transaction that rolls back leaves the code unredeemed and reports nothing.
-- A linker that throws, a corrupt stored result and a database error propagate as server errors (SSO-11.4).
+- A linker that throws, a corrupt stored result and a database error propagate as server errors.
 
 ## Implementation Anchors
 

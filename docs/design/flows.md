@@ -37,19 +37,19 @@ by flow and the events each operation reports. Each part's own behaviour is in i
   code is bound to: `purpose`, `application`, `connection_id`, `request_reference`, `handoff_challenge`, `identity_type`
   and `identity_id` (the flow's identity), `session_id`, `linked_identity_type`, `linked_identity_id` and `link_id`
   (what the result's link resolved to at completion, and through which link), `reservation_id` (the reservation it
-  holds); `result`, the serialised verified result, encrypted; `session_not_after` (SSO-9.10); `expires_at`,
-  `redeemed_at`, `voided_at`.
+  holds); `result`, the serialised verified result, encrypted; `trust_version`, the connection's trust version the code
+  was issued under; `session_not_after`; `expires_at`, `redeemed_at`, `voided_at`.
 - Every model is keyed by a lower-case ULID and stamped from the package's clock (`SsoModel::identifiedAndStamped()`),
   hidden columns (digests, ciphertexts) never serialise, and no model carries behaviour: a reader builds an identity
   from two columns with `Identities\IdentityReference::fromColumns()`. There is no foreign key: a connection's deletion
   deletes its rows in its own transaction, whatever the engine. A lookup by `reference` or `saml_request_id` compares
   again in PHP, exactly, since MySQL's default collation folds case.
-- Every read that decides a flow is made on the write connection (SSO-11.3); every write goes through the model.
+- Every read that decides a flow is made on the write connection; every write goes through the model.
 
 ### Value types
 
 - `Flows\RequestReference`: 32 base64url characters from 24 random bytes, under the 40 the log sanitiser redacts; not a
-  secret, the only flow identifier in events and logs, under `request_reference` (SSO-9.8).
+  secret, the only flow identifier in events and logs, under `request_reference`.
 - `Flows\Verifier`: 43 to 128 unreserved characters (RFC 7636 section 4.1); a generated one is 43 characters from 32
   random bytes, returned once in the start response's body. Held in a `\SensitiveParameterValue` behind `reveal()`, with
   a redacted dump and JSON form, no `__toString()`, and no (un)serialisation; compared in constant time.
@@ -58,19 +58,20 @@ by flow and the events each operation reports. Each part's own behaviour is in i
 - `Handoffs\HandoffCode`: 43 base64url characters from 32 random bytes; held like a verifier; stored only as
   `digest()`, matched with `matches($digest)` in constant time.
 - The protocol state (OIDC `state`, SAML `RelayState`) and the nonce are `Secrets\Secret` values; only their digests are
-  stored. None of these types is accepted as another, nor as a token (SSO-9.2, AUTH-5.7).
+  stored. None of these types is accepted as another, nor as a token.
 
 ### Verified result
 
-- `Results\VerifiedResult` (SSO-8.1): `issuer`, `subject`, `nameIdFormat`, `connectionId`, `tenantId`, `protocol`,
-  `application`, `purpose`, `requestReference`, the mapped `attributes` (strings or lists of strings), whether the
-  email's domain is verified for the connection, the `Results\AuthenticationContext` (authentication time, methods,
-  context class, provider session id and deadline) and the optional `Results\LinkingEmail` (email, source, accepted
-  organisation). The issuer and subject are 1 to 1024 bytes, exactly as received (SSO-6.9).
-- It is serialisable, as SSO-8.1 requires: `toArray()`, `serialize()` and `json_encode()` write the same stored form,
-  holding everything above and nothing else; `restore()` and `unserialize()` check every part again and fail with an
-  `UnexpectedValueException` on anything the package did not write. It is read back only from the package's own
-  encrypted storage, never from client input, and never handed to an event whole.
+- `Results\VerifiedResult`: `issuer`, `subject`, `nameIdFormat`, `connectionId`, `tenantId`, `protocol`, `application`,
+  `purpose`, `requestReference`, the mapped `attributes` (strings or lists of strings), whether the email's domain is
+  verified for the connection, the `Results\AuthenticationContext` (authentication time, methods, context class,
+  provider session id and deadline), the optional `Results\LinkingEmail` (email, source, accepted organisation) and,
+  for OIDC, the optional `Results\AssertedEmail`. The issuer and subject are 1 to 1024 bytes, exactly as received.
+- It is serialisable: `toArray()` and `serialize()` write the same stored form, holding everything above and nothing
+  else, and `json_encode()` writes it with the asserted email redacted, so that JSON is never a stored form; `restore()`
+  and `unserialize()` check every part again and fail with an `UnexpectedValueException` on anything the package did not
+  write. It is read back only from the package's own encrypted storage, never from client input, and never handed to an
+  event whole.
 - `Results\VerifiedClaims` is what a driver verified (issuer, subject, format, raw attributes by provider name,
   authentication context, linking email); it lives only for its completion (no serialisation, a dump shows attribute
   names only).
@@ -104,7 +105,7 @@ by flow and the events each operation reports. Each part's own behaviour is in i
 | `CompletionStage`          | one class per step                           | a stage refuses as a value, errors propagate |
 
 Each default is a singleton when it holds nothing and scoped when it reads configuration or a connection, so an earlier
-binding is kept and nothing outlives a request (SSO-11.2).
+binding is kept and nothing outlives a request.
 
 ### The completion
 
@@ -124,27 +125,28 @@ binding is kept and nothing outlives a request (SSO-11.2).
   boundary of `linking.md`; the state kept either way).
 - Transactions: a completion, and a start (named or by discovery), run outside any transaction on the storage
   connection; called inside one, each is a `LogicException` at entry, before anything is written, so a caller's rollback
-  never undoes a consumption (SSO-5.1) and a caller's transaction never keeps the connection's lock across a call to the
-  driver (SSO-11.5). A redemption may run inside the redeemer's, so its writes commit with the redeemer's. `correlation`
-  and `validation` run outside any transaction the pipeline opens (validation may fetch); `consumption` runs in a
-  transaction of its own on the storage connection, which locks the connection's row before the request's, as every
-  transaction here does, so the request is consumed whether the response then passes or fails; every step from
-  `replay_recording` on runs in one transaction on the storage connection that first locks the tenant's enforcement
-  (when it applies, see the lock order), then the connection's row (with the rule's connections) and then the request's
-  row, and refuses if the connection is no longer usable, the request was voided since consumption or its stored trust
-  version is no longer the connection's, or the enforcing tenant moved since its rule was locked. The trust version is
-  stored on every request at start (compared under the connection's lock before the insert), checked at consumption
-  against the locked connection before validation or any provider call, and checked again under the completion's lock.
-  One exception, and only one, crosses a trust version: the sign-in whose own token triggered an unknown-`kid` refetch
-  that removed a key may finish across exactly that transition, on a `Protocols\TransitionReceipt` judged at those locks
-  (`oidc-driver.md`); it never restores a voided request and never adopts a later trust version. A genuinely unlinked
-  `sign_in` stops that transaction at the provisioning boundary and finishes in a final continuation, with the
-  unlinked-result event dispatched between them (`linking.md`). Events are dispatched after their transaction commits
-  (or after the consumption's, for a refusal before it), never on a rollback, except that one.
+  never undoes a consumption and a caller's transaction never keeps the connection's lock across a call to the driver. A
+  redemption may run inside the redeemer's, so its writes commit with the redeemer's. `correlation` and `validation` run
+  outside any transaction the pipeline opens (validation may fetch); `consumption` runs in a transaction of its own on
+  the storage connection, which locks the connection's row before the request's, as every transaction here does, so the
+  request is consumed whether the response then passes or fails; every step from `replay_recording` on runs in one
+  transaction on the storage connection that first locks the tenant's enforcement (when it applies, see the lock order),
+  then the connection's row (with the rule's connections) and then the request's row, and refuses if the connection is
+  no longer usable, the request was voided since consumption or its stored trust version is no longer the connection's,
+  or the enforcing tenant moved since its rule was locked, and refuses with `metadata_expired` or `request_expired` when
+  fetched metadata or the verified response's deadline lapsed meanwhile. The trust version is stored on every request at
+  start (compared under the connection's lock before the insert), checked at consumption against the locked connection
+  before validation or any provider call, and checked again under the completion's lock. One exception, and only one,
+  crosses a trust version: the sign-in whose own token triggered an unknown-`kid` refetch that removed a key may finish
+  across exactly that transition, on a `Protocols\TransitionReceipt` judged at those locks (`oidc-driver.md`); it never
+  restores a voided request and never adopts a later trust version. A genuinely unlinked `sign_in` stops that
+  transaction at the provisioning boundary and finishes in a final continuation, with the unlinked-result event
+  dispatched between them (`linking.md`). Events are dispatched after their transaction commits (or after the
+  consumption's, for a refusal before it), never on a rollback, except that one.
 - `Completion\CompletionResult` is how a completion ended: `completed` (redirect URI, delivery, reference, issued
   handoff), `failed` (reason, redirect URI, delivery, reference), `rejected` (reason, no trusted target: a 400),
-  `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL, SSO-5.8). It may hold the code, so
-  it shows none in a dump and refuses serialisation.
+  `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL). It may hold the code, so it shows
+  none in a dump and refuses serialisation.
 - `Handoffs\HandoffGrant` is what a code is issued for: the result (which names purpose, application, connection and
   reference), the challenge, the expiry, the linked identity, the flow's identity (`link`, `reauthenticate`) and session
   (`reauthenticate`) and the session's latest end; a grant whose identity or session does not fit its purpose is
@@ -258,7 +260,7 @@ and its provisioning grant (`linking.md`).
   callback's own key rotation spares that one consumed request, in the same transaction that voids the rest and records
   the transition for it in memory alone; a process that dies before its final locks leaves the request consumed and
   never completed, which nothing can complete, since the receipt died with it.
-- A database error is never a refusal: it propagates as a server error (SSO-11.4).
+- A database error is never a refusal: it propagates as a server error.
 
 ## Implementation Anchors
 

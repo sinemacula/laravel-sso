@@ -54,10 +54,11 @@ config()->set('sso.endpoints.base_url', 'https://sp.example.test/api');
 ```
 
 With the default paths, the connection `01k...` then has its assertion consumer service at
-`https://sp.example.test/api/auth/sso/connections/01k.../assertions`, which is the route below. Leave the base URL without
-the prefix and every identity provider is given URLs your API does not serve. Decide the layout before you register the
-first connection: the URLs are what administrators enter at their identity providers, and the SAML entity id is one of
-them, so moving them later means registering every connection again. See [Configuration](configuration.md#endpoints).
+`https://sp.example.test/api/auth/sso/connections/01k.../assertions`, which is the route below. Leave the base URL
+without the prefix and every identity provider is given URLs your API does not serve. Decide the layout before you
+register the first connection: the URLs are what administrators enter at their identity providers, and the SAML entity
+id is one of them, so moving them later means registering every connection again. See
+[Configuration](configuration.md#endpoints).
 
 ## The routes file
 
@@ -522,7 +523,8 @@ return Answers::of($result, 201, ['domain' => $result->domain, 'record' => $reco
 - **Secrets stay in.** A connection's secret is accepted in a request and never returned: its summary says only whether
   it is set.
 
-The example's `Answers` maps the package's results to statuses:
+The example's `Answers::of()` maps a management or link removal result to a status; a refused start or redemption
+answers `400` with its reason, and `429` when rate limited:
 
 | Result                                                       | Status                                    |
 |--------------------------------------------------------------|-------------------------------------------|

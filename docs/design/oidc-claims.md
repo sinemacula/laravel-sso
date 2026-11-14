@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This note records how the `oidc` driver builds what a completion verified (SSO-2.9, SSO-2.10, SSO-7.5, SSO-7.6, SSO-7.7,
-SSO-8.1, SSO-8.8): the UserInfo request and how its answer is judged, where each claim of the result comes from, how an
-email and its `email_verified` are paired, and why no provider token outlives the completion. The driver as a whole is
-`oidc-driver.md`; the callback and the token request are `oidc-callback.md`; the ID token is `oidc-id-tokens.md`; how
-the verified result is built from the claims is `completion.md`.
+This note records how the `oidc` driver builds what a completion verified: the UserInfo request and how its answer is
+judged, where each claim of the result comes from, how an email and its `email_verified` are paired, and why no provider
+token outlives the completion. The driver as a whole is `oidc-driver.md`; the callback and the token request are
+`oidc-callback.md`; the ID token is `oidc-id-tokens.md`; how the verified result is built from the claims is
+`completion.md`.
 
 ## Invariants
 
@@ -17,10 +17,10 @@ the verified result is built from the claims is `completion.md`.
   a connection that fetches but names none is the caller's mistake (`LogicException`).
 - While on, UserInfo is mandatory: every refusal below refuses the completion, the request stays consumed and no code is
   issued, with no fallback to the ID token alone. It is read before anything else is judged.
-- `UserInfoReader::fetch()` sends one attempt, with no retry by code or middleware, through the fetcher (SSO-2.9):
-  `GET`, the access token as its only credential (`FetchRequest::userInfo()`, `FetchCredentials::accessToken()`), held
-  to `OidcLimits::userInfoTimeoutSeconds()` and `maxUserInfoBytes()`. Inside a transaction on the storage connection it
-  is a `LogicException`, so a provider call never holds a lock.
+- `UserInfoReader::fetch()` sends one attempt, with no retry by code or middleware, through the fetcher: `GET`, the
+  access token as its only credential (`FetchRequest::userInfo()`, `FetchCredentials::accessToken()`), held to
+  `OidcLimits::userInfoTimeoutSeconds()` and `maxUserInfoBytes()`. Inside a transaction on the storage connection it is
+  a `LogicException`, so a provider call never holds a lock.
 - `UserInfoReader::refusal()` judges the answer, in this order:
 
   | Answer                                                                     | Refused with       |
@@ -69,14 +69,14 @@ the verified result is built from the claims is `completion.md`.
 - `email_verified` is read from that source alone, so another source's flag never vouches for an email: an ID token with
   an `email` and no flag is `null`, whatever UserInfo says. Only JSON `true` is evidence of verification, JSON `false`
   stays `false`, and anything else (a string such as `"true"`, a number, an object, an array or `null`) gives no
-  evidence and does not refuse the sign-in. Nothing is coerced. It is carried as `true`,
-  `false` or `null` (unknown) in `Results\AssertedEmail` with its source (SSO-7.7), which the verified result keeps
-  apart from the mapped attributes and stores with the handoff (`completion.md`).
+  evidence and does not refuse the sign-in. Nothing is coerced. It is carried as `true`, `false` or `null` (unknown) in
+  `Results\AssertedEmail` with its source, which the verified result keeps apart from the mapped attributes and stores
+  with the handoff (`completion.md`).
 - `EmailPairing::linkingEmail()` gives a `Results\LinkingEmail` only when the pair's `email_verified` is exactly `true`
   and the email has one `@` between a local part and a domain, by `LinkingEmail`'s own rule, with the pair's source and
   the organisation claim the connection names, read from that same source. While `Feature::DOMAIN_LINKING` or the
-  connection's linking is off, `ClaimsAssembler` asks for none. Nothing is ever read from the mapped
-  attributes (SSO-8.8). Whether a link is then made is `linking.md`'s.
+  connection's linking is off, `ClaimsAssembler` asks for none. Nothing is ever read from the mapped attributes. Whether
+  a link is then made is `linking.md`'s.
 
 ### Provider tokens are never kept
 
@@ -84,18 +84,18 @@ the verified result is built from the claims is `completion.md`.
   `FetchCredentials`, which refuses to be serialised and shows it in no dump. The ID token is not read here at all. A
   refresh token is never kept by `TokenResponseReader`.
 - `ClaimsAssembler` alone logs (`UserInfoReader` and `EmailPairing` never do), and only a `provider_error`:
-  `sso.oidc.userinfo_error`, a notice, with `connection_id`, `request_reference` and `error`. The `error` is the code
-  of the answer's `WWW-Authenticate` when it is one of RFC 6750 §3.1's (`invalid_request`, `invalid_token`,
+  `sso.oidc.userinfo_error`, a notice, with `connection_id`, `request_reference` and `error`. The `error` is the code of
+  the answer's `WWW-Authenticate` when it is one of RFC 6750 section 3.1's (`invalid_request`, `invalid_token`,
   `insufficient_scope`) and `[unrecognized]` otherwise, so a provider that puts prose or a token in `error` reaches no
   log. A body, an `error_description` and the other parameters of the challenge are never read into a log, event or
-  result (SSO-5.7).
+  result.
 - `VerifiedClaims` lives only for its completion: it refuses to be serialised, and its JSON and `AssertedEmail`'s show
   no email. The verified result holds no token. Its stored form holds the mapped attributes, the linking email and the
   asserted email, so the handoff store encrypts it; its JSON is the stored form but for the asserted email, shown as its
   source and flag.
 - It answers `Completion::verified()` with no `ReplayRecord`: the single use of the request and of the code stand in for
   recording a replay. It reports no event: the pipeline reports `ResultVerified`, `HandoffIssued` or `FlowFailed`.
-- It holds only `UserInfoReader` and the logger, and nothing of one completion for the next (SSO-11.2).
+- It holds only `UserInfoReader` and the logger, and nothing of one completion for the next.
 
 ## Success Path
 
@@ -118,8 +118,8 @@ the verified result is built from the claims is `completion.md`.
 - A verified email that is not well formed: the asserted pair keeps it as it is, and there is no linking email.
 - A connection whose mapping reads the email from another claim: the mapped email is that claim's, and the asserted pair
   is still the provider's `email`. `emailDomainVerified` judges the mapped one (`completion.md`).
-- A database error or a misconfigured limit propagates (SSO-11.4). A token the token response's reader would have
-  refused reaching `FetchCredentials::accessToken()` is the caller's mistake (`InvalidArgumentException`).
+- A database error or a misconfigured limit propagates. A token the token response's reader would have refused reaching
+  `FetchCredentials::accessToken()` is the caller's mistake (`InvalidArgumentException`).
 
 ## Implementation Anchors
 

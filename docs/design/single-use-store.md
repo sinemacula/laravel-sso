@@ -4,15 +4,15 @@
 
 This note records how a key is recorded once in its namespace until its expiry, atomically and shared by every server:
 what the store guarantees, what the default stores and how it answers, how it behaves inside a caller's transaction, and
-what another bound store must guarantee (SSO-11.5, SSO-11.4, SSO-11.3). The store backs SAML assertion ids (keyed by
-connection and issuer, SSO-6.6), authorisation requests (SSO-5.1) and handoff codes (SSO-9.2).
+what another bound store must guarantee. The store backs SAML assertion ids (keyed by connection and issuer),
+authorisation requests and handoff codes.
 
 ## Invariants
 
 - `Contracts\SingleUseStore::record($namespace, $key, $until)` answers `SingleUse\Enums\SingleUseOutcome`: `recorded`
   when the key was not held in the namespace and now is, until `$until`; `seen` when it was already held. Only
   `recorded` lets a flow proceed. A store that cannot answer with certainty (an error, a timeout, an answer it doubts)
-  throws, and the flow is refused as a server error (SSO-11.4), never passed.
+  throws, and the flow is refused as a server error, never passed.
 - Arguments are checked before any statement, each an `InvalidArgumentException` whose message never names the key: the
   namespace is 1 to 64 characters of `a-z`, `0-9`, `_`, `.`, `:` and `-` (with nothing after them, not even a newline);
   the key is any non-empty string; the expiry is after the clock's now.
@@ -31,8 +31,8 @@ connection and issuer, SSO-6.6), authorisation requests (SSO-5.1) and handoff co
   prune or another record may have deleted the expired row just before it, and `seen` must name a holder that exists.
   Two concurrent records of one key therefore give exactly one `recorded`, on any number of servers, and a key still
   held costs three statements.
-- Every statement is a write, on the write connection (SSO-11.3), so a lagging replica can neither fail a valid record
-  nor pass a replay.
+- Every statement is a write, on the write connection, so a lagging replica can neither fail a valid record nor pass a
+  replay.
 - Each statement runs in a transaction of its own, which Laravel turns into a savepoint when the caller already has a
   transaction open. A refused insert is rolled back to its savepoint, so it never aborts the caller's transaction:
   PostgreSQL refuses every statement after a failed one until the transaction or a savepoint is rolled back. Inside a
@@ -49,7 +49,7 @@ connection and issuer, SSO-6.6), authorisation requests (SSO-5.1) and handoff co
   repeats would name two instants with one value, and a held key could read as expired. The expiry is rounded up
   to the whole second, so a key is never released before its expiry; a key is released from the second its expiry names
   (`expires_at <= now`). Every comparison reads the one bindable clock (`Contracts\Clock`).
-- The store holds nothing but its clock between calls, and is bound scoped (SSO-11.2).
+- The store holds nothing but its clock between calls, and is bound scoped.
 
 ## Success Path
 
@@ -87,10 +87,11 @@ connection and issuer, SSO-6.6), authorisation requests (SSO-5.1) and handoff co
 ## Implementation Anchors
 
 - `src/Contracts/SingleUseStore.php`; `src/SingleUse/Enums/SingleUseOutcome.php`.
-- `src/SingleUse/DatabaseSingleUseStore.php`: `record()`, `assertValid()`, `store()`, `deleteExpired()`, `format()`.
+- `src/SingleUse/DatabaseSingleUseStore.php`: `record()`, `assertValid()`, `store()`, `deleteExpired()`.
 - `src/Models/SingleUseKey.php`: `prunable()`; `src/Models/Casts/UtcDateTime.php`.
 - `database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php`.
-- `src/SsoServiceProvider.php`: the scoped default of `SingleUseStore`.
+- `src/Support/PackageDefaults.php`: the scoped default of `SingleUseStore`; `src/SsoServiceProvider.php`: how it is
+  bound.
 
 ## Authoritative Tests
 

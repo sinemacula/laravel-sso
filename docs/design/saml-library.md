@@ -3,9 +3,9 @@
 ## Purpose
 
 This note records the comparison behind the choice of SAML library: which maintained library parses SAML messages and
-verifies their signatures (SSO-6.1). Three candidates went through the same adversarial fixture set, and then through
-the remaining criteria: schema validation, whether the verified element can be reached for SSO-6.3's absolute-path
-check, per-connection algorithm control (SSO-6.7), PHP 8.3 to 8.5, dependency fit with Laravel 12 and 13 (Symfony 7.4
+verifies their signatures. Three candidates went through the same adversarial fixture set, and then through the
+remaining criteria: schema validation, whether the verified element can be reached for the package's absolute-path check
+of signed elements, per-connection algorithm control, PHP 8.3 to 8.5, dependency fit with Laravel 12 and 13 (Symfony 7.4
 and 8), release cadence and maintenance. The package uses `simplesamlphp/saml2` `~6.2.5` with
 `simplesamlphp/xml-security` `~2.3.1`, under the conditions in the decision below. The fixtures go on to seed the
 package's fake SAML identity provider.
@@ -20,9 +20,9 @@ Candidates:
 ## Method
 
 - **Fixtures.** A generator makes throwaway RSA keys with OpenSSL: a trusted IdP key, an attacker key and an SP
-  encryption key. It writes 40 SAML Responses and a manifest that gives the outcome SSO-6 requires for each one. The
-  signer in the generator is a minimal test tool (exclusive c14n, enveloped signature) and is never package code. The
-  validity windows are wide (2026 to 2036), so the fixtures stay reusable; time checks are left to the tests of the
+  encryption key. It writes 40 SAML Responses and a manifest that gives the outcome the package requires for each one.
+  The signer in the generator is a minimal test tool (exclusive c14n, enveloped signature) and is never package code.
+  The validity windows are wide (2026 to 2036), so the fixtures stay reusable; time checks are left to the tests of the
   fake identity provider. The set covers:
   - baselines: response signed, assertion signed, both signed, and encrypted with RSA-OAEP plus AES-256-GCM or
     AES-128-GCM;
@@ -39,10 +39,11 @@ Candidates:
   - structure: two signed assertions, an unsigned assertion injected beside a signed one, a response signature whose
     reference names the assertion, an assertion carrying a signature over another ID inside a signed response,
     `URI=""`, c14n `WithComments`, and assertion children in an order the schema forbids.
-- **Validators.** For each candidate, a validator uses the library the way a careful integrator would. It configures
-  the trusted certificate, writes no cryptography or parsing of its own, and reads the subject from the library. Only
-  policy is added: the size cap, the SSO-6.7 allow-list (read from the parsed `SignedInfo` and `EncryptionMethod`) and
-  the key-transport algorithm the decryptor is built for. Where a library has two layers, both were run:
+- **Validators.** For each candidate, a validator uses the library the way a careful integrator would. It configures the
+  trusted certificate, writes no cryptography or parsing of its own, and reads the subject from the library. Only policy
+  is added: the size cap, the per-connection algorithm allow-list (read from the parsed `SignedInfo` and
+  `EncryptionMethod`) and the key-transport algorithm the decryptor is built for. Where a library has two layers, both
+  were run:
   - saml2's high-level `Response\Processor`;
   - its low-level `verify()`;
   - for v6, `verify()` plus one line of glue that copies a signed assertion into a document of its own first (see v6).
@@ -56,12 +57,12 @@ Candidates:
 
 Each cell gives the verdict for one fixture:
 
-- **ok:** the outcome SSO-6 requires.
-- **LAX:** accepted, and only the legitimate subject came out. It is not exploitable, but it breaks an SSO-6 rule that
-  the package must then enforce itself.
+- **ok:** the outcome the package requires.
+- **LAX:** accepted, and only the legitimate subject came out. It is not exploitable, but it breaks a rule of the
+  package's SAML policy that the package must then enforce itself.
 - **FALSE:** a legitimate response refused.
-- **ok†:** refused, but only because of the v6 embedded-assertion defect, not by design.
-- **ok‡:** refused by the integrator's allow-list, not by the library's defaults.
+- **ok (a):** refused, but only because of the v6 embedded-assertion defect, not by design.
+- **ok (b):** refused by the integrator's allow-list, not by the library's defaults.
 
 No candidate was exploited by any fixture: none returned the attacker's subject, a truncated subject, or the contents
 of the external entity.
@@ -79,17 +80,17 @@ of the external entity.
 | 20 to 27 XSW1 to XSW8                              | refuse               | ok                    | ok             | ok                      | ok                    | ok           |
 | 28, 29 evil assertion with the same ID             | refuse               | ok                    | ok             | ok                      | ok                    | ok           |
 | 30 response and assertion share an ID              | refuse               | LAX                   | ok             | ok                      | ok                    | ok           |
-| 31 two identical signed assertions                 | refuse               | ok†                   | ok             | ok                      | ok                    | ok           |
+| 31 two identical signed assertions                 | refuse               | ok (a)                | ok             | ok                      | ok                    | ok           |
 | 40 comment in NameID, response signed              | full value or refuse | ok (full)             | ok (full)      | ok (full)               | ok (full)             | ok (full)    |
-| 41 comment in NameID, assertion signed             | full value or refuse | ok†                   | ok†            | ok (full)               | ok (full)             | ok (full)    |
+| 41 comment in NameID, assertion signed             | full value or refuse | ok (a)                | ok (a)         | ok (full)               | ok (full)             | ok (full)    |
 | 42 processing instruction in NameID                | full value or refuse | ok                    | ok             | ok                      | ok                    | ok           |
 | 50 to 54 DTD, XXE, expansion, external DTD, UTF-16 | refuse               | ok                    | ok             | ok                      | ok                    | ok           |
-| 60 RSA-SHA1                                        | refuse               | LAX                   | ok‡            | ok‡                     | ok‡                   | LAX          |
-| 61 SHA-1 digest                                    | refuse               | LAX                   | ok‡            | ok‡                     | ok‡                   | LAX          |
+| 60 RSA-SHA1                                        | refuse               | LAX                   | ok (b)         | ok (b)                  | ok (b)                | LAX          |
+| 61 SHA-1 digest                                    | refuse               | LAX                   | ok (b)         | ok (b)                  | ok (b)                | LAX          |
 | 62 RSA 1.5 + AES-CBC                               | refuse               | ok (TypeError)        | ok             | ok                      | ok                    | LAX          |
 | 63 RSA 1.5 + AES-GCM                               | refuse               | ok (TypeError)        | ok             | ok                      | ok                    | LAX          |
-| 64 OAEP + AES-CBC                                  | refuse (opt-in)      | ok (TypeError)        | ok‡            | ok‡                     | ok‡                   | LAX          |
-| 70 two signed assertions                           | refuse               | ok†                   | ok†            | LAX                     | LAX                   | ok           |
+| 64 OAEP + AES-CBC                                  | refuse (opt-in)      | ok (TypeError)        | ok (b)         | ok (b)                  | ok (b)                | LAX          |
+| 70 two signed assertions                           | refuse               | ok (a)                | ok (a)         | LAX                     | LAX                   | ok           |
 | 71 unsigned assertion beside a signed one          | refuse               | ok                    | ok             | ok                      | ok                    | ok           |
 | 72 response signature references the assertion     | refuse               | ok                    | ok             | ok                      | ok                    | ok           |
 | 73 assertion signature over another ID             | refuse               | ok                    | ok             | ok                      | ok                    | ok           |
@@ -104,7 +105,8 @@ one assertion, schema).
 
 ## Findings: `simplesamlphp/saml2` v6
 
-- **Strongest design for SSO-6.3.** `verify()` takes a caller-built verifier and fails on any of the following:
+- **Strongest design for the absolute-path check.** `verify()` takes a caller-built verifier and fails on any of the
+  following:
   - the message's `SignatureMethod` is not the verifier's algorithm;
   - the reference is not this element's own `#ID`, or is `URI=""` on an element that is not the root;
   - a with-comments canonicalisation is used with a plain reference;
@@ -152,12 +154,12 @@ one assertion, schema).
 - **Foot-gun.** `verify()` called with no verifier falls back to the certificate in the message's `KeyInfo`, and it
   accepted the attacker-signed fixture 11. The package must always pass a verifier built from the connection's trusted
   certificates, and an architecture test should forbid the argument-less call.
-- **Algorithm control (SSO-6.7), all per call, so per connection:**
+- **Algorithm control, all per call, so per connection:**
   - **Signatures:** the caller picks the algorithm. The factory's blacklist is per instance, and its default refuses
     RSA-SHA1.
   - **Digests:** the library has no control. The package checks `DigestMethod` on the parsed `SignedInfo`, which is
     covered by the signature. `validateReference()` also digests only the last `Reference`, so the package should
-    require exactly one, as SSO-6.2 does anyway.
+    require exactly one, as its signature policy does anyway.
   - **Key transport:** the caller-built decryptor pins the algorithm and refuses a mismatch before decrypting.
     RSA 1.5 is blacklisted by default.
   - **Content encryption:** the library's blacklist lives in the process-wide `ContainerSingleton`, so the package
@@ -209,11 +211,12 @@ one assertion, schema).
   - The `signatureAlgorithm` and `digestAlgorithm` settings apply only to signing. It accepted RSA-SHA1, SHA-1
     digests, RSA 1.5 key transport (the decryption key is built as `RSA_1_5` and silently upgraded to OAEP when the
     message says so), AES-CBC, `URI=""` and `WithComments`.
-  - The only way to meet SSO-6.2 and SSO-6.7 would be package-written checks on XML that has not yet been verified.
-- **It decrypts in the constructor,** before any signature check, so SSO-6.7's rule for AES-CBC ("verify the Response
-  before decrypting") cannot be met.
-- **No handle on the verified element.** Values come from its own getters, which run XPath over the document, so
-  SSO-6.3 would rest on its internal queries rather than on an element the package resolved.
+  - The only way to enforce the package's signature and algorithm policy would be package-written checks on XML that has
+    not yet been verified.
+- **It decrypts in the constructor,** before any signature check, so the package's rule for AES-CBC ("verify the
+  Response before decrypting") cannot be met.
+- **No handle on the verified element.** Values come from its own getters, which run XPath over the document, so the
+  absolute-path check would rest on its internal queries rather than on an element the package resolved.
 - **Octane.** `Response::__construct()` calls `Utils::setBaseURL()`, a process-wide static, from per-connection
   settings, and the destination check reads `$_SERVER`. Both carry state across requests and connections in a
   long-lived worker.
@@ -235,8 +238,8 @@ one assertion, schema).
 |--------------------------------------------|----------------------------------------------------------------------------------|--------------------------------|------------------------------------------------------------------|
 | Fixture gate (nothing exploitable)         | Met with re-root glue; AES-256-GCM refused                                       | Met; AES-256-GCM refused       | Met for wrapping, IDs, comments and DTDs; algorithm fixtures LAX |
 | Schema validation                          | Bundled; pass the schema path explicitly                                         | Bundled                        | Bundled (`wantXMLValidation`)                                    |
-| Verified element reachable (SSO-6.3)       | Yes: `verify()` returns an object rebuilt from the digested bytes                | Yes                            | No: internal XPath only                                          |
-| Per-connection algorithm control (SSO-6.7) | Yes: per-call verifier and decryptor; digest and content checks on parsed values | Yes, as v6                     | No                                                               |
+| Verified element reachable                 | Yes: `verify()` returns an object rebuilt from the digested bytes                | Yes                            | No: internal XPath only                                          |
+| Per-connection algorithm control           | Yes: per-call verifier and decryptor; digest and content checks on parsed values | Yes, as v6                     | No                                                               |
 | Verify before decrypt                      | Caller controls the order                                                        | Caller controls the order      | No: decrypts in the constructor                                  |
 | PHP 8.3 to 8.5                             | Clean                                                                            | Clean                          | Clean                                                            |
 | Laravel 12 and 13, Symfony 7.4 and 8       | Yes; caps Guzzle at 7; needs `allow-plugins`                                     | No (`symfony/finder` `~6.4.0`) | Yes                                                              |
@@ -246,10 +249,11 @@ one assertion, schema).
 ## Decision
 
 The package uses `simplesamlphp/saml2` v6, constrained to `~6.2.5`, with `simplesamlphp/xml-security` constrained to
-`~2.3.1`. It is the only candidate that meets SSO-6.3 and SSO-6.7 through the library rather than around it.
-onelogin's handling of wrapping is sound, but it cannot control algorithms, it decrypts before verifying, it keeps
-process-wide state, and it is pinned to an xmlseclibs line with unfixed advisories, so it fails SSO-6.7 and the suite's
-Octane rule. v5 cannot be installed beside Laravel 12 or 13.
+`~2.3.1`. It is the only candidate that gives the package the verified element and per-connection algorithm control
+through the library rather than around it. onelogin's handling of wrapping is sound, but it cannot control algorithms,
+it decrypts before verifying, it keeps process-wide state, and it is pinned to an xmlseclibs line with unfixed
+advisories, so it fails the package's algorithm policy and the suite's Octane rule. v5 cannot be installed beside
+Laravel 12 or 13.
 
 The decision holds under these conditions, and the package's SAML adapter has a test for each one:
 
@@ -265,26 +269,26 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    signature and the `ID` alone: the library's `EntitiesDescriptor` would model every member of an aggregate and refuse
    the whole when one member holds a value its stricter rules refuse. Only the pinned entity is schema-validated, and
    values are read from the digested bytes.
-4. **The package owns SSO-6.7 policy.** Check `SignatureMethod`, `DigestMethod`, a single `Reference` and its
+4. **The package owns the algorithm policy.** Check `SignatureMethod`, `DigestMethod`, a single `Reference` and its
    transforms on the parsed `SignedInfo`. Build the decryptor for RSA-OAEP only, check `EncryptionMethod` before
-   `decrypt()`, and verify a trusted Response signature before decrypting AES-CBC. The ordering must be enforceable,
-   and v6 lets the caller control it.
+   `decrypt()`, and verify a trusted Response signature before decrypting AES-CBC. The ordering must be enforceable, and
+   v6 lets the caller control it.
 5. **AES-256-GCM is out until v7.** The package's SP metadata advertises AES-128-GCM and AES-192-GCM only, and the
    documentation states the limit.
 6. **Guzzle is held at 7.** The package requires `guzzlehttp/guzzle` `^7.9` and documents why. Guzzle 8 returns when
    saml2's dependencies allow `guzzlehttp/psr7` 3.x, or with v7, which requires PHP 8.5.
 7. **Composer setup.** The installation guide tells applications to allow the
    `simplesamlphp/composer-xmlprovider-installer` plugin.
-8. **SAML is RSA only on this floor.** SAML stays on PHP 8.3 and saml2 v6 ([RD-10](requirements.md#recorded-decisions)),
-   whose signatures are RSA alone: RSA with SHA-256, SHA-384 or SHA-512 signs and verifies, RSA-OAEP transports keys,
-   and AES-128-GCM or AES-192-GCM encrypts content. This is a known limit of SSO-6.7. Configuration validation refuses
-   everything else for every SAML key use, each with its own code: a generated `sp_signing` or `sp_encryption` key of
-   type `ec` (`key_type`, `not_allowed`); an elliptic curve certificate trusted as `idp_signing` or as a
-   `metadata_signing` anchor (`certificate`, `unsupported`); and an ECDSA or RSA-PSS signature algorithm or AES-256-GCM
-   in a connection's allow-lists (`not_allowed`). An elliptic curve certificate published in metadata is ignored, for an
-   import and a refresh alike, and metadata whose only signing certificates are elliptic curve is refused
-   `metadata_invalid` (`signing_certificate`). ECDSA signatures and AES-256-GCM arrive when the PHP floor moves to 8.5
-   and saml2 v7 is stable.
+8. **SAML is RSA only on this floor.** SAML stays on PHP 8.3 and saml2 v6, whose signatures are RSA alone: RSA with
+   SHA-256, SHA-384 or SHA-512 signs and verifies, RSA-OAEP transports keys, and AES-128-GCM or AES-192-GCM encrypts
+   content. This is a known limit of the package's signature policy. Configuration validation refuses everything else
+   for every SAML key use, each with its own code: a generated `sp_signing` or `sp_encryption` key of type `ec`
+   (`key_type`, `not_allowed`); an elliptic curve certificate trusted as `idp_signing` or as a `metadata_signing` anchor
+   (`certificate`, `unsupported`); and an ECDSA or RSA-PSS signature algorithm or AES-256-GCM in a connection's
+   allow-lists (`not_allowed`). An elliptic curve certificate published in metadata is ignored, for an import and a
+   refresh alike, and metadata whose only signing certificates are elliptic curve is refused `metadata_invalid`
+   (`signing_certificate`). ECDSA signatures and AES-256-GCM arrive when the PHP floor moves to 8.5 and saml2 v7 is
+   stable.
 9. **The package owns the library's container.** The library reads its clock, logger, temporary directory, files and
    algorithm blacklist from one process-wide container. The package sets its own (`Library\LibraryContainer`) before
    its first parse, keeps it for the life of the process (idempotent under Octane and in queue workers), and refuses

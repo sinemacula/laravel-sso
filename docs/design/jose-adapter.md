@@ -3,10 +3,10 @@
 ## Purpose
 
 This note records the package's JOSE adapter: the one namespace that calls `web-token/jwt-library`, how it reads an ID
-token, admits and selects a key, verifies a signature and signs a `private_key_jwt` client assertion (SSO-2.4, SSO-7.3,
-RFC 7515, RFC 7517, RFC 7523). It holds the conditions `jose-library.md` set on the choice of library. What the driver
-then checks of a verified token (its claims, the nonce, `auth_time`, `at_hash`) is `oidc-id-tokens.md`, and when the
-JWKS is fetched and written is `oidc-discovery.md`.
+token, admits and selects a key, verifies a signature and signs a `private_key_jwt` client assertion (RFC 7515, RFC
+7517, RFC 7523). It holds the conditions `jose-library.md` set on the choice of library. What the driver then checks of
+a verified token (its claims, the nonce, `auth_time`, `at_hash`) is `oidc-id-tokens.md`, and when the JWKS is fetched
+and written is `oidc-discovery.md`.
 
 ## Invariants
 
@@ -15,8 +15,8 @@ JWKS is fetched and written is `oidc-discovery.md`.
   `None`, every HMAC algorithm, the library's claim and header checkers, its loaders, its encryption, its nested tokens
   and its key management.
 - The adapter holds nothing between calls: `JoseAdapter` has no property, and each `verify()` builds its `JWSVerifier`
-  and `AlgorithmManager` for the call (SSO-11.2). The library's own statics are never used, and its time checks never
-  run, so a time is only ever judged against `Contracts\Clock` and the skew given per call (SSO-11.13).
+  and `AlgorithmManager` for the call. The library's own statics are never used, and its time checks never run, so a
+  time is only ever judged against `Contracts\Clock` and the skew given per call.
 - A token is read by `CompactToken::parse()`, before the library sees it, under the size cap given: compact only (so a
   JWE or a JSON serialisation is refused), canonical unpadded base64url, a non-empty signature, a header and a payload
   that are each one JSON object read by `StrictJson`. A header with `crit`, `b64`, `enc` or `zip` is refused, as is one
@@ -57,8 +57,8 @@ JWKS is fetched and written is `oidc-discovery.md`.
   `Secrets\Secret`. Anything the library throws while it signs becomes a `\InvalidArgumentException` with a fixed
   message and no previous exception, since the library's frames hold the private JWK.
 - `CompactToken` and `ClientKey` hold what they carry in a `\SensitiveParameterValue`: a dump shows no token, header
-  value, claim, signature or private member, and each refuses to be serialised (SSO-7.6). A `CompactToken`'s dump and
-  JSON encoding show its `alg` only when it is one of `AlgorithmAllowList::ALGORITHMS`, and `[unknown]` otherwise, and
+  value, claim, signature or private member, and each refuses to be serialised. A `CompactToken`'s dump and JSON
+  encoding show its `alg` only when it is one of `AlgorithmAllowList::ALGORITHMS`, and `[unknown]` otherwise, and
   whether a `kid` is present; its header is read through `header()`, for the signature check.
 - `StrictJson` refuses a document whose names it cannot compare because PCRE failed on one of its limits while reading
   them, so a failure to look for a repeated member is never taken for finding none.
@@ -84,7 +84,7 @@ and `JoseAdapter::signClientAssertion()` signs it with the package's clock and t
   own `alg` differs) is refused at selection, with no refetch.
 - A 1024-bit key is not admitted, so a token signed by it is unknown, and a JWKS of nothing else is refused.
 - A client assertion key of any other type is a misconfiguration, an `InvalidArgumentException`: the package generates
-  only these. A system with no randomness is a server error (SSO-11.4).
+  only these. A system with no randomness is a server error.
 
 ## Implementation Anchors
 

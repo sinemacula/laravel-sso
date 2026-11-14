@@ -4,16 +4,15 @@
 
 This note records which of the package's answers are words put in front of a consumer and which are codes, and how the
 words are translated: through Laravel's translator, under the package's own namespace, so an application's translations
-apply and a locale without one falls back to English (SSO-12.6).
+apply and a locale without one falls back to English.
 
 ## Invariants
 
 - A message is something the package itself can show a person: the title, button and `noscript` text of the HTTP-POST
-  page that sends an `AuthnRequest` (SSO-5.1, SSO-5.3), the body of the `400` a completion answers when no trusted
-  redirect target is known (SSO-5.7), and the body of a completion's redirect (SSO-5.6). Each is a case of
-  `Localization\Enums\Message`. Everything else the package answers with (a failure reason, a validation code, a
-  configuration problem, an exception) is a machine-readable code or an operator's message, never translated, and the
-  application words the codes itself.
+  page that sends an `AuthnRequest`, the body of the `400` a completion answers when no trusted redirect target is
+  known, and the body of a completion's redirect. Each is a case of `Localization\Enums\Message`. Everything else the
+  package answers with (a failure reason, a validation code, a configuration problem, an exception) is a
+  machine-readable code or an operator's message, never translated, and the application words the codes itself.
 - Every message is read through `Localization\Messages::get()`, never written inline: a new message adds a case and its
   English line.
 - The lines live in the package's `lang/{locale}/messages.php`, loaded by the provider under the `sso` namespace, so a
@@ -34,7 +33,7 @@ apply and a locale without one falls back to English (SSO-12.6).
   hold anything.
 - `Messages` is `final readonly` and keeps only the translator; it is not bound, so the container builds it with the
   application's translator wherever it is resolved, and the locale is read on each call. Nothing of one request or job
-  outlives it under Octane or a queue worker (SSO-11.2).
+  outlives it under Octane or a queue worker.
 - There is no configuration section and no boot check: the translations are always loaded, and publishing them is
   optional.
 

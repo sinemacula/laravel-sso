@@ -33,7 +33,7 @@ the events you record, in a service provider's `boot()`, with `SineMacula\Larave
 AuditLog::map(FlowFailed::class, SsoAuditMapper::class);
 ```
 
-The mapper, `final class SsoAuditMapper implements EventMapper`, implements `laravel-audit-log`'s
+The mapper, `final readonly class SsoAuditMapper implements EventMapper`, implements `laravel-audit-log`'s
 `SineMacula\Laravel\AuditLog\Contracts\EventMapper`, whose `map(object $event, PendingRecord $record): ?PendingRecord`
 fills the record and returns it, or returns `null` to skip the event. It imports `EventMapper`, `Records\PendingRecord`
 and `Records\Reference` from `SineMacula\Laravel\AuditLog`, and `Events\FlowFailed` from `SineMacula\Laravel\Sso`.
@@ -127,9 +127,10 @@ The client is the `Http\ClientContext` the action was given, never read from the
 builds it with `ClientContext::fromRequest($request)`, and work with no client (a console command, a queued job, the
 schedule) passes `new ClientContext(null, null)`, whose events carry neither value. Every value is cleaned before it is
 kept: the IP address only when it is a valid IPv4 or IPv6 address, and the user agent and every id with control
-characters and Unicode bidirectional controls removed and invalid UTF-8 replaced, the user agent cut to 512 characters
-and every other value to 255. Your sink can store them without escaping them again, and a crafted header cannot forge
-a log line.
+characters (C0, DEL and C1) and the Unicode bidirectional embeddings, overrides and isolates (U+202A to U+202E and
+U+2066 to U+2069) removed and invalid UTF-8 replaced, the user agent cut to 512 characters and every other value to
+255. The user agent also loses the bidirectional marks U+061C, U+200E and U+200F. Your sink can store them without
+escaping them again, and a crafted header cannot forge a log line.
 
 ## Refused operations: `FlowFailed`
 
@@ -287,9 +288,11 @@ sign-in that asked finish, so `trustChanged` true does not always mean that flow
 `changedSettings` names the settings it changed, such as `['sso_url', 'idp_signing_certificates']`, and none when
 nothing changed; `trustChanged` says whether it removed or replaced a trusted certificate or moved the single sign-on
 URL or binding, which voids every flow in flight through the connection, and `metadataVersion` is the connection's
-version after it. A failed refresh's `reason` is `fetch_refused`, `fetch_failed`, `metadata_invalid`,
-`metadata_signature_invalid`, `metadata_entity_not_found`, `metadata_conflict` or `metadata_expired`, `failures` the
-failures in a row, and `nextAttemptAt` when the next scheduled attempt is due.
+version after it. A failed refresh's `reason` is `fetch_refused`, `fetch_failed`, `metadata_conflict` or
+`metadata_expired`; for SAML metadata also `metadata_invalid`, `metadata_signature_invalid` or
+`metadata_entity_not_found`, and for an OIDC discovery document and JWKS also `discovery_invalid`, `jwks_invalid`,
+`issuer_mismatch` or `settings_invalid`. `failures` is the failures in a row, and `nextAttemptAt` when the next
+scheduled attempt is due.
 
 `changedSettings` names what changed, never its value: the settings in the order the protocol lists them, then the
 secrets, then `display_name` and `attribute_mapping`, such as `['token_endpoint', 'client_secret', 'display_name']`. A

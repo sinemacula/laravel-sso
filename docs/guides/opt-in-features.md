@@ -127,9 +127,10 @@ See [OIDC claims](oidc-claims.md).
 - **SAML with a signing anchor** refreshes by default: the metadata's signature, by an anchor you trusted, decides.
 - **SAML without an anchor** refreshes only after an administrator sets `metadata_refresh` to `true`, which delegates
   trust to the URL and its TLS: whoever controls the URL then decides which certificates you trust.
-- **The stale limit.** What a refreshing connection fetched stops being used 30 days after its last validated fetch,
-  schedule or no schedule, so a provider serving a broken document eventually stops sign-in. Watch
-  `MetadataRefreshFailed` and `JwksRefreshFailed` well before then.
+- **The stale limit.** A fetched discovery document or JWKS stops being used 30 days after its last validated fetch,
+  whether or not it refreshes on the schedule. Fetched SAML metadata has that deadline while the connection has a
+  metadata URL and either a signing anchor or `metadata_refresh` on. So a provider serving a broken document
+  eventually stops sign-in. Watch `MetadataRefreshFailed` and `JwksRefreshFailed` well before then.
 - **Large federation metadata** raises memory, time and queue timeouts together ([SAML metadata](saml-metadata.md)).
 
 See [SAML metadata](saml-metadata.md#refreshing-on-a-schedule) and

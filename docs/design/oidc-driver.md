@@ -2,20 +2,19 @@
 
 ## Purpose
 
-This note records the `oidc` protocol driver as a whole (SSO-2.2, SSO-2.4, SSO-5.4, SSO-5.9, SSO-7): what each of its
-calls does and which collaborator does it, the values they hand each other, where a connection's JWKS and refresh state
-are kept, the limits every OIDC connection is held to, and how the driver plugs into the flow core without bypassing
-consumption, the lock order or enforcement. The parts are recorded in their own notes: the JOSE adapter in
-`jose-adapter.md` (and the library's choice in `jose-library.md`), discovery, the JWKS and their refresh in
-`oidc-discovery.md`, the authorisation request in `oidc-requests.md`, the callback and the token request in
-`oidc-callback.md`, the ID token in `oidc-id-tokens.md`, UserInfo and the verified claims in `oidc-claims.md`, and the
-relying party's description in `oidc-relying-party.md`.
+This note records the `oidc` protocol driver as a whole: what each of its calls does and which collaborator does it, the
+values they hand each other, where a connection's JWKS and refresh state are kept, the limits every OIDC connection is
+held to, and how the driver plugs into the flow core without bypassing consumption, the lock order or enforcement. The
+parts are recorded in their own notes: the JOSE adapter in `jose-adapter.md` (and the library's choice in
+`jose-library.md`), discovery, the JWKS and their refresh in `oidc-discovery.md`, the authorisation request in
+`oidc-requests.md`, the callback and the token request in `oidc-callback.md`, the ID token in `oidc-id-tokens.md`,
+UserInfo and the verified claims in `oidc-claims.md`, and the relying party's description in `oidc-relying-party.md`.
 
 ## Invariants
 
 - `Protocols\Oidc\OidcDriver` implements `Contracts\ProtocolDriver`, registered under `oidc` while `sso.features.oidc`
-  is on, and built by the protocol manager from the container. Every check of SSO-7 is always on; the settings choose
-  only what the requirements leave to a connection (`OidcSettings`).
+  is on, and built by the protocol manager from the container. Every OIDC check is always on; the settings choose only
+  what the requirements leave to a connection (`OidcSettings`).
 - Each call reads the connection's settings afresh into `OidcOptions` (every setting typed, defaults applied, no secret)
   and hands them to one collaborator:
   - `settings()`: `OidcSettings`, the validation of every OIDC setting: the issuer and endpoints, `returns_iss`, the
@@ -47,7 +46,7 @@ relying party's description in `oidc-relying-party.md`.
   connection with nothing fetched yet, its keys and endpoints saved by hand, has no deadline. The completion checks
   expiry again on the locked connection (`completion.md`). An expired connection recovers through a scheduled refresh or
   an administrator's (`metadata-refresh.md`), never through a callback.
-- The values the collaborators hand each other carry provider tokens and claims (SSO-7.6), so each holds them in a
+- The values the collaborators hand each other carry provider tokens and claims, so each holds them in a
   `\SensitiveParameterValue`, shows none of them in a dump or in JSON, and refuses to be serialised or unserialised:
   `TokenResponse` (the ID token and the access token, never a refresh token), `ValidatedIdToken` (the issuer, the
   subject and the claims of a token every check passed) and `IdTokenValidation` (validated, or refused with a reason).
@@ -95,8 +94,8 @@ relying party's description in `oidc-relying-party.md`.
 - A completion and a start each refuse to run inside a transaction already open on the storage connection
   (`StorageConnection::assertNoTransaction()`), so the token request and every other provider call is never made
   inside one.
-- The driver and its collaborators are kept by the protocol manager for one scope, a request's sandbox or a job, so
-  none holds connection, flow or result state between calls (SSO-11.2).
+- The driver and its collaborators are kept by the protocol manager for one scope, a request's sandbox or a job, so none
+  holds connection, flow or result state between calls.
 
 ## Success Path
 
@@ -115,7 +114,7 @@ relying party's description in `oidc-relying-party.md`.
   callback cannot recover it: the driver refuses before the keys are ever read, so no refetch is reached.
 - A callback's refetch that removes a key while another change lands before the final locks: its token verifies, and
   the completion is refused `connection_unavailable` with no code.
-- A database error, a misconfiguration and an exception a collaborator throws propagate (SSO-11.4).
+- A database error, a misconfiguration and an exception a collaborator throws propagate.
 
 ## Implementation Anchors
 

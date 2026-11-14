@@ -3,7 +3,7 @@
 ## Purpose
 
 This note describes how the package records how a session began and what it contributes to a request's authentication
-context (SSO-9.7, SSO-9.10). There are two separate operations:
+context. There are two separate operations:
 
 - **Capture**: inside the transaction of a successful `sign_in` redemption, the package builds an immutable
   `Sessions\Provenance` from what that redemption admitted, and answers it on the redemption result. The adapter writes
@@ -21,8 +21,7 @@ they are today. The guide is `docs/guides/session-provenance.md`.
   contract accepted at redemption, the exact link admitted and that link's provenance, and the version of the
   enforcement the connection was judged by under those locks, alongside the effective session cap the code was bound to.
   The session keeps that version, never the one the completion checked (which no code keeps), since a rule may change
-  between the two and the redemption's is the one the session was admitted under
-  ([RD-34](requirements.md#recorded-decisions)).
+  between the two and the redemption's is the one the session was admitted under.
 - Only an admitted `sign_in` captures provenance. `Provenance::capture()` answers `null` for a `link`, a
   `reauthenticate` or an admission that did not pass, and `HandoffRedemption` captures nothing outside the caller's
   transaction. So no later operation of the package yields a value that could overwrite how a session began: a

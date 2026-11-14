@@ -3,8 +3,7 @@
 ## Purpose
 
 This note records how the package tells the time: the one clock every time check reads, the clock skew those checks
-allow, and the frozen clock a test binds in its place, so skew, expiry and maximum ages can be tested without waiting
-(SSO-11.13, SSO-6.5).
+allow, and the frozen clock a test binds in its place, so skew, expiry and maximum ages can be tested without waiting.
 
 ## Invariants
 
@@ -20,12 +19,12 @@ allow, and the frozen clock a test binds in its place, so skew, expiry and maxim
   a callable), to the microsecond.
 - `SystemClock` holds nothing, so the provider binds it as a singleton default under its private key and forwards the
   contract to it: one instance serves every request and job of an Octane or queue worker, and no instant outlives the
-  call that read it (SSO-11.2). A clock the application or another package bound before the provider registers is kept;
-  one bound afterwards replaces it, as any later binding does.
+  call that read it. A clock the application or another package bound before the provider registers is kept; one bound
+  afterwards replaces it, as any later binding does.
 - The clock skew is `Clock\ClockSkew::seconds()`, read from `sso.clock.skew_seconds` on each call: an integer from 0 to
   300 (`ClockSkew::MAX_SECONDS`, five minutes), or the digit string `env()` gives for one, defaulting to 60
-  (`ClockSkew::DEFAULT_SECONDS`) when unset (SSO-6.5). It is read through `Config\IntegerSetting`, so the boot check and
-  the time checks judge it the same way.
+  (`ClockSkew::DEFAULT_SECONDS`) when unset. It is read through `Config\IntegerSetting`, so the boot check and the time
+  checks judge it the same way.
 - A malformed skew fails closed: `ClockSkew::seconds()` throws an `InvalidArgumentException` with
   `sso.clock.skew_seconds must be an integer from 0 to 300.`, naming the key and the range, never the value. It never
   falls back to the default or clamps to the range, either of which would silently widen or narrow the window.

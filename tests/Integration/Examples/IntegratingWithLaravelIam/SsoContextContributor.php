@@ -28,8 +28,8 @@ final readonly class SsoContextContributor implements AuthenticationContextContr
     #[\Override]
     public function contribute(ContributionSubject $subject): array
     {
-        // Provenance::toArray(), passed as the provider context at sign-in
-        // (PR #129); null for a session this package did not establish.
+        // Provenance::toArray(), passed as the provider context at sign-in;
+        // null for a session this package did not establish.
         $stored = $subject->provenance()?->providerContext?->toArray();
 
         $keys = [];

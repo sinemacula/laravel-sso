@@ -3,10 +3,9 @@
 ## Purpose
 
 This note records the package's SAML adapter: the one place the package calls `simplesamlphp/saml2` and
-`simplesamlphp/xml-security`, how it parses, verifies and decrypts a posted `SAMLResponse`, and what it answers the
-SAML driver (SSO-6.1 to SSO-6.3, SSO-6.7, SSO-6.8, SSO-6.11). It holds the conditions `saml-library.md` set on the
-choice of library. What the driver then checks of the response it is given (correlation, audience, times, subject,
-replay) is the driver's, not the adapter's.
+`simplesamlphp/xml-security`, how it parses, verifies and decrypts a posted `SAMLResponse`, and what it answers the SAML
+driver. It holds the conditions `saml-library.md` set on the choice of library. What the driver then checks of the
+response it is given (correlation, audience, times, subject, replay) is the driver's, not the adapter's.
 
 ## Invariants
 
@@ -37,9 +36,9 @@ replay) is the driver's, not the adapter's.
   `Assertion` or `EncryptedAssertion` is a child of the root, and there is at most one.
 - A signed assertion is copied into a document of its own before `verify()` (the re-rooting upstream PR #424 makes),
   and every value is read from the object `verify()` returns and the element parsed from the bytes it digested.
-- The package owns the SSO-6.7 policy on the parsed `SignedInfo`: the `SignatureMethod` in the connection's allow-list
-  (RSA-SHA256, RSA-SHA384 or RSA-SHA512), the `DigestMethod` SHA-256, SHA-384 or SHA-512, exactly one `Reference` to
-  the signed element, and only the enveloped-signature and exclusive canonicalisation transforms.
+- The package owns the signature algorithm policy on the parsed `SignedInfo`: the `SignatureMethod` in the connection's
+  allow-list (RSA-SHA256, RSA-SHA384 or RSA-SHA512), the `DigestMethod` SHA-256, SHA-384 or SHA-512, exactly one
+  `Reference` to the signed element, and only the enveloped-signature and exclusive canonicalisation transforms.
 - Decryption is RSA-OAEP key transport only, with exactly one `EncryptedKey`; the `EncryptionMethod` is checked against
   the connection's allow-list before `decrypt()`. AES-128-GCM and AES-192-GCM are allowed; AES-CBC only when the
   connection lists it and the response carries a verified signature. AES-256-GCM is out until the PHP floor moves to 8.5
@@ -51,12 +50,12 @@ replay) is the driver's, not the adapter's.
   asserted in a `\SensitiveParameterValue`, redacts it from debug output and JSON, and refuses to be serialised or
   unserialised. The adapter never logs, reports or keeps what it read; a refusal's detail is the package's own word
   for the rule (`schema`, `signature_policy`, `assertion_location`), never the message.
-- The library's container is set once per process to the package's own (`Library\LibraryContainer::ensure()`): no
-  logger output, no clock, temporary files, redirects or blacklist. Ensuring it again is a no-op while it is the
-  package's own, so it is safe under Octane and in queue workers; a container something else set first (an
-  application using the library itself) is refused with a `LogicException` naming its class, never silently inherited,
-  since its clock, logger, files and blacklist would apply to every SAML message the package reads. Nothing in the
-  namespace keeps anything between calls (SSO-11.2).
+- The library's container is set once per process to the package's own (`Library\LibraryContainer::ensure()`): no logger
+  output, no clock, temporary files, redirects or blacklist. Ensuring it again is a no-op while it is the package's own,
+  so it is safe under Octane and in queue workers; a container something else set first (an application using the
+  library itself) is refused with a `LogicException` naming its class, never silently inherited, since its clock,
+  logger, files and blacklist would apply to every SAML message the package reads. Nothing in the namespace keeps
+  anything between calls.
 
 ## Success Path
 

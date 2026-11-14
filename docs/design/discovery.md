@@ -2,12 +2,12 @@
 
 ## Purpose
 
-This note records how a flow starts from an email address instead of a named connection (SSO-3.4, SSO-3.5): how the
-email's domain is resolved to a connection, the fixed order of a discovery start and the refusal each step answers, the
-per-domain rate limit (SSO-11.8), why a match and a miss answer in the same shape and status, how their timing is padded
-to a minimum duration (a mitigation, not a guarantee), and what the answer still discloses. Starting through a named
-connection, the request stored and the fallback a named start shares with discovery are in `authorization-requests.md`;
-domain claims and the predicates they are judged by are in `domains.md` and `domain-rechecks.md`.
+This note records how a flow starts from an email address instead of a named connection: how the email's domain is
+resolved to a connection, the fixed order of a discovery start and the refusal each step answers, the per-domain rate
+limit, why a match and a miss answer in the same shape and status, how their timing is padded to a minimum duration (a
+mitigation, not a guarantee), and what the answer still discloses. Starting through a named connection, the request
+stored and the fallback a named start shares with discovery are in `authorization-requests.md`; domain claims and the
+predicates they are judged by are in `domains.md` and `domain-rechecks.md`.
 
 ## Invariants
 
@@ -15,7 +15,7 @@ domain claims and the predicates they are judged by are in `domains.md` and `dom
 
 - `Discovery\DomainRouter` (`@internal`) answers `connectionFor($email)`: the usable `Models\Connection` the email's
   domain routes to, or `null`. It never looks up a user, and reads nothing but the domains and the connections, both on
-  the write connection (SSO-11.3).
+  the write connection.
 - The domain is the part after the last `@` (`DomainRouter::domainOf()`), normalised by
   `Domains\DomainName::normalize()` (trimmed, one trailing dot removed, IDNA UTS #46 to lower-case ASCII). An email
   with no `@`, an empty domain, and a domain `normalize()` refuses (a single label, an IP address, a wildcard, a
@@ -35,12 +35,12 @@ domain claims and the predicates they are judged by are in `domains.md` and `dom
 
 ### Starting a flow by email
 
-- `Discovery\DiscoveryService::start($application, $purpose, $email, $client, $codeChallenge, $caller)`
-  (`@api`), the client an `Http\ClientContext` the application builds from the request, answers a `Flows\StartResult`.
-  Called inside a transaction open on the storage connection, it is a `LogicException` before anything else
+- `Discovery\DiscoveryService::start($application, $purpose, $email, $client, $codeChallenge, $caller)` (`@api`), the
+  client an `Http\ClientContext` the application builds from the request, answers a `Flows\StartResult`. Called inside a
+  transaction open on the storage connection, it is a `LogicException` before anything else
   (`StorageConnection::assertNoTransaction()`), as a named start is: a match calls the driver, which may reach the
-  identity provider while the caller's transaction kept the connection's lock (SSO-11.5). Its steps run in this order,
-  and each refusal reports exactly one `FlowFailed(Flow::AUTHORIZATION_REQUEST, reason)` and writes no request:
+  identity provider while the caller's transaction kept the connection's lock. Its steps run in this order, and each
+  refusal reports exactly one `FlowFailed(Flow::AUTHORIZATION_REQUEST, reason)` and writes no request:
   1. the purpose's caller, by the named start's own check (`AuthorizationRequestService::assertBinding()`: `sign_in`
      with no caller, `link` for a caller, on a session or not, `reauthenticate` for a caller on a session; a session id
      is 1 to 255 bytes, which `Identities\Caller` itself enforces): anything else is an `InvalidArgumentException` with
@@ -80,12 +80,11 @@ domain claims and the predicates they are judged by are in `domains.md` and `dom
   capacity planning: the workers serving discovery must cover the discovery rate multiplied by the floor, besides the
   work itself.
 - The email and its domain appear in no event and no log. The public reference is the only flow identifier an event
-  carries (SSO-9.8); no event carries the protocol state, the nonce, a verifier or a challenge.
+  carries; no event carries the protocol state, the nonce, a verifier or a challenge.
 - What the answer still discloses: where the navigation leads shows whether a domain routes to an identity provider, as
-  any discovery does (SSO-3.5). It never shows whether a person has an account, since no user is read. The guide says
-  so.
-- An application that offers discovery while the feature is on needs `discovery.fallback_url`: `[applications]`
-  refuses its absence at boot (SSO-12.3), and a start for such an application fails closed with the same message.
+  any discovery does. It never shows whether a person has an account, since no user is read. The guide says so.
+- An application that offers discovery while the feature is on needs `discovery.fallback_url`: `[applications]` refuses
+  its absence at boot, and a start for such an application fails closed with the same message.
 
 ## Success Path
 
@@ -107,7 +106,7 @@ domain claims and the predicates they are judged by are in `domains.md` and `dom
   held.
 - An email that does not normalise is counted against the IP address alone and answered as a miss; the per-domain
   limit cannot be spread over spellings of one domain, since it counts the normalised form.
-- A database error, a misconfiguration and a driver's exception propagate (SSO-11.4), unheld.
+- A database error, a misconfiguration and a driver's exception propagate, unheld.
 
 ## Implementation Anchors
 

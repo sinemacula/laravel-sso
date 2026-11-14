@@ -36,7 +36,7 @@ run.
 | `restored`       | The same, for a domain whose record had gone, within the grace period   | Linking resumes, and the domain no longer lapses                 | `DomainRestored`      |
 | `suspended`      | No record, or none that is exactly the token                            | Linking stops at once; the domain lapses at the end of the grace | `DomainRecheckFailed` |
 | `still_failing`  | The record is still gone, within the grace period                       | Nothing: the suspension and the lapse time are kept              | `DomainRecheckFailed` |
-| `lapsed`         | The grace period has run out, or is 0                                   | The domain is no longer verified, and is free for another tenant | `DomainLapsed`        |
+| `lapsed`         | The grace period has run out, or is 0                                   | It is no longer verified, and is free for another connection     | `DomainLapsed`        |
 | `lookup_failed`  | The resolver could not answer                                           | Nothing                                                          | `DomainRecheckFailed` |
 | `resolver_threw` | The resolver threw instead of answering                                 | Nothing; the domain is checked again at the next run             | None                  |
 | `skipped`        | Another server is checking it, or it changed while it was being checked | Nothing                                                          | None                  |

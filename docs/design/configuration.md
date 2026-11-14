@@ -3,8 +3,8 @@
 ## Purpose
 
 This note records how the package is switched on and checked: the feature switches, the configuration checked at boot
-for what is enabled and reported by `sso:check`, the application and endpoint settings, and how each part of the
-package registers its settings and its check without editing another's (SSO-12.2, SSO-12.3).
+for what is enabled and reported by `sso:check`, the application and endpoint settings, and how each part of the package
+registers its settings and its check without editing another's.
 
 ## Invariants
 
@@ -38,9 +38,9 @@ package registers its settings and its check without editing another's (SSO-12.2
 - `Config\ConfigurationChecker` resolves each check from the container when the configuration is checked, never
   before; skips one that does not apply; runs every closure of one that does; and reports a check that cannot be built
   or is not a check as a problem of its subject.
-- At boot, outside the console, the checker runs once the application has booted and any problem stops the boot with
-  an `Exceptions\InvalidConfigurationException` listing every problem as `[subject] message` (SSO-12.3). Octane
-  workers are not console processes, so they are checked as they boot.
+- At boot, outside the console, the checker runs once the application has booted and any problem stops the boot with an
+  `Exceptions\InvalidConfigurationException` listing every problem as `[subject] message`. Octane workers are not
+  console processes, so they are checked as they boot.
 - In the console the checker runs as each command in `SsoServiceProvider::WORKER_COMMANDS` starts (`queue:work`,
   `queue:listen`, `horizon`, `horizon:supervisor`, `horizon:work`, `schedule:run`, `schedule:work`, `schedule:test`,
   `octane:start` and the Octane server commands), on Artisan's `CommandStarting` event, and a problem fails the command
@@ -58,9 +58,9 @@ package registers its settings and its check without editing another's (SSO-12.2
   Each application is judged by `Applications\Application::fromSettings()`, which the flows use too, and the exact URI
   is answered by the `Contracts\RedirectUriResolver` contract, defaulting to this setting (see `applications.md`).
 - The endpoints (`sso.endpoints`) are built from a configured base URL (a web URL with no query) and a path pattern per
-  endpoint holding `{connection}` once, never from the request's host or headers (SSO-5.5), each read by
+  endpoint holding `{connection}` once, never from the request's host or headers, each read by
   `Endpoints\EndpointSettings`, the one way the default `Contracts\EndpointResolver` and the check read them.
-- The PHP extensions the package needs (`curl`, `dom`, `hash`, `libxml`, `mbstring`, `openssl`, `zlib`, and
+- The PHP extensions the package needs (`bcmath`, `curl`, `dom`, `hash`, `libxml`, `mbstring`, `openssl`, `zlib`, and
   `idn_to_ascii()` from `ext-intl` or `symfony/polyfill-intl-idn`) are required by Composer and checked by
   `[extensions]` while the package is in use, naming each missing one with what it is needed for.
 - While `saml2` is on, or its switch is malformed, `[extensions]` also checks the XML element registries: the Composer
@@ -82,7 +82,7 @@ package registers its settings and its check without editing another's (SSO-12.2
 - A part of the package that adds settings adds its section to `config/sso.php`, its check class implementing
   `ConfigurationCheck` under its own namespace, and its entry in `CONFIGURATION_CHECKS`; it reads its settings through
   the shared readers, so the check and the code that uses a setting judge it the same way.
-- A composing package (`laravel-iam`'s checks across the packages it composes, IAM-13.12) adds its check with
+- A composing package (`laravel-iam`'s checks across the packages it composes) adds its check with
   `ConfigurationChecks::add()`, and its problems are reported under its own subject beside the package's.
 
 ## Failure / Edge Cases

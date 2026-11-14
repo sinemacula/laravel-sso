@@ -4,7 +4,7 @@
 
 This note records how the package asks for fresh authentication before each operation that could widen or redirect
 access, or destroy it: the contract it asks, the stable operation names it asks with, the maximum age configured for
-each, the default that refuses, and the gate every listed mutation calls before it writes (SSO-2.12).
+each, the default that refuses, and the gate every listed mutation calls before it writes.
 
 ## Invariants
 
@@ -21,15 +21,15 @@ each, the default that refuses, and the gate every listed mutation calls before 
   taken means no authenticated person, and a caller with no session means none was supplied, never "the current
   session": the package reads no request, job or session to find one.
 - The operations are `Freshness\Enums\FreshnessOperation`, twelve cases whose values are the stable names of the
-  operations SSO-2.12 lists, in this order: `sso.connection.trust`, `sso.connection.enable`,
+  operations that need fresh authentication, in this order: `sso.connection.trust`, `sso.connection.enable`,
   `sso.connection.disable`, `sso.connection.delete`, `sso.connection.idp_initiated`, `sso.keys.rotate`,
   `sso.domain.claim`, `sso.domain.verify`, `sso.domain.remove`, `sso.enforcement.update`, `sso.link.create` and
   `sso.link.remove`. Enabling and disabling a connection are separate operations, each with its own name and maximum
-  age, so a policy can treat restoring access differently from removing it. A name is stable once released: it is
-  never renamed or reused, since an adapter (`laravel-iam`'s among them) may key its own policy on it. Each is also an
-  `Administration\Enums\AdministrativeOperation` of the same name, the stable names of every administrative operation
-  an application's authorisation grants; the two stay separate, since an operation may ask several freshness
-  operations or none.
+  age, so a policy can treat restoring access differently from removing it. A name is stable once released: it is never
+  renamed or reused, since an adapter (`laravel-iam`'s among them) may key its own policy on it. Each is also an
+  `Administration\Enums\AdministrativeOperation` of the same name, the stable names of every administrative operation an
+  application's authorisation grants; the two stay separate, since an operation may ask several freshness operations or
+  none.
 - Each operation has its own maximum age, read by `Freshness\MaximumAges::for()` from
   `sso.freshness.max_age_seconds.<key>` on each call, where the key is `FreshnessOperation::configKey()`: the name after
   `sso.`, with the dots as underscores (`sso.connection.trust` is `connection_trust`). Each defaults to 300 seconds
@@ -42,15 +42,15 @@ each, the default that refuses, and the gate every listed mutation calls before 
 - The default, `Freshness\RefusingFreshness`, answers `stale` for every operation at every age. It holds nothing, so
   the provider binds it as a singleton default: an application or another package that bound the contract before the
   provider registers keeps its binding, and one bound afterwards replaces the default.
-- Every operation SSO-2.12 lists asks through `Freshness\FreshnessGate`, never the contract directly.
+- Every operation `FreshnessOperation` names asks through `Freshness\FreshnessGate`, never the contract directly.
   `FreshnessGate::check()` reads the operation's maximum age first, then resolves the contract from the container and
   asks it with the operation, that age and the caller it was given. `checkAll()` asks about each operation of a change
   that is several at once (a trust change that also turns IdP-initiated sign-in on, say) once each, in the order given,
   and answers `stale` at the first that is, asking about none after it, each for the one caller given; with no operation
   it answers `fresh` and asks nothing.
 - The contract is resolved on each call and the age read on each call, so a binding made per request or swapped in a
-  test is the one asked, and nothing of one caller is kept for the next (SSO-11.2). An implementation the application
-  binds judges the caller each call is given and keeps nothing of one for the next.
+  test is the one asked, and nothing of one caller is kept for the next. An implementation the application binds judges
+  the caller each call is given and keeps nothing of one for the next.
 - Every action that asks takes its caller as a plain value (`?Caller $caller`, after the client) and gives that same
   caller to the gate; an administration change's event names the caller's identity as the acting identity and never
   carries its session. A `link` start gives its caller, with the session it gave, to freshness and binds the identity
@@ -92,8 +92,8 @@ each, the default that refuses, and the gate every listed mutation calls before 
 ## Success Path
 
 1. The provider binds `Contracts\Freshness` to `RefusingFreshness` as a singleton default, unless the application bound
-   a contract first; `laravel-iam` binds `laravel-authentication`'s freshness check (AUTH-3.11), passing the maximum age
-   on as the caller's requirement.
+   a contract first; `laravel-iam` binds `laravel-authentication`'s freshness check, passing the maximum age on as the
+   caller's requirement.
 2. A management helper finds the connection (and the key) on the write connection, and validates what it was given.
 3. It asks `FreshnessGate::check()` with the one operation the change is, or `checkAll()` with each, for the caller it
    was given; the gate reads each maximum age from `sso.freshness.max_age_seconds`, resolves the bound contract and

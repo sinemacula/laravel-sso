@@ -2,17 +2,16 @@
 
 ## Purpose
 
-This note records the `saml2` protocol driver as a whole (SSO-2.2, SSO-2.3, SSO-5.3, SSO-5.8, SSO-5.9, SSO-6): what
-each of its calls does and which collaborator does it, how it plugs into the flow core without bypassing consumption,
-the lock order or enforcement, and what it keeps. The parts are recorded in their own notes: the adapter in
-`saml-adapter.md`, the request in `saml-requests.md`, the response in `saml-responses.md`, re-initiation in
-`idp-initiated.md`, the service provider metadata in `service-provider-metadata.md`, and metadata import and refresh in
-`metadata-refresh.md`.
+This note records the `saml2` protocol driver as a whole: what each of its calls does and which collaborator does it,
+how it plugs into the flow core without bypassing consumption, the lock order or enforcement, and what it keeps. The
+parts are recorded in their own notes: the adapter in `saml-adapter.md`, the request in `saml-requests.md`, the response
+in `saml-responses.md`, re-initiation in `idp-initiated.md`, the service provider metadata in
+`service-provider-metadata.md`, and metadata import and refresh in `metadata-refresh.md`.
 
 ## Invariants
 
 - `Protocols\Saml2\Saml2Driver` implements `Contracts\ProtocolDriver` and `Contracts\ReinitiatingDriver`, registered
-  under `saml2` while `sso.features.saml2` is on. Every check of SSO-6 is always on; the settings choose only what the
+  under `saml2` while `sso.features.saml2` is on. Every SAML check is always on; the settings choose only what the
   requirements leave to a connection (`Saml2Settings`).
 - Each call reads the connection's settings afresh into `Saml2Options` and hands them to one collaborator:
   - `settings()`: `Saml2Settings`, the validation of every SAML setting;
@@ -27,18 +26,18 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
   - `reinitiate()`: `UnsolicitedResponses`, the unsolicited profile, for re-initiation alone;
   - `describe()`: `ServiceProviderMetadata`, the connection's service provider metadata.
 - `start()`, `complete()` and `reinitiate()` are refused with `metadata_expired`, before their collaborator is asked,
-  while what a metadata refresh applied to the connection has expired (`Metadata\MetadataExpiry`, SSO-2.8). The
-  completion and the re-initiation check expiry again on the locked connection, so metadata that lapses while the
-  response is validated is refused there too, recording nothing. A connection that does not follow its metadata URL
-  (no metadata signing anchor and `metadata_refresh` not `true`, or no URL) holds no such deadline, whatever was stamped
-  on it (`Metadata\SamlRefreshRule`, `metadata-refresh.md`).
+  while what a metadata refresh applied to the connection has expired (`Metadata\MetadataExpiry`). The completion and
+  the re-initiation check expiry again on the locked connection, so metadata that lapses while the response is validated
+  is refused there too, recording nothing. A connection that does not follow its metadata URL (no metadata signing
+  anchor and `metadata_refresh` not `true`, or no URL) holds no such deadline, whatever was stamped on it
+  (`Metadata\SamlRefreshRule`, `metadata-refresh.md`).
 - `startUrl()` answers the start URL re-initiation sends the browser to, naming the connection, or `null` when the
   connection does not allow IdP-initiated sign-in; the re-initiation asks it again of the locked connection.
-- SAML is RSA only on PHP 8.3 and saml2 v6, a known limit of SSO-6.7 ([RD-10](requirements.md#recorded-decisions)): RSA
-  signatures with SHA-256, SHA-384 or SHA-512, RSA-OAEP key transport, AES-128-GCM or AES-192-GCM content encryption.
-  Every SAML key use refuses an elliptic curve key or certificate, and the allow-lists refuse ECDSA, RSA-PSS and
-  AES-256-GCM, at validation, with a code naming the setting; ECDSA and AES-256-GCM arrive when the PHP floor moves to
-  8.5 and saml2 v7 is stable (`saml-library.md`, condition 8).
+- SAML is RSA only on PHP 8.3 and saml2 v6, a known limit of the package's signature policy: RSA signatures with
+  SHA-256, SHA-384 or SHA-512, RSA-OAEP key transport, AES-128-GCM or AES-192-GCM content encryption. Every SAML key use
+  refuses an elliptic curve key or certificate, and the allow-lists refuse ECDSA, RSA-PSS and AES-256-GCM, at
+  validation, with a code naming the setting; ECDSA and AES-256-GCM arrive when the PHP floor moves to 8.5 and saml2 v7
+  is stable (`saml-library.md`, condition 8).
 - A response's `Destination` must be present and exactly the assertion consumer service URL, signed or not, as every
   bearer confirmation's `Recipient` must (`saml-responses.md`).
 - Only the adapter's namespace (`Protocols\Saml2\Library`) calls the SAML library. The driver and its collaborators
@@ -53,9 +52,10 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
      trust change overtook is never validated;
   3. `validation`: the driver's `complete()` against the consumed request, outside any transaction, with the
      connection's trusted certificates read for it;
-  4. `replay_recording` and every later step: one transaction that takes the global lock order (the enforcing tenant's
-     guard when enforcement applies, then the connections in ascending id order, then the request), refuses a
-     connection no longer usable (its trust read again under the lock), a request a trust change voided since
+  4. `replay_recording` and every later step: one transaction that takes the global lock order (`linking.md`: the
+     identity's guard when linking found one, the enforcing tenant's guard when enforcement applies, the flow's
+     connection and the rule's connections in ascending id order, the relevant domain claim, then the request), refuses
+     a connection no longer usable (its trust read again under the lock), a request a trust change voided since
      consumption, or one whose stored trust version is no longer the locked connection's, records the assertion's id
      through the single-use store, then resolves the link, judges enforcement and issues the handoff code.
 - The start stores the connection's trust version, as it read it before the driver's `start()`, on the request, and
@@ -66,8 +66,8 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
   request: it asks the driver's `reinitiate()`, records the assertion under the connection's lock after rechecking its
   trust version, usability, metadata expiry and start URL, and answers a redirect to the connection's start URL. The
   unsolicited identity never reaches a link, an enforcement decision or a handoff.
-- The protocol manager keeps one driver per process (and per application under Octane): the driver and its
-  collaborators hold no connection, flow or result state between calls (SSO-11.2).
+- The protocol manager keeps a driver for one scope alone, a request's sandbox or a job (`Protocols\DriverScope`), and
+  builds it again in the next: the driver and its collaborators hold no connection, flow or result state between calls.
 
 ## Success Path
 
@@ -120,6 +120,6 @@ the lock order or enforcement, and what it keeps. The parts are recorded in thei
 ## Change Triggers
 
 - A new call on `Contracts\ProtocolDriver`, or a change to the completion's steps, transactions or lock order.
-- A new SAML setting, or a check of SSO-6 that a connection could switch off.
+- A new SAML setting, or a SAML check that a connection could switch off.
 - A new binding, message kind or profile.
 - The move to saml2 v7 (`saml-library.md`).

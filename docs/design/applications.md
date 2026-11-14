@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This note records how the package knows the applications people sign into and the URLs it publishes for each
-connection (SSO-5.5, SSO-5.1): the application registry, the one exact redirect URI of each application and the
-contract that answers it, the contract that says whether an application allows sign-in through an external provider,
-and the contract that builds a connection's assertion consumer service, OIDC callback, service provider entity id and
-metadata URL. None of them reads anything from the request.
+This note records how the package knows the applications people sign into and the URLs it publishes for each connection:
+the application registry, the one exact redirect URI of each application and the contract that answers it, the contract
+that says whether an application allows sign-in through an external provider, and the contract that builds a
+connection's assertion consumer service, OIDC callback, service provider entity id, metadata URL and JWKS URL. None of
+them reads anything from the request.
 
 ## Invariants
 
@@ -25,15 +25,15 @@ metadata URL. None of them reads anything from the request.
   information, fragment, wildcard, whitespace or control character, at most 2048 bytes. They are used exactly as
   configured: the package appends the code or the failure code and the public reference (in the fragment or the query as
   the application's `delivery` says) and never a path, and it carries no return URL; the application keeps its own,
-  keyed by its verifier (SSO-5.5, RFC 9700 section 2.1).
+  keyed by its verifier (RFC 9700 section 2.1).
 - `Applications\ApplicationRegistry` reads `sso.applications` on each call and finds an application only under exactly
   its name: an unknown name, a name of another form and a dotted path (`web.redirect_uri`) are all `null`, never another
   application or a setting. A registered application whose settings are malformed fails closed with the
   `InvalidArgumentException` of `fromSettings()`.
 - `Contracts\ApplicationPolicy::externalSignIn(Application)` answers `Applications\Enums\ExternalSignIn` (`allowed`,
   `not_allowed`). The default, `Applications\ConfiguredApplicationPolicy`, answers the `external_sign_in` setting; under
-  `laravel-iam` it is bound to AUTH-3.7's per-application method list. It is asked before a start and again before a
-  handoff is issued; anything but `allowed` is `application_not_allowed`.
+  `laravel-iam` it is bound to `laravel-authentication`'s per-application `methods` list. It is asked before a start and
+  again before a handoff is issued; anything but `allowed` is `application_not_allowed`.
 - `Contracts\RedirectUriResolver::redirectUri(Application, SsoConnection)` answers the exact URI for the application,
   through the connection the authorisation request names, read from storage. The default,
   `Applications\ConfiguredRedirectUriResolver`, answers the configured `redirect_uri` whatever the connection; an
@@ -45,10 +45,10 @@ metadata URL. None of them reads anything from the request.
   and checks the answer with `UrlSetting::redirect()`; an answer that is not an exact redirect URI is a misconfigured
   binding and fails closed with a `LogicException` naming the application, never the answer.
 - `Contracts\EndpointResolver::endpoints(SsoConnection)` answers an `Endpoints\ConnectionEndpoints`: the
-  `assertionConsumerService`, `callback`, `entityId` and `metadata` URLs. Each must be an absolute `https` URL, or
-  `http` on a loopback address, with no user information, fragment or wildcard (`UrlSetting::web()`), or the value
-  refuses to be built (`InvalidArgumentException`, naming the endpoint), so no resolver can publish or check an
-  endpoint a response could be addressed to elsewhere.
+  `assertionConsumerService`, `callback`, `entityId`, `metadata` and `jwks` URLs. Each must be an absolute `https` URL,
+  or `http` on a loopback address, with no user information, fragment or wildcard (`UrlSetting::web()`), or the value
+  refuses to be built (`InvalidArgumentException`, naming the endpoint), so no resolver can publish or check an endpoint
+  a response could be addressed to elsewhere.
 - The default, `Endpoints\ConfiguredEndpointResolver`, builds each endpoint as `sso.endpoints.base_url` without its
   trailing slashes, then the endpoint's pattern from `sso.endpoints.paths` with `{connection}` replaced by the
   connection's id, percent-encoded; the entity id is the metadata URL. `Endpoints\EndpointSettings` reads the base URL
@@ -60,8 +60,8 @@ metadata URL. None of them reads anything from the request.
   `Destination` and `Recipient` are compared with `assertionConsumerService` exactly, and the OIDC callback is sent as
   `redirect_uri` exactly.
 - Every binding is a default, a singleton (the policy and the redirect resolver hold nothing) or scoped (the endpoint
-  resolver reads configuration), so an application's or a sibling's earlier binding is kept, and nothing
-  of one request outlives it (SSO-11.2).
+  resolver reads configuration), so an application's or a sibling's earlier binding is kept, and nothing of one request
+  outlives it.
 
 ## Success Path
 

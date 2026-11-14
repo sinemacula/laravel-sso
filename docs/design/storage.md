@@ -4,7 +4,7 @@
 
 This note describes where the package's tables live, why they share one connection, how the runtime models and the
 published migrations are kept choosing the same connection and the same table names, and the rule an adapter that must
-commit with the package follows (SSO-11.7, SSO-11.10).
+commit with the package follows.
 
 ## Invariants
 
@@ -15,9 +15,9 @@ commit with the package follows (SSO-11.7, SSO-11.10).
   fails closed with an `InvalidArgumentException` naming the key, rather than putting a table on another connection
   than the one meant.
 - Every package table is listed in `StorageConnection::TABLES`, by the key under `sso.` of the setting that names it,
-  with its default name, each with the `sso_` prefix (SSO-11.10). `table($key)` reads the setting, or the default when
-  it is not set, and refuses anything but a plain table name, optionally schema-qualified. A key the list does not hold
-  is a caller's mistake (`LogicException`).
+  with its default name, each with the `sso_` prefix. `table($key)` reads the setting, or the default when it is not
+  set, and refuses anything but a plain table name, optionally schema-qualified. A key the list does not hold is a
+  caller's mistake (`LogicException`).
 - Every package model extends `Models\SsoModel` and names its table's key in `TABLE`; its constructor takes the table
   from `table()` and the connection from `connectionFor()`, so the model cannot read or write another table or
   connection than the one meant.
@@ -27,7 +27,7 @@ commit with the package follows (SSO-11.7, SSO-11.10).
   migration, and its schema transaction, on the connection the migration names, so `php artisan migrate` and a direct
   `up()` or `down()` both put each table where its model reads and writes it.
 - Migrations are published (`sso-migrations`) and run by the application's migration user, never loaded or run by the
-  package; at run time the package needs only `SELECT`, `INSERT`, `UPDATE` and `DELETE` (SSO-11.7).
+  package; at run time the package needs only `SELECT`, `INSERT`, `UPDATE` and `DELETE`.
 - The tables share the storage connection because a completion, a redemption, a connection's lifecycle change and a
   link's activation each write several of them in one transaction, which two connections cannot commit as one.
 - An adapter that must commit with the package (a session revocation, a handoff consumed by the application's
@@ -39,9 +39,9 @@ commit with the package follows (SSO-11.7, SSO-11.10).
 - A completion, and a start that calls a protocol driver, run outside any transaction open on the storage connection:
   each refuses at entry with a `LogicException` (`StorageConnection::assertNoTransaction()`), so a caller's rollback
   never undoes a consumed request and a caller's transaction never keeps a connection's lock across a call to an
-  identity provider (SSO-5.1, SSO-11.5).
+  identity provider.
 - Security state (authorisation requests, single-use keys, handoff codes, links, domains, enforcement) is read from the
-  write connection by the query that reads it (SSO-11.3); the model does not decide it.
+  write connection by the query that reads it; the model does not decide it.
 - Locks are taken in one order, so two changes never wait on each other: an identity's guard (only what changes its
   verified domain links, `linking.md`), a tenant's enforcement row, then connection rows (in id order when several),
   then domain rows (one connection's claim by `connection_id` and `domain`, or every claim of one domain by the `domain`
@@ -80,8 +80,8 @@ commit with the package follows (SSO-11.7, SSO-11.10).
 - Two tables configured to one name on one connection are reported by the check, before a migration fails on them.
 - Changing a setting moves no table already created, and a rollback runs against the setting at the time it runs:
   moving or renaming the tables is a deploy, with a migration the application writes and a restart of every worker.
-- A database error propagates as a server error (SSO-11.4), never as an invalid response, an unknown request, a failed
-  redemption or a failure redirect.
+- A database error propagates as a server error, never as an invalid response, an unknown request, a failed redemption
+  or a failure redirect.
 
 ## Implementation Anchors
 

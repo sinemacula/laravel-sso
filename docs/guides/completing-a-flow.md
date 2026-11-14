@@ -121,22 +121,27 @@ Each call runs in a fixed order, and stops at the first step that refuses:
 
 ## The results
 
-| Result         | When                                                                 | Your response                         |
-|----------------|----------------------------------------------------------------------|---------------------------------------|
-| `completed`    | a code was issued                                                    | redirect with `code` and `reference`  |
-| `failed`       | refused once the request was found, for a registered application     | redirect with `error` and `reference` |
-| `rejected`     | refused with no trusted target: no request matched, or no connection | a `400`, no redirect                  |
-| `rate_limited` | a completion limit is full                                           | a `429` with `Retry-After`            |
+| Result         | When                                                                 | Your response                          |
+|----------------|----------------------------------------------------------------------|----------------------------------------|
+| `completed`    | a code was issued                                                    | redirect with `code` and `reference`   |
+| `reinitiated`  | an unsolicited SAML response passed, at a connection that allows one | redirect to the connection's start URL |
+| `failed`       | refused once the request was found, for a registered application     | redirect with `error` and `reference`  |
+| `rejected`     | refused with no trusted target: no request matched, or no connection | a `400`, no redirect                   |
+| `rate_limited` | a completion limit is full                                           | a `429` with `Retry-After`             |
 
-A `failed` result carries one of these codes (the protocol drivers add the validation codes of SAML, in
-[Signing In with SAML](saml-sign-in.md), and of OIDC, in [The OIDC Callback](oidc-callback.md) and
-[OIDC ID Tokens](oidc-id-tokens.md)):
+A `failed` result carries a failure reason. These are the ones any completion can meet. The protocol drivers add the
+validation codes of SAML, in [Signing In with SAML](saml-sign-in.md), and of OIDC, in
+[The OIDC Callback](oidc-callback.md) and [OIDC ID Tokens](oidc-id-tokens.md); the [`link`](links.md) and
+[`reauthenticate`](reauthenticating.md) purposes and [linking by a verified domain](linking-by-domain.md) add their
+own. [Events](events.md#refused-operations-flowfailed) lists every reason.
 
 | Code                      | Why                                                                                                          |
 |---------------------------|--------------------------------------------------------------------------------------------------------------|
 | `connection_unavailable`  | the connection was disabled, or its trust changed, since the flow started                                    |
 | `connection_mismatch`     | the response arrived at another connection's endpoint than its request was started through                   |
 | `request_expired`         | the request's lifetime (`sso.authorization_requests.ttl_seconds`) ran out                                    |
+| `metadata_expired`        | something fetched for the connection is past its `validUntil` or stale limit                                 |
+| `replayed`                | the response was seen before, or could not be recorded as seen                                               |
 | `enforcement_unsatisfied` | the tenant requires sign-in through other connections                                                        |
 | `unlinked`                | a `sign_in` still resolved to no identity once offered, and the application does not allow unlinked handoffs |
 | `application_not_allowed` | the application no longer allows sign-in through an external provider                                        |
@@ -144,7 +149,9 @@ A `failed` result carries one of these codes (the protocol drivers add the valid
 A `rejected` result carries `request_unknown` (a wrong method, a response that names no request, a replay),
 `connection_unavailable` (an unknown connection, or a protocol that does not complete at this endpoint) or
 `application_not_allowed` (the request's application is no longer configured, so there is no redirect URI to trust).
-Never show a code to a person as it is: map it to your own wording.
+An unsolicited SAML response that is refused is `rejected` too, with `unsolicited_not_allowed`, `metadata_expired` or
+the reason its validation failed (see [IdP-initiated sign-in](idp-initiated-sign-in.md)). Never show a code to a
+person as it is: map it to your own wording.
 
 Your client then redeems the code with its verifier: [Redeeming a handoff](redeeming-a-handoff.md) shows how, and what
 redemption checks again.
@@ -193,12 +200,13 @@ Bind your own in a service provider's `register()`; each default fails closed.
 
 - `Contracts\Linker`: the identity a verified result is linked to. The default links nothing; bind the package's
   `Links\LinkStore`, or your own.
-- `Contracts\Enforcement`: whether the connection satisfies its tenant's enforcement on the application; the version
-  checked travels with the code, and redemption checks enforcement again. Under the default, the completion locks the
-  rule and judges it from the locked rows. A contract of your own is asked as it is bound, and must itself keep a
-  change to its rule from slipping in between its answer and the session it admits (a current read alone is not
-  enough); a `Contracts\EnforcementInheritance` of your own is asked inside the completion's transaction, so answer it
-  from state that does not change under that transaction, or with a current read.
+- `Contracts\Enforcement`: whether the connection satisfies its tenant's enforcement on the application. Redemption
+  judges enforcement again under its own locks, and the redemption result carries the version it judged
+  (`enforcementVersion`). Under the default, the completion locks the rule and judges it from the locked rows. A
+  contract of your own is asked as it is bound, and must itself keep a change to its rule from slipping in between its
+  answer and the session it admits (a current read alone is not enough); a `Contracts\EnforcementInheritance` of your
+  own is asked inside the completion's transaction, so answer it from state that does not change under that
+  transaction, or with a current read.
 - On PostgreSQL under `REPEATABLE READ`, a completion that waited on an enforcement change can fail with a
   serialisation failure (SQLSTATE `40001`); it is thrown as a server error, and the person starts the flow again.
 - `Contracts\ApplicationPolicy`: asked again just before the code is issued.

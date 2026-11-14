@@ -3,12 +3,11 @@
 ## Purpose
 
 This note records how the SAML driver correlates a response posted to a connection's assertion consumer service and
-validates it against the request consumed for it (SSO-5.3, SSO-5.8, SSO-6.2 to SSO-6.11), and what it answers the
-completion: the verified claims and the replay record of the assertion, or one failure reason. Parsing, structure,
-signatures and decryption are the SAML adapter's (`saml-adapter.md`); consumption, the completion's locks and the
-recording of the replay record are the completion's (`completion.md`, `flows.md`); the completion path of the
-unsolicited profile is re-initiation's (`idp-initiated.md`). Everything here judges only values the adapter read from
-verified elements.
+validates it against the request consumed for it, and what it answers the completion: the verified claims and the replay
+record of the assertion, or one failure reason. Parsing, structure, signatures and decryption are the SAML adapter's
+(`saml-adapter.md`); consumption, the completion's locks and the recording of the replay record are the completion's
+(`completion.md`, `flows.md`); the completion path of the unsolicited profile is re-initiation's (`idp-initiated.md`).
+Everything here judges only values the adapter read from verified elements.
 
 ## Invariants
 
@@ -20,8 +19,8 @@ verified elements.
   with `request_mismatch` when the `RelayState`'s digest is not its state digest or there is no `RelayState`
   (`Flows\RequestConsumption`). An unknown id is `request_unknown`.
 - One core validates every profile (`Validation\AssertionValidator`): the solicited path gives it the consumed request,
-  the unsolicited profile (SSO-5.8) gives it none, and which rules apply depends only on that. A solicited response with
-  no consumed request, and an unsolicited one with a consumed request, are `request_unknown`.
+  the unsolicited profile gives it none, and which rules apply depends only on that. A solicited response with no
+  consumed request, and an unsolicited one with a consumed request, are `request_unknown`.
 - Every rule reads one instant, the clock's now once the response is read, with the skew of `sso.clock.skew_seconds`
   (default 60, at most 300). A bound that starts a window may be up to the skew after now; a bound that ends one is
   passed only once now is the skew beyond it. `SessionNotOnOrAfter` is never extended by the skew.
@@ -64,10 +63,9 @@ verified elements.
 - An unsuccessful status: its `Issuer` and `Destination` are held to the same rules, an absent `Issuer` refused, and
   its `InResponseTo` must be the consumed request's, before it is `provider_error`.
 - `issuer_mismatch`: the response's `Issuer` or the assertion's is absent or is not the connection's entity id. SAML 2.0
-  Profiles §4.1.4.2 lets an unsigned response with a plain assertion leave its `Issuer` out; the package refuses that
-  too, since SSO-6.4 holds both issuers to the entity id. The response's `Issuer` is always required, successful or not
-  ([RD-30](requirements.md#recorded-decisions), SSO-6.4, SSO-6.11): one rule that never depends on which parts are
-  signed is simpler to hold and to test.
+  Profiles section 4.1.4.2 lets an unsigned response with a plain assertion leave its `Issuer` out; the package refuses
+  that too, since the package holds both issuers to the entity id. The response's `Issuer` is always required,
+  successful or not: one rule that never depends on which parts are signed is simpler to hold and to test.
 - `recipient_mismatch`: the `Destination` is absent, or is not exactly the assertion consumer service, whether or not
   the response is signed (an unsigned response's `Destination` is not authenticated, but its absence is never taken
   as a pass); or no bearer confirmation names the service as its `Recipient`.
@@ -103,8 +101,7 @@ verified elements.
 
 ## Authoritative Tests
 
-- `tests/Feature/Completion/SamlAdversarialCompletionTest.php`: every hostile case of the review focus through the
-  public completion path.
+- `tests/Feature/Completion/SamlAdversarialCompletionTest.php`: every hostile case through the public completion path.
 - `tests/Feature/Completion/SamlFixtureCompletionTest.php`: the 40 fixtures of the library comparison through the public
   completion path, each with the outcome the manifest records.
 - `tests/Feature/Completion/SamlCompletionTest.php`, `tests/Feature/Completion/SamlCompletionEventSequenceTest.php`

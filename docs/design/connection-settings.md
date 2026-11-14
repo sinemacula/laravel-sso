@@ -3,12 +3,11 @@
 ## Purpose
 
 This note records how a connection's SAML and OIDC settings are validated, defaulted and stored, how its attribute
-mapping is checked and applied, how its secrets are kept apart from its settings, and how the management helpers
-create, update, read, list and enable a tenant's connections (SSO-1.2, SSO-2.3, SSO-2.4, SSO-2.5, SSO-2.10, SSO-2.11,
-SSO-2.12), and how an update that changes the connection's trust voids what is in flight through it and is refused,
-when it alters what subjects mean, while the connection has links (SSO-2.13). Disabling, deleting and the subject
-migration are in `connection-lifecycle.md`; metadata and discovery import, and keys and certificates, have notes of
-their own.
+mapping is checked and applied, how its secrets are kept apart from its settings, and how the management helpers create,
+update, read, list and enable a tenant's connections, and how an update that changes the connection's trust voids what
+is in flight through it and is refused, when it alters what subjects mean, while the connection has links. Disabling,
+deleting and the subject migration are in `connection-lifecycle.md`; metadata and discovery import, and keys and
+certificates, have notes of their own.
 
 ## Invariants
 
@@ -20,7 +19,7 @@ their own.
   `ViolationCode`), never the value. A value of the wrong type, malformed, outside its allow-list or past its cap is a
   violation, and so is a conditional requirement (`subject_attribute` when the subject comes from an attribute,
   `idp_initiated_start_url` when IdP-initiated sign-in is on). A missing required setting is not: a connection may be
-  saved incomplete, `isComplete()` says when it is not, and only a complete connection is ever usable (SSO-2.1).
+  saved incomplete, `isComplete()` says when it is not, and only a complete connection is ever usable.
 - A name the protocol does not have is `unknown`. A setting given as `null` is not given. A key that cannot be named
   (empty, carrying a control character, or too long for a violation's path) is reported at its parent, `settings` at
   the top.
@@ -29,14 +28,14 @@ their own.
 - Settings that a feature switch gates (`require_encrypted_assertions` with `encrypted_assertions`, `idp_initiated`
   with `idp_initiated`) are `unsupported` while the switch is off; a malformed switch fails closed with
   `Config\Features::enabled()`'s `InvalidArgumentException`.
-- The shared checks (a bounded string with no control character, an `https` URL, a boolean, a value from an
-  allow-list, a list) live in `Connections\SettingRules`, so every class judges alike. A URL is absolute, with a host,
-  no userinfo and no fragment, at most 2048 bytes; a well-formed URL of another scheme is `not_https`. The OIDC issuer
-  also takes no query, and is stored exactly as given, never normalised (SSO-2.8).
+- The shared checks (a bounded string with no control character, an `https` URL, a boolean, a value from an allow-list,
+  a list) live in `Connections\SettingRules`, so every class judges alike. A URL is absolute, with a host, no userinfo
+  and no fragment, at most 2048 bytes; a well-formed URL of another scheme is `not_https`. The OIDC issuer also takes no
+  query, and is stored exactly as given, never normalised.
 - The OIDC extra parameters come from an allow-list; a parameter the flow controls is `reserved` whatever its case, so
-  none can be set or overridden (SSO-2.4). The SAML algorithms never include SHA-1 or RSA 1.5, AES-CBC is accepted
-  only when listed, and an encryption list needs a key transport and a data algorithm (SSO-6.7). The ID token
-  algorithms are asymmetric only (SSO-7.3).
+  none can be set or overridden. The SAML algorithms never include SHA-1 or RSA 1.5, AES-CBC is accepted only when
+  listed, and an encryption list needs a key transport and a data algorithm. The ID token algorithms are asymmetric
+  only.
 - A secret never travels among the settings: the helpers take each name `secretNames()` declares out of what is given
   before the settings see it, so a `client_secret` among OIDC settings is `reserved`. A secret is a string of 1 to
   1024 bytes with no control character; a client secret given to a client that authenticates with `private_key_jwt`
@@ -54,9 +53,9 @@ their own.
   none standard or reserved, empty by default, checked at boot under `[mapping]`); any other custom target is
   `not_allowed`, and a stored one no longer declared maps nothing, so a tenant administrator never invents a key the
   application does not read. The result's own fields are `reserved` targets, and over OIDC a protocol value or a token
-  is a `reserved` source (SSO-2.10). `map()` builds profile data: single values for the standard targets, `groups`
-  always a list, every string cut to `max_value_length` characters and a list to `max_values` strings. Nothing mapped
-  selects an identity (SSO-8.2).
+  is a `reserved` source. `map()` builds profile data: single values for the standard targets, `groups` always a list,
+  every string cut to `max_value_length` characters and a list to `max_values` strings. Nothing mapped selects an
+  identity.
 - Every helper is scoped to a tenant (an opaque id of 1 to 255 bytes; anything else is an `InvalidArgumentException`)
   and finds a connection only through `Connections\ConnectionFinder`, on the write connection: another tenant's
   connection is `connection_not_found` to a change and `null` to `get()`.
@@ -69,9 +68,10 @@ their own.
   `disabled`, `deleted` and `migrated`.
 - An update that changes a setting the protocol's `subjectNames()` lists (the OIDC `issuer` and `client_id`; the SAML
   `idp_entity_id`, `subject_source`, `subject_attribute` and `name_id_format`) is refused with `connection_has_links`
-  while the connection has a link, active or reserved with a reservation that expires after now, found by a locking
-  read on the write connection once freshness has answered `fresh`; nothing is written. `Connections\SubjectMigration`
-  makes such a change and relinks or removes the links in the same transaction (`connection-lifecycle.md`).
+  while the connection has a link, active, suspended, or reserved with a reservation that expires after now, found by a
+  locking read on the write connection once freshness has answered `fresh`; nothing is written.
+  `Connections\SubjectMigration` makes such a change and relinks or removes the links in the same transaction
+  (`connection-lifecycle.md`).
 - An update whose operations include `sso.connection.trust` (a trust setting or a secret changed) voids, in its
   transaction and under the connection's lock, every unfinished authorisation request and unredeemed handoff code of
   the connection (`Connections\InFlightVoider`); an update that asks only `sso.connection.idp_initiated`, or nothing,
@@ -99,9 +99,9 @@ A connection's linking settings and evidence policy are columns of their own, ou
    reports `ConnectionCreated`.
 2. `update()` locks the connection, merges the changes (a value replaces, `null` removes, a secret not named is kept),
    validates the merged connection, names what changed (settings in the enum's order, then secrets, `display_name`,
-   `attribute_mapping`), asks freshness for what changed, refuses a subject change while the connection has links,
-   saves, voids what is in flight when it asked `sso.connection.trust`, and reports `ConnectionUpdated` with those
-   names.
+   `attribute_mapping`, then any `linking.*` setting an issuer change reset), asks freshness for what changed, refuses a
+   subject change while the connection has links, saves, voids what is in flight when it asked `sso.connection.trust`,
+   and reports `ConnectionUpdated` with those names.
 3. `get()` and `list()` read on the write connection and answer `ConnectionSummary` values: settings, masked secrets,
    mapping, flags, whether the connection is usable now, and its times in UTC.
 4. `enable()` locks the connection, asks freshness, sets `enabled` and reports `ConnectionEnabled`.

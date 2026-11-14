@@ -3,11 +3,11 @@
 ## Purpose
 
 This note records what the `oidc` driver answers when an administrator needs to register a connection at its OpenID
-provider (SSO-5.9): the callback URL and, with `private_key_jwt`, the URL of its public JWKS or, for a provider that
-requires uploaded keys, the public JWKS itself, as RFC 7591 client metadata; and the body of that public JWKS URL, which
-the application serves. It covers the documents' exact shape, where each value comes from, how a key rotation shows in
-them, and why they can hold no secret. The public helper around them is in `service-provider-metadata.md`; the driver as
-a whole is in `oidc-driver.md`.
+provider: the callback URL and, with `private_key_jwt`, the URL of its public JWKS or, for a provider that requires
+uploaded keys, the public JWKS itself, as RFC 7591 client metadata; and the body of that public JWKS URL, which the
+application serves. It covers the documents' exact shape, where each value comes from, how a key rotation shows in them,
+and why they can hold no secret. The public helper around them is in `service-provider-metadata.md`; the driver as a
+whole is in `oidc-driver.md`.
 
 ## Invariants
 
@@ -16,9 +16,9 @@ a whole is in `oidc-driver.md`.
   answers the same as `application/jwk-set+json`. `OidcDriver` calls each with `OidcOptions` read afresh, and
   `Connections\ServiceProviderDescriptions` is the way in for an application.
 - The body is one JSON object with these members, in this order, so the same state always gives the same bytes:
-  - `redirect_uris`: one URL, the connection's callback as `Contracts\EndpointResolver` builds it (SSO-5.5), the same
-    value the start sends and the token request repeats as `redirect_uri`. Nothing is read from the request;
-  - `response_types`: `["code"]`, and `grant_types`: `["authorization_code"]`, the only flow the package runs (SSO-5.4);
+  - `redirect_uris`: one URL, the connection's callback as `Contracts\EndpointResolver` builds it, the same value the
+    start sends and the token request repeats as `redirect_uri`. Nothing is read from the request;
+  - `response_types`: `["code"]`, and `grant_types`: `["authorization_code"]`, the only flow the package runs;
   - `token_endpoint_auth_method`: `OidcOptions::clientAuthentication()`, default applied;
   - with `private_key_jwt` only, `token_endpoint_auth_signing_alg`, then exactly one of `jwks_uri` (`describe()`, the
     default and preferred) and `jwks` (`{"keys": [...]}`, `describeWithInlineKeys()`). Never both in one document, as
@@ -28,8 +28,8 @@ a whole is in `oidc-driver.md`.
   route: the application serves `publicKeys()` at that URL. A provider that requires uploaded keys is given the inline
   export instead, and must be given it again whenever a next key is added or made current; the guide says so.
 - `jwks`, and the body of the public JWKS URL, hold `Jose\ClientKey::publicJwk()` of each `Keys\KeyRing::published()`
-  key of the use `client_assertion`: the current key, then the next one (SSO-2.7). A `retiring` key is never published:
-  a client assertion is only ever signed by the current key, so a replaced key has no further use at the provider.
+  key of the use `client_assertion`: the current key, then the next one. A `retiring` key is never published: a client
+  assertion is only ever signed by the current key, so a replaced key has no further use at the provider.
 - The ring is read once per call, so the keys and the algorithm named are of one state of it.
 - Each key's `kid` is the RFC 7638 thumbprint of its public half, which is also the `kid` header of every client
   assertion its private half signs (`JoseAdapter::signClientAssertion()`), whatever the algorithm. Each key also carries
@@ -48,9 +48,9 @@ a whole is in `oidc-driver.md`.
   `dp`, `dq`, `qi`), no client secret, no client id and no key id but the thumbprint: neither the row's id nor the
   fingerprint.
 - Any connection whose callback can be built and whose method and algorithm are valid is described, enabled or not,
-  complete or not, since an administrator registers it first (SSO-2.1). Being described says nothing about being usable.
+  complete or not, since an administrator registers it first. Being described says nothing about being usable.
 - Describing changes nothing: it asks for no fresh authentication, writes nothing and reports no event. Every value is
-  read afresh and nothing is kept between calls (SSO-11.2).
+  read afresh and nothing is kept between calls.
 - The JSON is encoded with `JSON_UNESCAPED_SLASHES` and `JSON_THROW_ON_ERROR`, so a URL reads as it is registered and a
   value JSON cannot hold is an error, never a partial document.
 
@@ -85,7 +85,7 @@ a whole is in `oidc-driver.md`.
 - When a rotation changes the key's type, which a pinned algorithm prevents, the two keys' `alg` differ and the signing
   algorithm is the current key's until `makeCurrent()`. RFC 7591 allows one `token_endpoint_auth_signing_alg`, so a
   provider that enforces it has to be updated at that moment; the guide says so.
-- A database error propagates (SSO-11.4).
+- A database error propagates.
 
 ## Implementation Anchors
 

@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\IntegratingWithLaravelIam;
 
+use SineMacula\Laravel\Authentication\Sessions\SignInContext;
 use Tests\Integration\Examples\IntegratingWithLaravelIam\Contracts\ExternalIdentityLinks;
 
 /**
@@ -27,10 +28,13 @@ final class ExternalSessions
      * Sign the person of the result in, or refuse.
      *
      * @param  \Tests\Integration\Examples\IntegratingWithLaravelIam\ExternalResult  $result
+     * @param  \SineMacula\Laravel\Authentication\Sessions\SignInContext  $context
      * @return \Tests\Integration\Examples\IntegratingWithLaravelIam\SignInResult
      */
-    public function signInExternally(ExternalResult $result): SignInResult
+    public function signInExternally(ExternalResult $result, SignInContext $context): SignInResult
     {
+        unset($context);
+
         $linkId = app(ExternalIdentityLinks::class)->find($result->connectionId, $result->issuer, $result->subject);
 
         if ($linkId === null || $linkId !== $result->linkId) {

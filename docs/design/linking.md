@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This note freezes the completion and redemption state machine of linking (SSO-3.3, SSO-5.10, SSO-5.11, SSO-8.1 to
-SSO-8.8, SSO-9.5, SSO-9.9): its stages, which transaction each write runs in, the lock order, the reservation and link
-states, what the application's contracts must guarantee, and the events each operation reports. `completion.md` and
-`flows.md` describe the steps; `links.md` and `handoffs.md` the stores. Linking through a verified domain, the `link`
-purpose, provisioning, reauthentication and evidence all stand on this machine and do not change it.
+This note freezes the completion and redemption state machine of linking: its stages, which transaction each write runs
+in, the lock order, the reservation and link states, what the application's contracts must guarantee, and the events
+each operation reports. `completion.md` and `flows.md` describe the steps; `links.md` and `handoffs.md` the stores.
+Linking through a verified domain, the `link` purpose, provisioning, reauthentication and evidence all stand on this
+machine and do not change it.
 
 ## Invariants
 

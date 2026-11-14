@@ -76,6 +76,8 @@ token. On success the result is `verified`, and the domain is verified for this 
 | `domain_unavailable`      | The domain became verified for another connection first                                      |
 | `rate_limited`            | The connection used up its domain checks (`sso.rate_limits.domain_check`); wait `retryAfter` |
 | `domain_not_found`        | The connection holds no claim of the domain                                                  |
+| `connection_not_found`    | The tenant has no such connection                                                            |
+| `freshness_required`      | The caller did not authenticate recently enough                                              |
 
 A domain that is already verified answers `unchanged` with nothing looked up. A lapsed domain can be verified again,
 and counts from its new verification time.
