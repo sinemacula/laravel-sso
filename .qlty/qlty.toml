@@ -47,9 +47,8 @@ name = "php-codesniffer"
 package_file = "composer.json"
 package_filters = ["slevomat", "dealerdirect", "sinemacula"]
 
-# The fixer config builds its rules from the standards package, which the
-# sandbox gets from extra_packages rather than reading composer.json:
-# extra_packages is silently ignored whenever package_file is set.
+# extra_packages is silently ignored whenever package_file is set, so this
+# plugin declares its packages here rather than reading composer.json.
 [[plugin]]
 name = "php-cs-fixer"
 extra_packages = ["sinemacula/coding-standards@1.30.0"]
