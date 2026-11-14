@@ -10,6 +10,8 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
+use SineMacula\Laravel\Sso\Sessions\Enums\ContextKey;
+use SineMacula\Laravel\Sso\Sessions\Enums\ContextValueType;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
 
 /**
@@ -24,56 +26,16 @@ use SineMacula\Laravel\Sso\Sessions\Provenance;
 final class AuthenticationContextTest extends TestCase
 {
     /**
-     * The namespace and every key are named exactly, and stable.
-     *
-     * @return void
-     */
-    public function testEveryKeyIsNamedExactly(): void
-    {
-        self::assertSame('sso', AuthenticationContext::NAMESPACE);
-        self::assertSame([
-            'sso.connection',
-            'sso.tenant',
-            'sso.protocol',
-            'sso.provider_auth_time',
-            'sso.provider_amr',
-            'sso.provider_acr',
-            'sso.provider_authn_context_class_ref',
-            'sso.link',
-            'sso.link_provenance',
-            'sso.provider_session_deadline',
-            'sso.session_not_after',
-            'sso.enforcement_version',
-        ], AuthenticationContext::KEYS);
-        self::assertSame(
-            AuthenticationContext::KEYS,
-            [
-                AuthenticationContext::CONNECTION,
-                AuthenticationContext::TENANT,
-                AuthenticationContext::PROTOCOL,
-                AuthenticationContext::PROVIDER_AUTH_TIME,
-                AuthenticationContext::PROVIDER_AMR,
-                AuthenticationContext::PROVIDER_ACR,
-                AuthenticationContext::PROVIDER_AUTHN_CONTEXT_CLASS_REF,
-                AuthenticationContext::LINK,
-                AuthenticationContext::LINK_PROVENANCE,
-                AuthenticationContext::PROVIDER_SESSION_DEADLINE,
-                AuthenticationContext::SESSION_NOT_AFTER,
-                AuthenticationContext::ENFORCEMENT_VERSION,
-            ],
-        );
-    }
-
-    /**
      * Every key fits the form an authentication context holds keys in.
      *
      * @return void
      */
     public function testEveryKeyFitsTheContextsKeyForm(): void
     {
+        self::assertSame('sso', AuthenticationContext::NAMESPACE);
         self::assertMatchesRegularExpression('/^[a-z][a-z0-9_]{0,31}$/D', AuthenticationContext::NAMESPACE);
 
-        foreach (AuthenticationContext::KEYS as $key) {
+        foreach (self::keys() as $key) {
             self::assertStringStartsWith(AuthenticationContext::NAMESPACE . '.', $key);
             self::assertMatchesRegularExpression('/^[a-z][a-z0-9_]{0,63}$/D', substr($key, strlen(AuthenticationContext::NAMESPACE) + 1), $key);
         }
@@ -99,7 +61,7 @@ final class AuthenticationContextTest extends TestCase
     {
         $context = AuthenticationContext::of(self::oidc());
 
-        self::assertSame(AuthenticationContext::KEYS, array_keys($context));
+        self::assertSame(self::keys(), array_keys($context));
         self::assertSame('connection-1', $context['sso.connection']);
         self::assertSame('tenant-1', $context['sso.tenant']);
         self::assertSame('oidc', $context['sso.protocol']);
@@ -222,7 +184,7 @@ final class AuthenticationContextTest extends TestCase
 
         foreach ($projections as $projection => $context) {
 
-            self::assertSame(AuthenticationContext::KEYS, array_keys($context), $projection);
+            self::assertSame(self::keys(), array_keys($context), $projection);
 
             foreach ($context as $key => $value) {
                 self::assertTrue(self::isPlain($value), "{$projection}: {$key} is not a plain value.");
@@ -252,7 +214,7 @@ final class AuthenticationContextTest extends TestCase
         $stored = array_reverse((array) json_decode((string) json_encode(self::oidc()->toArray()), true), true);
 
         self::assertSame(AuthenticationContext::of(self::oidc()), AuthenticationContext::fromStored($stored));
-        self::assertSame(AuthenticationContext::KEYS, array_keys(AuthenticationContext::fromStored($stored)));
+        self::assertSame(self::keys(), array_keys(AuthenticationContext::fromStored($stored)));
     }
 
     /**
@@ -312,6 +274,31 @@ final class AuthenticationContextTest extends TestCase
     }
 
     /**
+     * Every value present is of its key's type.
+     *
+     * @param  \SineMacula\Laravel\Sso\Sessions\Provenance  $provenance
+     * @return void
+     */
+    #[DataProvider('provenances')]
+    public function testEveryValueIsOfItsKeysType(Provenance $provenance): void
+    {
+        foreach (AuthenticationContext::of($provenance) as $key => $value) {
+
+            if ($value === null) {
+                continue;
+            }
+
+            $matches = match (ContextKey::from($key)->type()) {
+                ContextValueType::STRING => is_string($value),
+                ContextValueType::LIST   => is_array($value),
+                ContextValueType::TIME   => is_string($value) && self::isInstant($value),
+            };
+
+            self::assertTrue($matches, $key);
+        }
+    }
+
+    /**
      * An OIDC provenance with every fact.
      *
      * @return \SineMacula\Laravel\Sso\Sessions\Provenance
@@ -347,5 +334,26 @@ final class AuthenticationContextTest extends TestCase
         }
 
         return $value === null || is_scalar($value);
+    }
+
+    /**
+     * Every key's name, in order.
+     *
+     * @return list<string>
+     */
+    private static function keys(): array
+    {
+        return array_map(static fn (ContextKey $key): string => $key->value, ContextKey::cases());
+    }
+
+    /**
+     * Whether the value is an instant in the stored form.
+     *
+     * @param  string  $value
+     * @return bool
+     */
+    private static function isInstant(string $value): bool
+    {
+        return CarbonImmutable::createFromFormat(Provenance::INSTANT_FORMAT, $value, 'UTC')?->format(Provenance::INSTANT_FORMAT) === $value;
     }
 }

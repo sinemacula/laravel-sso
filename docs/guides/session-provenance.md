@@ -84,7 +84,7 @@ return AuthenticationContext::fromStored($this->provenance[$sessionId] ?? null);
 ```
 
 A session with none (`null`) projects to no `sso.*` key. A policy that requires a connection compares
-`$context[AuthenticationContext::CONNECTION] ?? null` with it.
+`$context[ContextKey::CONNECTION->value] ?? null` with it.
 
 `fromStored()` takes the stored array, or `null`, and `of()` takes a `Provenance`, or `null`. Both are pure: they read
 nothing else and keep nothing.
@@ -104,6 +104,8 @@ nothing else and keep nothing.
 | `sso.session_not_after`                | UTC instant string, null    | The cap that deadline set on your session, to the second              |
 | `sso.enforcement_version`              | string, null                | The enforcement version the sign-in's redemption judged               |
 
+- `Sessions\Enums\ContextKey` names every key, in this order, and its `type()` is the type of a value that is not
+  `null`, a `Sessions\Enums\ContextValueType`: `string`, `list` (of strings) or `time`.
 - A session with no provenance from the package contributes no `sso.*` key at all. A session
   established through the package contributes every key, and a `null` value means that fact was not stated.
 - Every value is plain: a string, a list of strings or `null`. No object crosses into the context, neither an

@@ -76,9 +76,10 @@ transaction; and the gate an adapter calls before refusing a session it could ex
      (`connection_ids` `required`), and each a connection of this tenant through `Connections\ConnectionFinder`
      (`connection_ids.<n>` `unknown`, the same for another tenant's connection as for an id with no connection, so no
      other tenant is revealed); any violation is `invalid` (`settings_invalid`) with every violation, in position order;
-  3. the stored rule: the same switch and the same set of ids, in any order, looks `unchanged`; it is answered
-     `unchanged` only once step 6's locked read agrees, since the first read may come from the snapshot of a
-     transaction the caller opened;
+  3. the stored rule: the same switch and the same set of ids, in any order, looks `unchanged`, but a tenant with no
+     rule always stores its first, an off rule included, which an inheritance contract may read as the tenant's own
+     rule stopping an ancestor's; it is answered `unchanged` only once step 6's locked read agrees, since the first
+     read may come from the snapshot of a transaction the caller opened;
   4. turning it on: one of the connections given must be enabled with `has_completed_sign_in` set, so a misconfigured
      connection cannot lock the tenant out (SSO-4.3), else `completed_sign_in_required`; turning it off needs none;
   5. freshness, asked in step 6 once the rows are locked and only of a change that goes ahead:
@@ -123,7 +124,9 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   nothing answers `not_exempt` with nothing asked or reported. Otherwise it asks `EnforcementExemption`, resolved from
   the container on each call; `exempt` is reported once through `EnforcementEvents::exemptionUsed()` (`ExemptionUsed`,
   after the storage connection's open transaction commits, at once when none is open) and returned. An exception from
-  the contract propagates: the gate never answers `exempt` when it cannot tell.
+  the contract propagates: the gate never answers `exempt` when it cannot tell. `judge($policy, $application,
+  $identity)` answers exactly as `admit()` does and reports nothing, for a session judged again whose exemption was
+  reported when it was admitted.
 - Every outcome of a change is an `Enforcement\EnforcementResult` (status `Enforcement\Enums\EnforcementStatus`):
   `updated` or `unchanged` with an `EnforcementSummary`; `refused` with `feature_disabled`, `freshness_required` or
   `completed_sign_in_required`; `invalid` with `settings_invalid` and its `Connections\SettingViolation`s. A violation

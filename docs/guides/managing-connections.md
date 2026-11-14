@@ -32,6 +32,11 @@ limit counts from that fetch (see [SAML metadata](saml-metadata.md#importing-met
 > contract whether the caller authenticated recently enough, and the default contract refuses every operation. Bind
 > your own first (see [Freshness](freshness.md)); until you do, every such call is refused with `freshness_required`.
 
+Who may call each is your authorisation. `Administration\Enums\AdministrativeOperation` names every administrative
+operation of the package, connections, keys, domains, enforcement and links alike, by a stable name such as
+`sso.connection.create` that your authorisation can grant it under. Which freshness an operation asks is a separate
+matter, `FreshnessOperation`'s.
+
 ## Creating a connection
 
 A connection is created disabled, with its display name, its settings, its attribute mapping and, optionally, a preset

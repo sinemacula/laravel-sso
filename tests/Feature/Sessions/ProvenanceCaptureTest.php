@@ -41,6 +41,7 @@ use SineMacula\Laravel\Sso\Results\LinkingEmail;
 use SineMacula\Laravel\Sso\Results\VerifiedClaims;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
+use SineMacula\Laravel\Sso\Sessions\Enums\ContextKey;
 use SineMacula\Laravel\Sso\Sessions\Provenance;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Feature\Linking\LinkingTestCase;
@@ -391,7 +392,7 @@ final class ProvenanceCaptureTest extends LinkingTestCase
 
         self::assertTrue($answer->isRedeemed());
         self::assertSame(['enforcement-8', 'enforcement-8'], [$answer->enforcementVersion, $answer->provenance?->enforcementVersion]);
-        self::assertSame('enforcement-8', AuthenticationContext::of($answer->provenance)[AuthenticationContext::ENFORCEMENT_VERSION]);
+        self::assertSame('enforcement-8', AuthenticationContext::of($answer->provenance)[ContextKey::ENFORCEMENT_VERSION->value]);
     }
 
     /**
