@@ -23,6 +23,7 @@ use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
 use Tests\Integration\Examples\IntegratingWithLaravelIam\Contracts\ExternalIdentityLinks;
+use Tests\Integration\Examples\SiblingStandIns;
 
 /**
  * The redemption examples of `docs/guides/integrating-with-laravel-iam.md`.
@@ -64,6 +65,8 @@ final class RedeemingByPurposeExampleTest extends ExampleTestCase
     protected function setUp(): void
     {
         parent::setUp();
+
+        SiblingStandIns::register();
 
         $this->provider       = new FakeOpenIdProvider(clock: $this->clock);
         $this->connectionId   = $this->makeOidcConnection($this->provider);
