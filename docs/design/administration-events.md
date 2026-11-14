@@ -2,13 +2,12 @@
 
 ## Purpose
 
-This note records the events a change to a connection, a key or a certificate reports (SSO-10.3): what each carries and
-what it never carries (SSO-10.4), who dispatches each and when, after the change commits and never when it rolls back
-(SSO-10.5), and the nearing-expiry report, which reports a certificate's end of validity and never enforces it (SSO-2.6,
-SSO-11.12). Audit trails attach to these events to record who changed an identity provider's trust, so their shape and
-their timing are a contract. The domain and enforcement events follow the same rules and are listed under "Domain and
-enforcement events" below; the metadata, JWKS and link events are in `metadata-refresh.md`, `oidc-discovery.md` and
-`linking.md`.
+This note records the events a change to a connection, a key or a certificate reports: what each carries and what it
+never carries, who dispatches each and when, after the change commits and never when it rolls back, and the
+nearing-expiry report, which reports a certificate's end of validity and never enforces it. Audit trails attach to these
+events to record who changed an identity provider's trust, so their shape and their timing are a contract. The domain
+and enforcement events follow the same rules and are listed under "Domain and enforcement events" below; the metadata,
+JWKS and link events are in `metadata-refresh.md`, `oidc-discovery.md` and `linking.md`.
 
 ## Invariants
 
@@ -67,42 +66,46 @@ enforcement events" below; the metadata, JWKS and link events are in `metadata-r
 
 - `ConnectionUpdated` names what changed in one order: the settings as the protocol's setting enum lists them
   (`Saml2Setting`, `OidcSetting`; a registered driver's in the order its settings hold them), then the secrets, then
-  `display_name`, then `attribute_mapping`. A secret is named (`client_secret`) when it was set, replaced or cleared,
-  never by its value before or after; a setting is named when its stored value or its presence changed.
+  `display_name`, then `attribute_mapping`, then, when an issuer setting's change resets the connection's linking
+  settings, each `linking.*` name reset (`Connections\LinkingPolicyReset::changedNames()`). A secret is named
+  (`client_secret`) when it was set, replaced or cleared, never by its value before or after; a setting is named when
+  its stored value or its presence changed.
 - Sequences: creating a connection reports `[ConnectionCreated]`; an update `[ConnectionUpdated]`; enabling
   `[ConnectionEnabled]`; the first `addNext()` of a use `[KeyAdded (current), KeyMadeCurrent (previousKeyId null)]`, and
   a later one `[KeyAdded (next)]`; `makeCurrent()` `[KeyMadeCurrent]` naming the key replaced; `retire()` and
-  `distrustCertificate()` `[KeyRetired]`; `trustCertificate()` `[KeyAdded]` with the use `idp_signing` and no state.
+  `distrustCertificate()` `[KeyRetired]`; `trustCertificate()` `[KeyAdded]` with the use given (`idp_signing` by
+  default, or `metadata_signing`) and no state.
 - After commit only. Each helper writes in one transaction on the storage connection and calls the reporter inside it,
   after the write; the reporter hands each event to `Events\AfterCommitDispatcher::dispatch()`, which delivers it when
   the transaction commits and drops it when it rolls back. A helper called inside a transaction the application opened
   on the storage connection reports nothing until that transaction commits, and nothing at all when it rolls back,
   though the helper returned success; a transaction on another connection neither delays nor withdraws the event.
 - No event for a refusal or a no-op. A refusal (`freshness_required`, `connection_not_found`, `key_not_found`,
-  `settings_invalid`, `protocol_unavailable`, `key_state_conflict`) writes nothing and reports nothing: no
-  administration event, and no `FlowFailed`, which reports refused flows, not refused administration; the refusal is the
-  helper's result. A change that changes nothing (an update giving what is stored, enabling an enabled connection)
-  succeeds as `unchanged` and reports nothing. `connectionUpdated()` itself reports nothing for an empty list of names,
-  and each name once.
+  `settings_invalid`, `protocol_unavailable`, `key_state_conflict`, `connection_has_links`, `links_unaccounted`) writes
+  nothing and reports nothing: no administration event, and no `FlowFailed`, which reports refused flows, not refused
+  administration; the refusal is the helper's result. A change that changes nothing (an update giving what is stored,
+  enabling an enabled connection) succeeds as `unchanged` and reports nothing. `connectionUpdated()` itself reports
+  nothing for an empty list of names, and each name once.
 - No secret. The events hold ids, enum cases, a fingerprint, times and names. None holds a secret, a ciphertext, a
   private key, a PEM, a setting's value or the settings: no property is named `secret`, `private_key`, `value` or
   `settings`, and `ConnectionUpdated` holds names only. Every field is a string, an integer, an enum, a
   `CarbonImmutable` or a list of strings, so an event crosses a queue as it is and a queued listener receives what a
   synchronous one does.
-- Every change asks the freshness contract before it writes (SSO-2.12, see `freshness.md`), so a stale caller is refused
-  before anything could be reported:
+- Every change asks the freshness contract before it writes (see `freshness.md`), so a stale caller is refused before
+  anything could be reported:
 
-  | Change                                                  | Operations asked                                                       |
-  |---------------------------------------------------------|------------------------------------------------------------------------|
-  | `create()`                                              | `sso.connection.trust`, and each other operation a setting given needs |
-  | `update()` of a trust setting or a secret               | `sso.connection.trust`                                                 |
-  | `update()` of IdP-initiated sign-in or its start URL    | `sso.connection.idp_initiated`                                         |
-  | `update()` of the name, the mapping or the scopes alone | nothing                                                                |
-  | `enable()`                                              | `sso.connection.enable`, even when the connection is enabled already   |
-  | `addNext()`, `makeCurrent()`, `retire()`                | `sso.keys.rotate`                                                      |
-  | `trustCertificate()`, `distrustCertificate()`           | `sso.connection.trust`                                                 |
+  | Change                                                       | Operations asked                                                       |
+  |--------------------------------------------------------------|------------------------------------------------------------------------|
+  | `create()`                                                   | `sso.connection.trust`, and each other operation a setting given needs |
+  | `update()` of a trust setting or a secret                    | `sso.connection.trust`                                                 |
+  | `update()` of IdP-initiated sign-in or its start URL         | `sso.connection.idp_initiated`                                         |
+  | `update()` of the name, the mapping or request options alone | nothing                                                                |
+  | `enable()`                                                   | `sso.connection.enable`, even when the connection is enabled already   |
+  | `addNext()`, `makeCurrent()`, `retire()`                     | `sso.keys.rotate`                                                      |
+  | `trustCertificate()`, `distrustCertificate()`                | `sso.connection.trust`                                                 |
 
-  Each is asked with the maximum age configured for it under `sso.freshness.max_age_seconds`.
+  Each is asked with the maximum age configured for it under `sso.freshness.max_age_seconds`. The request options are
+  `scopes`, `extra_parameters`, `sign_authn_requests` and `force_authn`.
 - Nearing expiry is reported, never enforced.
   `Keys\ExpiryReport::report(ClientContext $client, ?int $withinDays = null, ?Closure $each = null)` lists every key and
   certificate of any connection whose `not_after` is set and at or before the clock's now plus the window, on the write

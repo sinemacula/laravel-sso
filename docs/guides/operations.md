@@ -31,8 +31,7 @@ Nothing is registered while no protocol is on, since the tables the commands rea
 | `expiry_report`    | `sso:keys:expiring`    | `0 0 * * *`   | `sso.operations.cadence.expiry_report`    | `SSO_OPERATIONS_EXPIRY_REPORT_CADENCE`    |
 
 Each is a cron expression. Set one to `null` or empty to leave that task to your own schedule. A malformed one fails
-`php artisan sso:check` under `[operations]`; the schedule reports it to your exception handler and runs the other
-tasks without it.
+`php artisan sso:check` under `[operations]` and stops `schedule:run` from starting until it is fixed.
 
 > [!IMPORTANT]
 > Linking by email stops 24 hours after a domain's last successful check, whatever the schedule, and sooner if
@@ -60,8 +59,8 @@ SSO_OPERATIONS_MUTEX_MINUTES=60
 ```
 
 They save work and guarantee nothing, and they need a cache every server shares, whose driver supports locks. They use
-the store your schedule uses, which `Schedule::useCache()` chooses. A malformed value of either is reported to your
-exception handler, and the four run without mutexes.
+the store your schedule uses, which `Schedule::useCache()` chooses. A malformed value of either fails `sso:check` under
+`[operations]` and stops `schedule:run` from starting until it is fixed.
 
 #### Recovering from a stuck mutex
 
@@ -93,12 +92,12 @@ of the events each one dispatches need a worker too.
 
 ## Exit codes
 
-| Command                | 0                                                  | 1                                                                       |
-|------------------------|----------------------------------------------------|-------------------------------------------------------------------------|
-| `sso:prune`            | Complete, or incomplete with the next run to go on | A kind stopped on an exception, or its log line failed                  |
-| `sso:domains:recheck`  | Every lookup answered                              | A lookup failed, the resolver threw, or the run stopped on an exception |
-| `sso:metadata:refresh` | Whatever the refreshes' outcomes                   | The run stopped on an exception                                         |
-| `sso:keys:expiring`    | However many keys are expiring or have expired     | A warning's dispatch threw, or the run stopped on an exception          |
+| Command                | 0                                                  | 1                                                                                       |
+|------------------------|----------------------------------------------------|-----------------------------------------------------------------------------------------|
+| `sso:prune`            | Complete, or incomplete with the next run to go on | A kind stopped on an exception, its log line failed, or the run stopped on an exception |
+| `sso:domains:recheck`  | Every lookup answered                              | A lookup failed, the resolver threw, or the run stopped on an exception                 |
+| `sso:metadata:refresh` | Whatever the refreshes' outcomes                   | The run stopped on an exception                                                         |
+| `sso:keys:expiring`    | However many keys are expiring or have expired     | A warning's dispatch threw, or the run stopped on an exception                          |
 
 An exception is named by its class alone, since its message could carry a value read from the database. A DNS resolver
 you bind should answer `lookup_failed` rather than throw; if it throws, the recheck leaves that domain as it was,
@@ -154,8 +153,8 @@ From your own code, `app(Pruner::class)->run()` answers a `PruneReport`, and thr
 report, when a kind failed or its log line could not be written; `logFailure` then holds what the logger threw. It
 refuses to run inside a transaction on either connection.
 
-`model:prune` on `SingleUseKey` and `RateLimit` keeps working and deletes the same rows, but `sso:prune` covers
-everything and is all you need.
+`model:prune` on `SingleUseKey` and `RateLimit` also deletes the same rows, but `sso:prune` covers everything and is all
+you need.
 
 ### A store of your own
 

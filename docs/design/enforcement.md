@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This note records how a tenant requires that sessions active in it are established through one of its own connections
-(SSO-4.1 to SSO-4.6, SSO-9.3): the rule the package stores per tenant and the version that changes with every change;
-the four contracts an application or `laravel-iam` binds (enforcement, inheritance, exemption and session revocation)
-and their defaults; how the helper that changes the rule validates, asks for freshness, locks and revokes inside one
-transaction; and the gate an adapter calls before refusing a session it could exempt.
+This note records how a tenant requires that sessions active in it are established through one of its own connections:
+the rule the package stores per tenant and the version that changes with every change; the four contracts an application
+or `laravel-iam` binds (enforcement, inheritance, exemption and session revocation) and their defaults; how the helper
+that changes the rule validates, asks for freshness, locks and revokes inside one transaction; and the gate an adapter
+calls before refusing a session it could exempt.
 
 ## Invariants
 
@@ -23,33 +23,33 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   `previousVersion` `null`. It is never deleted, since another transaction may be waiting to lock it.
 - The rule's `version` is a new lower-case ULID on every change, never reused, exposed on `EnforcementSummary` and on
   `EnforcementChanged`. `Enforcement\EnforcementPolicy::$version` is what an adapter records against a session and
-  rechecks it by (SSO-4.6): the lower-case hex SHA-256 of the rule's version and the policy's satisfying connections,
-  in id order, joined by NUL bytes. So it changes with every change to the rule and whenever a satisfying connection is
-  disabled, deleted or enabled again, and comes back to the same value when the same connections satisfy the same
-  rule. Both are `null` only while a tenant never had a rule stored (no row, or only an unconfigured one).
+  rechecks it by: the lower-case hex SHA-256 of the rule's version and the policy's satisfying connections, in id order,
+  joined by NUL bytes. So it changes with every change to the rule and whenever a satisfying connection is disabled,
+  deleted or enabled again, and comes back to the same value when the same connections satisfy the same rule. Both are
+  `null` only while a tenant never had a rule stored (no row, or only an unconfigured one).
 - Four contracts, each bound by the provider with a default that fails closed and kept when the application or a
   sibling bound it first:
 
-  | Contract                           | Default                            | Binding   | Default behaviour                                                       |
-  |------------------------------------|------------------------------------|-----------|-------------------------------------------------------------------------|
-  | `Contracts\Enforcement`            | `Enforcement\DatabaseEnforcement`  | scoped    | Answers from the stored rule of the enforcing tenant                    |
-  | `Contracts\EnforcementInheritance` | `Enforcement\OwnTenantInheritance` | singleton | Each tenant's own rule applies to it alone (SSO-4.2)                    |
-  | `Contracts\EnforcementExemption`   | `Enforcement\NoExemptions`         | singleton | Nobody is exempt (SSO-4.4)                                              |
-  | `Contracts\SessionRevocation`      | `Revocation\NoSessionRevocation`   | singleton | Revokes nothing and succeeds: existing sessions are untouched (SSO-4.5) |
+  | Contract                           | Default                            | Binding   | Default behaviour                                             |
+  |------------------------------------|------------------------------------|-----------|---------------------------------------------------------------|
+  | `Contracts\Enforcement`            | `Enforcement\DatabaseEnforcement`  | scoped    | Answers from the stored rule of the enforcing tenant          |
+  | `Contracts\EnforcementInheritance` | `Enforcement\OwnTenantInheritance` | singleton | Each tenant's own rule applies to it alone                    |
+  | `Contracts\EnforcementExemption`   | `Enforcement\NoExemptions`         | singleton | Nobody is exempt                                              |
+  | `Contracts\SessionRevocation`      | `Revocation\NoSessionRevocation`   | singleton | Revokes nothing and succeeds: existing sessions are untouched |
 
-- `DatabaseEnforcement::policy($tenantId, $application)` answers from current state on every call, never from a cache
-  (SSO-4.6, SSO-11.2). While `sso.features.enforcement` is off it answers `notRequired($tenantId, $tenantId, null)`
-  with no query and no other contract asked; a malformed switch fails closed (`InvalidArgumentException`). Otherwise it
-  asks the inheritance contract, resolved from the container on each call, for the enforcing tenant (an empty or
-  overlong answer is a `LogicException`), reads that tenant's row through `Enforcement\EnforcementFinder` on the write
-  connection, and answers `notRequired` with no row (version `null`) or a row that is off, and `required` with a row
-  that is on: satisfied by the stored connections that still exist, belong to the enforcing tenant byte for byte and
-  are enabled, read in one statement. A rule whose every satisfying connection has since been
-  disabled or deleted stays required and is satisfied by none; only an exemption admits a session then. An empty
-  application is an `InvalidArgumentException`; a database error propagates (SSO-11.4), never read as not required.
-  Its reads take no lock, so asked inside a transaction that has already read, it answers from that transaction's
-  snapshot (MySQL's `REPEATABLE READ`), which may predate a change committed since; and even a current read does not
-  stop the rule changing before the session it admits commits. It is for answering, not for admitting under a lock.
+- `DatabaseEnforcement::policy($tenantId, $application)` answers from current state on every call, never from a cache.
+  While `sso.features.enforcement` is off it answers `notRequired($tenantId, $tenantId, null)` with no query and no
+  other contract asked; a malformed switch fails closed (`InvalidArgumentException`). Otherwise it asks the inheritance
+  contract, resolved from the container on each call, for the enforcing tenant (an empty or overlong answer is a
+  `LogicException`), reads that tenant's row through `Enforcement\EnforcementFinder` on the write connection, and
+  answers `notRequired` with no row (version `null`) or a row that is off, and `required` with a row that is on:
+  satisfied by the stored connections that still exist, belong to the enforcing tenant byte for byte and are enabled,
+  read in one statement. A rule whose every satisfying connection has since been disabled or deleted stays required and
+  is satisfied by none; only an exemption admits a session then. An empty application is an `InvalidArgumentException`;
+  a database error propagates, never read as not required. Its reads take no lock, so asked inside a transaction that
+  has already read, it answers from that transaction's snapshot (MySQL's `REPEATABLE READ`), which may predate a change
+  committed since; and even a current read does not stop the rule changing before the session it admits commits. It is
+  for answering, not for admitting under a lock.
 - `DatabaseEnforcement::lock($tenantId, $application, $connectionIds)` is what an admission takes first, inside its
   transaction on the storage connection: the package's redemption (`HandoffRecheck::lock()`, before the code) and the
   locked steps of a completion (`Completion\CompletionLocks::take()`). While the feature is off it answers `null` with
@@ -83,14 +83,14 @@ transaction; and the gate an adapter calls before refusing a session it could ex
      rule stopping an ancestor's; it is answered `unchanged` only once step 6's locked read agrees, since the first
      read may come from the snapshot of a transaction the caller opened;
   4. turning it on: one of the connections given must be enabled with `has_completed_sign_in` set, so a misconfigured
-     connection cannot lock the tenant out (SSO-4.3), else `completed_sign_in_required`; turning it off needs none;
+     connection cannot lock the tenant out, else `completed_sign_in_required`; turning it off needs none;
   5. freshness, asked in step 6 once the rows are locked and only of a change that goes ahead:
      `Freshness\FreshnessGate::check(FreshnessOperation::ENFORCEMENT_UPDATE)`, `sso.enforcement.update` with its
-     configured maximum age (SSO-2.12); `stale` is `freshness_required`;
-  6. one transaction on the storage connection (retried up to three times after a deadlock when it is the outermost):
-     lock the tenant's row, then the connections given, steps 2 to 4 judged again on the locked rows, step 5, the write
-     through the model (`enabled`, `connection_ids` sorted and unique, a new `version`, `changed_at` from the clock),
-     the revocation when the rule is now on, and the report.
+     configured maximum age; `stale` is `freshness_required`;
+  6. one transaction on the storage connection (tried at most three times in all on a deadlock or serialisation failure
+     when it is the outermost): lock the tenant's row, then the connections given, steps 2 to 4 judged again on the
+     locked rows, step 5, the write through the model (`enabled`, `connection_ids` sorted and unique, a new `version`,
+     `changed_at` from the clock), the revocation when the rule is now on, and the report.
 - Lock order: a tenant's enforcement row, then connection rows in id order (one locking statement by id, ordered by
   id, with the tenant compared byte for byte in PHP), then (for an admission) its request or code. Every read under the
   lock that decides the write is a locking read, since a plain read answers from the snapshot of a transaction the
@@ -119,16 +119,15 @@ transaction; and the gate an adapter calls before refusing a session it could ex
 - Each change is reported once, inside its transaction, through `Administration\EnforcementEvents::changed()`
   (`EnforcementChanged`, with the tenant, the acting identity, `enabled`, `connectionIds`, `version` and
   `previousVersion`, `null` for a tenant's first change, made on no row or on an unconfigured one), dispatched after
-  commit and never when it rolls back (SSO-10.5). The event only reports: security never depends on a listener
-  (SSO-9.3).
+  commit and never when it rolls back. The event only reports: security never depends on a listener.
 - `Enforcement\ExemptionGate::admit($policy, $application, $identity, $client, $sessionId)` (`@api`) is what an adapter
-  calls when a session in an enforcing tenant would otherwise be refused (SSO-4.4, SSO-9.3). A policy that requires
-  nothing answers `not_exempt` with nothing asked or reported. Otherwise it asks `EnforcementExemption`, resolved from
-  the container on each call; `exempt` is reported once through `EnforcementEvents::exemptionUsed()` (`ExemptionUsed`,
-  after the storage connection's open transaction commits, at once when none is open) and returned. An exception from
-  the contract propagates: the gate never answers `exempt` when it cannot tell. `judge($policy, $application,
-  $identity)` answers exactly as `admit()` does and reports nothing, for a session judged again whose exemption was
-  reported when it was admitted.
+  calls when a session in an enforcing tenant would otherwise be refused. A policy that requires nothing answers
+  `not_exempt` with nothing asked or reported. Otherwise it asks `EnforcementExemption`, resolved from the container on
+  each call; `exempt` is reported once through `EnforcementEvents::exemptionUsed()` (`ExemptionUsed`, after the storage
+  connection's open transaction commits, at once when none is open) and returned. An exception from the contract
+  propagates: the gate never answers `exempt` when it cannot tell. `judge($policy, $application, $identity)` answers
+  exactly as `admit()` does and reports nothing, for a session judged again whose exemption was reported when it was
+  admitted.
 - Every outcome of a change is an `Enforcement\EnforcementResult` (status `Enforcement\Enums\EnforcementStatus`):
   `updated` or `unchanged` with an `EnforcementSummary`; `refused` with `feature_disabled`, `freshness_required` or
   `completed_sign_in_required`; `invalid` with `settings_invalid` and its `Connections\SettingViolation`s. A violation
@@ -142,8 +141,8 @@ transaction; and the gate an adapter calls before refusing a session it could ex
    new version, the revocation removes the sessions the rule no longer allows, and `EnforcementChanged` is queued.
 3. The transaction commits; the change and the revocation become visible together, and the event reaches listeners.
 4. From the next call, `Contracts\Enforcement` answers `required` with the connection and the new version; under
-   `laravel-iam` the tenant authentication policy (AUTH-2.12) refuses a session not established through it, unless the
-   adapter's call to `ExemptionGate::admit()` answers `exempt`.
+   `laravel-iam` the tenant authentication policy refuses a session not established through it, unless the adapter's
+   call to `ExemptionGate::admit()` answers `exempt`.
 
 ## Failure / Edge Cases
 
@@ -158,7 +157,7 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   committed; the redemption or completion that waited sees the new rule and refuses with `enforcement_unsatisfied`. No
   committed session violates the committed rule; a serialisation failure on PostgreSQL is the other safe outcome.
 - A revocation that throws, a database error, an exemption contract that throws and an inheritance contract that throws
-  all propagate (SSO-11.4). Inside the application's own transaction, a deadlock propagates rather than being retried.
+  all propagate. Inside the application's own transaction, a deadlock propagates rather than being retried.
 - A rule left with no enabled connection stays on and admits nobody but the exempt; turning it off, or naming an
   enabled connection, is the way out.
 

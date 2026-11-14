@@ -454,5 +454,5 @@
             }
         }
     ],
-    "description": "The BL-0A adversarial fixtures. expect is the outcome SSO-6 requires; package is the outcome the package adapter gives under the default policy (RSA-SHA256, RSA-OAEP, AES-128/192-GCM), with with_cbc for AES-CBC listed. {{FIXTURES}} in 51 and 54 stands for this directory."
+    "description": "The adversarial fixtures. expect is the outcome the response rules require; package is the outcome the package adapter gives under the default policy (RSA-SHA256, RSA-OAEP, AES-128/192-GCM), with with_cbc for AES-CBC listed. {{FIXTURES}} in 51 and 54 stands for this directory."
 }

@@ -135,13 +135,14 @@ that policy's version, so a change reaches existing sessions only through the sy
 
 `policy()` takes no lock: it answers the rule as it is, but the rule can change before the session it admitted is
 written, and that session would then escape the change's revocation. The package's own admissions close that gap. A
-handoff redemption and a completion lock the tenant's rule first (the enforcing tenant's row, inserted empty when the
-tenant has none), then the connections in id order, then their own row, and judge the rule from what they locked. A
-change to the rule waits for them, and its revocation then sees the session your redemption wrote in its transaction;
-or they wait for the change, and see it. Write the session inside the redemption's transaction (see
-[Redeeming a handoff](redeeming-a-handoff.md#transactions)) for this to hold. On PostgreSQL under `REPEATABLE READ`, a
-redemption or completion that waited can get a serialisation failure instead: it is thrown, and the whole transaction
-is retried or the person starts again.
+handoff redemption and a completion take the guard of an identity being linked by a verified domain first, when there
+is one, then the tenant's rule (the enforcing tenant's row, inserted empty when the tenant has none), then the
+connections in id order, then their own row, and judge the rule from what they locked. A change to the rule waits for
+them, and its revocation then sees the session your redemption wrote in its transaction; or they wait for the change,
+and see it. Write the session inside the redemption's transaction (see
+[Redeeming a handoff](redeeming-a-handoff.md#transactions)) for this to hold. On PostgreSQL under `REPEATABLE READ`,
+a redemption or completion that waited can get a serialisation failure instead: it is thrown, and the whole
+transaction is retried or the person starts again.
 
 If you bind your own `Contracts\Enforcement`, the package asks it as you bound it and locks nothing of its own
 enforcement. A current read in your contract does not close the gap above: your contract must itself serialise an

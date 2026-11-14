@@ -3,10 +3,10 @@
 ## Purpose
 
 This note records which transaction owns which writes and which events, across a whole completion, redemption and
-administrative change (SSO-4.5, SSO-8.8, SSO-9.9, SSO-10.5). "A failure rolls everything back" is not true of a flow
-that spans several transactions, so no guarantee here is stated of a flow: each is stated of the one transaction it
-belongs to. A failure undoes that transaction's writes and after-commit events, and what an earlier transaction
-committed stands, by design. `linking.md` describes the stages, and this note what each stage's failure leaves.
+administrative change. "A failure rolls everything back" is not true of a flow that spans several transactions, so no
+guarantee here is stated of a flow: each is stated of the one transaction it belongs to. A failure undoes that
+transaction's writes and after-commit events, and what an earlier transaction committed stands, by design. `linking.md`
+describes the stages, and this note what each stage's failure leaves.
 
 ## Invariants
 

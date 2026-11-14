@@ -2,19 +2,19 @@
 
 ## Purpose
 
-This note records how a verified result is linked to an identity (SSO-8.2 to SSO-8.4, SSO-6.9, SSO-1.5, SSO-4.5):
-what a link is keyed by, how the package's link store resolves a result and creates a link under its uniqueness and
-the link limit, and how the link helper lists an identity's links and removes one, revoking the identity's sessions
-through the connection in the same transaction. The tables, models and lock order every flow shares are in `flows.md`;
-the state machine that reserves and activates links by a verified domain (SSO-8.8) is in `linking.md`.
+This note records how a verified result is linked to an identity: what a link is keyed by, how the package's link store
+resolves a result and creates a link under its uniqueness and the link limit, and how the link helper lists an
+identity's links and removes one, revoking the identity's sessions through the connection in the same transaction. The
+tables, models and lock order every flow shares are in `flows.md`; the state machine that reserves and activates links
+by a verified domain is in `linking.md`.
 
 ## Invariants
 
 - A link is keyed by `Links\LinkSubject`: the issuer (1 to 1024 bytes), the subject (1 to 1024 bytes) and, for SAML, the
   `NameID` format (1 to 255 bytes, `null` for none), each exactly as received; the subject is never trimmed or
-  normalised, so `Subject`, `subject` and `subject` followed by a space are three subjects (SSO-6.9).
-  `LinkSubject::of($result)` takes the three from a `Results\VerifiedResult`; anything out of bounds is an
-  `InvalidArgumentException` naming no value.
+  normalised, so `Subject`, `subject` and `subject` followed by a space are three subjects. `LinkSubject::of($result)`
+  takes the three from a `Results\VerifiedResult`; anything out of bounds is an `InvalidArgumentException` naming no
+  value.
 - `LinkSubject::key()` is the stored `subject_key`: the lower-case hex SHA-256 of
   `'sso-link-v1' . "\0" . lp(issuer) . (format === null ? 'N' : 'F' . lp(format)) . lp(subject)`, where
   `lp(x) = pack('N', strlen(x)) . x`. The length prefixes keep any two different triples apart, the marker keeps a
@@ -23,31 +23,31 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   or trim a subject; the subject itself is kept byte for byte in a binary column (`Models\Casts\BinaryString`).
 - `Contracts\Linker` defaults to `Links\NoLinks`, which links nothing. `Links\LinkStore` implements it over the links
   table; it is not the default: the application binds it (scoped), or `laravel-iam` does, under which it also answers
-  `laravel-authentication`'s link contract (SSO-8.3, AUTH-3.9).
+  `laravel-authentication`'s `ExternalIdentityLinks` contract.
 - `Contracts\LinkStorage` is the `Linker` whose resolution and writes are one store, shared by resolution and mutation:
   ownership, generations, reservations and confirmation. `LinkStore` implements it, a wrapper delegates to it, and
   `NoLinks` does not. Whatever writes a link asks `Links\LinkStorageBinding` first and refuses before writing with a
   `LogicException` naming the problem; the boot check reports the pairing while `domain_linking` is on. No row is ever
   written that the resolver ignores.
 - `LinkStore::resolve($result, $client)` reads the row with `connection_id` the result's connection and `subject_key`
-  its subject's key, of any state, by a locking read (`lockForUpdate()`) on the write connection (SSO-11.3), and
-  compares the connection, issuer, format and subject again in PHP, byte for byte: a row whose key alone matches is not
-  the subject's. A result reaches only the links of the connection it completed through, so another connection, of any
-  tenant, with the same issuer and subject resolves nothing (SSO-8.2). It answers a typed `Links\LinkResolution`:
-  `absent`, `linked`, `reserved`, `suspended` or `scope_unknown`. None but `linked` resolves anything, and none but
-  `absent` is an unlinked subject. Nothing else in the result (a name, an email, any mapped attribute) is read.
+  its subject's key, of any state, by a locking read (`lockForUpdate()`) on the write connection, and compares the
+  connection, issuer, format and subject again in PHP, byte for byte: a row whose key alone matches is not the
+  subject's. A result reaches only the links of the connection it completed through, so another connection, of any
+  tenant, with the same issuer and subject resolves nothing. It answers a typed `Links\LinkResolution`: `absent`,
+  `linked`, `reserved`, `suspended` or `scope_unknown`. None but `linked` resolves anything, and none but `absent` is an
+  unlinked subject. Nothing else in the result (a name, an email, any mapped attribute) is read.
 - A `sign_in` result it resolves has the link's `last_used_at` stamped with the clock's now by one statement,
   `UPDATE ... WHERE id = ? AND (last_used_at IS NULL OR last_used_at <= now - 60 s)`: at most one change a minute per
   link (`LinkStore::LAST_USED_RESOLUTION_SECONDS`), without touching `updated_at`. The statement is sent on every
   `sign_in` resolution that finds a link, and changes nothing within the minute. A `link` or a `reauthenticate` stamps
   nothing, so neither ever looks like a sign-in.
-- The SSO-8.8 provenance rule, for an active link with verified domain provenance, by what `Contracts\PrincipalScope`
-  answers for its identity. `within_tenant` resolves it. `outside_tenant` suspends it for good, resolving nothing until
-  a confirming `link` by an independently authenticated caller (`linking.md`): `LinkStore::suspend()` stores it,
-  latched, raises the connection's `links_version` and reports `LinkSuspended`, and the resolution also revokes the
-  sessions established through it, `LinkStore::revokeSessions()`, in one transaction, a savepoint inside the caller's.
-  In it the link's connection is locked first and the link read again by a locking read, and only a link still active by
-  a verified domain is suspended, revoked and reported, so the established order holds and two resolutions latch once,
+- The provenance rule, for an active link with verified domain provenance, by what `Contracts\PrincipalScope` answers
+  for its identity. `within_tenant` resolves it. `outside_tenant` suspends it for good, resolving nothing until a
+  confirming `link` by an independently authenticated caller (`linking.md`): `LinkStore::suspend()` stores it, latched,
+  raises the connection's `links_version` and reports `LinkSuspended`, and the resolution also revokes the sessions
+  established through it, `LinkStore::revokeSessions()`, in one transaction, a savepoint inside the caller's. In it the
+  link's connection is locked first and the link read again by a locking read, and only a link still active by a
+  verified domain is suspended, revoked and reported, so the established order holds and two resolutions latch once,
   whoever calls `resolve()`. A caller resolving inside a transaction of its own locks the connection first, as the
   package's completion and redemptions do; with none open, `resolve()` keeps the order itself. That repairs what the
   principal change missed; asking twice is safe. `unknown` is `scope_unknown`: that attempt is refused, and nothing is
@@ -99,29 +99,30 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   is ever reserved again; a live reservation holds the subject, so a creation is `subject_already_linked`, and a `link`
   flow is refused `link_reserved` before it gets here.
 
-  Uniqueness is not configurable; the limit is (SSO-8.4). Any other error propagates (SSO-11.4).
+  Uniqueness is not configurable; the limit is, through `Contracts\LinkLimit`. Any other error propagates.
 - `Links\LinkCreation` (status `Links\Enums\LinkCreationStatus`) answers `created` with a `LinkSummary`,
   `subject_already_linked` or `link_limit_reached`, each refusal with its `FailureReason` (`reason()`), `isCreated()`
   and `isRefused()`. A refusal wrote and reported nothing, and never says which identity holds a subject.
 - `Links\LinkService` (`@api`, resolved per request) takes an identity as an `IdentityReference` or the string `me`,
   which names the caller passed; `me` without a caller, or any other string, is an `InvalidArgumentException`.
   - `list($identity, $caller)`, the identity a reference or `me` for the identity of the `Identities\Caller` given,
-    answers the identity's `LinkSummary`s in every connection of every tenant (SSO-1.5), read on the write connection,
-    the identity compared byte for byte, ordered by `created_at` then `id`; a link whose connection no longer exists is
-    left out.
+    answers the identity's `LinkSummary`s in every connection of every tenant, read on the write connection, the
+    identity compared byte for byte, ordered by `created_at` then `id`; a link whose connection no longer exists is left
+    out.
   - `remove($identity, $linkId, $client, $caller)`, in this order, a refusal deleting, revoking and reporting nothing;
     the one caller resolves `me`, is the one freshness judges and is the acting identity `LinkRemoved` names, whether
     it removes its own link or another identity's:
     1. the identity is resolved;
     2. the link is found by its id and the identity (a plain read on the write connection); a missing link and another
        identity's are both `link_not_found`, so nothing is revealed;
-    3. `Freshness\FreshnessGate::check(FreshnessOperation::LINK_REMOVE, $caller)` (`sso.link.remove`, SSO-2.12); `stale`
-       is `freshness_required`;
-    4. one transaction on the storage connection: the link's connection row is locked, then the link is read again
-       locked (gone, reassigned to another identity or orphaned is `link_not_found`), deleted through the model,
+    3. one transaction on the storage connection: the link's connection row is locked, then the link is read again
+       locked (gone, reassigned to another identity or orphaned is `link_not_found`);
+    4. under those locks, `Freshness\FreshnessGate::check(FreshnessOperation::LINK_REMOVE, $caller)`
+       (`sso.link.remove`); `stale` is `freshness_required`;
+    5. the link is deleted through the model, the connection's `links_version` is raised,
        `Contracts\SessionRevocation::revoke(RevocationScope::identityInConnection($tenantId, $connectionId,
-       $identity, $linkId))` is called inside the transaction with the removed link's id (SSO-4.5), and `LinkRemoved`
-       is reported after commit.
+       $identity, $linkId))` is called inside the transaction with the removed link's id, and `LinkRemoved` is reported
+       after commit.
 
     Removing the identity's last link is allowed. A revocation that throws rolls the delete back, reports nothing and
     propagates; an adapter that writes through the same Laravel connection commits or rolls back with the removal.
@@ -138,8 +139,8 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   row, rather than miss it.
 - `Links\LinkEvents` (`@internal`) builds each context through `Events\EventContexts::make()` and dispatches through
   `Events\AfterCommitDispatcher`, so an event reaches listeners once the storage connection's transaction commits and
-  never when it rolls back (SSO-10.5). No event carries the subject; the public reference is the only flow identifier
-  (SSO-9.8). Refusals report nothing and fire no `FlowFailed`: a helper's refusal is its result.
+  never when it rolls back. No event carries the subject; the public reference is the only flow identifier. Refusals
+  report nothing and fire no `FlowFailed`: a helper's refusal is its result.
 - Lock order, as `flows.md` sets it: a connection's row, then its links. Every read under the lock that decides a write
   is a locking read, since a caller's MySQL `REPEATABLE READ` transaction answers a plain read from an older snapshot;
   the removal's first, plain read is confirmed by the locking read before anything is written.
@@ -171,7 +172,7 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
   instead.
 - A bound limit that answers zero or less is a misconfiguration, never a silent refusal.
 - A link deleted or reassigned between the removal's first read and its lock is `link_not_found`, with nothing revoked.
-- A revocation that throws, and any database error, propagate (SSO-11.4).
+- A revocation that throws, and any database error, propagate.
 
 ## Implementation Anchors
 
@@ -204,5 +205,5 @@ the state machine that reserves and activates links by a verified domain (SSO-8.
 
 - A change to the key's layout (a new version tag), to what a lookup compares, or to the bounds of a subject's parts.
 - A change to what counts toward the limit, to the order of a creation or a removal, or to the lock order.
-- A change to the SSO-8.8 provenance rule, or to the reservation, activation or voiding of links (`linking.md`).
+- A change to the verified domain provenance rule, or to the reservation, activation or voiding of links (`linking.md`).
 - A new caller of `create()` or of `SessionRevocation`, a new outcome of `LinkCreation` or `LinkResult`.

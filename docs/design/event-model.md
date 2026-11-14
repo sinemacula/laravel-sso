@@ -2,18 +2,17 @@
 
 ## Purpose
 
-This note records what a package event is: the context every one carries, the one projection that builds it and what
-it refuses, when an event is dispatched, and how a refused operation is reported (SSO-10.2, SSO-10.4, SSO-10.5, SSO-9.6,
-SSO-9.8). Audit sinks, SIEM forwarders and `laravel-audit-log` attach to these events, so their shape and their timing
-are a contract.
+This note records what a package event is: the context every one carries, the one projection that builds it and what it
+refuses, when an event is dispatched, and how a refused operation is reported. Audit sinks, SIEM forwarders and
+`laravel-audit-log` attach to these events, so their shape and their timing are a contract.
 
 ## Invariants
 
 - Every event the package dispatches implements `Contracts\SsoEvent` and carries one `Events\EventContext`
   (`context()` returns it), so one listener on the contract receives them all and attributes each the same way.
   Laravel dispatches an event to the listeners of the interfaces it implements, so no package event needs listing.
-- `EventContext` is `final readonly` and holds strings only, fixed when it is built, under the names
-  `laravel-authentication`'s events give the same facts (AUTH-9.4, SSO-9.6):
+- `EventContext` is `final readonly` and holds `occurredAt` and otherwise strings or `null`, fixed when it is built,
+  under the names `laravel-authentication`'s events give the same facts:
 
   | Field                                          | Meaning                                                                |
   |------------------------------------------------|------------------------------------------------------------------------|
@@ -39,23 +38,23 @@ are a contract.
   connection's tenant. A sink mapping the suite's `tenant_id` reads the same fact from every package. A part the flow
   did not establish, or that does not apply to the event, is `null`. `toArray()` is the record an audit sink keeps:
   snake_case keys, and `occurred_at` as an ISO 8601 UTC string to the microsecond.
-- One projection builds every context: `Events\EventContexts::make()`. Nothing else in the package calls
-  `new EventContext`. Its parameter list is the admission control: the action's `Http\ClientContext`, required, then
-  fifteen named fields, each `?string` defaulting to `null`, and nothing else. No array and no other object is admitted,
-  so a verified result, a request, a raw payload or a set of mapped attributes can never reach an event whole, and a
-  field the context does not name cannot reach one. A secret, an assertion, a provider token, a verifier, a handoff
-  code, protocol state (`state`, `RelayState`, a nonce, the PKCE verifier) and a transport header have no parameter to
-  arrive through (SSO-10.4).
-- The public reference (`requestReference`) is the only flow identifier an event carries (SSO-9.8). The authorisation
-  request's internal id, its `state` and `RelayState`, the SAML request and assertion ids, and the handoff code are
-  never passed to the projection.
-- Mapped attributes appear only on the unlinked-result event (SSO-8.6), which carries them on its own fields, outside
-  the context, because a provisioning listener needs them. No other event carries one.
+- One projection builds every context: `Events\EventContexts::make()`. Nothing else in the package calls `new
+  EventContext`. Its parameter list is the admission control: the action's `Http\ClientContext`, required, then fifteen
+  named fields, each `?string` defaulting to `null`, and nothing else. No array and no other object is admitted, so a
+  verified result, a request, a raw payload or a set of mapped attributes can never reach an event whole, and a field
+  the context does not name cannot reach one. A secret, an assertion, a provider token, a verifier, a handoff code,
+  protocol state (`state`, `RelayState`, a nonce, the PKCE verifier) and a transport header have no parameter to arrive
+  through.
+- The public reference (`requestReference`) is the only flow identifier an event carries. The authorisation request's
+  internal id, its `state` and `RelayState`, the SAML request and assertion ids, and the handoff code are never passed
+  to the projection.
+- Mapped attributes appear only on the unlinked-result event, which carries them on its own fields, outside the context,
+  because a provisioning listener needs them. No other event carries one.
 - The projection reads the time from `Contracts\Clock` and takes the client from the `Http\ClientContext` each call is
   given, never from the request being served, so an Octane or queue worker never attributes one request's event to
-  another's client (SSO-11.2). Every public action that records an event takes that context and threads it to the
-  projection; the application builds it with `ClientContext::fromRequest($request)`, and work with no client (a console
-  command, a queued job, the schedule) passes `new ClientContext(null, null)`, so its events carry neither value.
+  another's client. Every public action that records an event takes that context and threads it to the projection; the
+  application builds it with `ClientContext::fromRequest($request)`, and work with no client (a console command, a
+  queued job, the schedule) passes `new ClientContext(null, null)`, so its events carry neither value.
 - Every value is cleaned before it is kept, without reading configuration, on top of what the client context already
   made safe (an IP address kept only when valid; a user agent without control or bidirectional characters or invalid
   UTF-8, then cut to 512 characters):
@@ -68,8 +67,8 @@ are a contract.
     log line or override the direction of the text around it. An audit view still isolates and escapes each value
     it shows, since right-to-left text reorders without any control;
   - a value that is empty once cleaned is `null`.
-- Events report only. Nothing that must happen for security depends on a listener: enforcement is a synchronous
-  contract call (SSO-4.5, SSO-4.6), never a listener (SSO-10.5).
+- Events report only. Nothing that must happen for security depends on a listener: enforcement is a synchronous contract
+  call, never a listener.
 - Every event but the unlinked-result event is dispatched through `Events\AfterCommitDispatcher::dispatch()`, once the
   writes that caused it commit, on the storage connection unless the caller names another:
   - with no transaction open on that connection, at once;
@@ -99,13 +98,15 @@ are a contract.
   not delivered (the testing traits begin their wrapping transaction so, and the application's then begin at level 2),
   and a `commit()` called at level 0 after a Laravel 12 failure, which runs the stranded callbacks with no begin first.
 - `StrandedTransactions` is a singleton, resolved when the provider boots, never scoped, so the listener and the
-  dispatch share its marks. It holds them weakly, by record, and nothing of a request (SSO-11.2).
-- The unlinked-result event (SSO-8.6) alone is dispatched with `dispatchNow()`: synchronously, inside the flow,
-  before any handoff is issued, so a listener can provision the identity in time. A queued listener on it is too late.
+  dispatch share its marks. It holds them weakly, by record, and nothing of a request.
+- The unlinked-result event alone is dispatched straight through Laravel's events dispatcher, by
+  `Completion\ProvisioningOffer::dispatch()`, between the transaction that stops at the provisioning boundary and the
+  final continuation: synchronously, outside any transaction, before any handoff is issued, so a listener can provision
+  the identity in time. A queued listener on it is too late.
 - One failure event, `Events\FlowFailed`, reports every refused operation, with the flow (`Events\Enums\Flow`) and the
-  reason (`Events\Enums\FailureReason`), and exactly one is fired per refused operation, however many checks it failed
-  (SSO-10.2). It holds its context, its flow and its reason and nothing else: no free-text message, since a provider's
-  diagnostic text goes to the logs, sanitised.
+  reason (`Events\Enums\FailureReason`), and exactly one is fired per refused operation, however many checks it failed.
+  It holds its context, its flow and its reason and nothing else: no free-text message, since a provider's diagnostic
+  text goes to the logs, sanitised.
 
   | Flow                    | The operation refused                                               |
   |-------------------------|---------------------------------------------------------------------|
@@ -119,17 +120,17 @@ are a contract.
 - `FailureReason` and `Flow` are stable once released: a value is never renamed or reused, and a removed one leaves its
   value unused. A part of the package that reports a new reason adds its case to `FailureReason`, in the group of its
   flow; SIEM consumers count by these values.
-- Administration events (SSO-10.3) report each change a management helper makes to a connection, a key or a certificate,
-  and the nearing expiry of a key or certificate. `Administration\AdministrationEvents` builds every one, its context
-  through `EventContexts::make()` from the connection's id, its tenant and protocol and the identity of the caller the
+- Administration events report each change a management helper makes to a connection, a key or a certificate, and the
+  nearing expiry of a key or certificate. `Administration\AdministrationEvents` builds every one, its context through
+  `EventContexts::make()` from the connection's id, its tenant and protocol and the identity of the caller the
   application passed (`Identities\Caller`, as `actingIdentityMorphClass` and `actingIdentityId`; never its session), and
   hands it to `AfterCommitDispatcher::dispatch()` inside the helper's transaction, so it is delivered when that
-  transaction commits and never when it, or a transaction the application wrapped it in, rolls back (SSO-10.5). Its
-  context carries no flow identifier, identity, application or purpose. A refused change and a change that changed
-  nothing report nothing, and fire no `FlowFailed`, since a helper's refusal is its result. No administration event
-  holds a secret, a ciphertext, a private key or a setting's value: `ConnectionUpdated` names what changed, never its
-  value. The nearing-expiry event reports a certificate's end of validity and never enforces it, with no acting
-  identity. `administration-events.md` records the rest:
+  transaction commits and never when it, or a transaction the application wrapped it in, rolls back. Its context carries
+  no flow identifier, identity, application or purpose. A refused change and a change that changed nothing report
+  nothing, and fire no `FlowFailed`, since a helper's refusal is its result. No administration event holds a secret, a
+  ciphertext, a private key or a setting's value: `ConnectionUpdated` names what changed, never its value. The
+  nearing-expiry event reports a certificate's end of validity and never enforces it, with no acting identity.
+  `administration-events.md` records the rest:
 
   | Event                | Fields beyond the context                                  | Dispatched by                                                                                                                                                               |
   |----------------------|------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|

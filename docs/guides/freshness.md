@@ -4,9 +4,9 @@ Before each change that could widen or redirect access to a tenant, or destroy i
 a connection, claiming a domain, turning enforcement on, linking an identity), the package asks whether the caller
 authenticated recently enough. It asks one contract, `SineMacula\Laravel\Sso\Contracts\Freshness`, with the operation's
 stable name, the maximum age of the caller's authentication that operation requires, in seconds, and the caller the
-change is made for. Only a `fresh` answer lets the change write; on `stale` the helper writes nothing, reports nothing,
-and answers the failure reason `freshness_required`, so your application can ask the caller to authenticate again and
-retry.
+change is made for. Only a `fresh` answer lets the change write; on `stale` the helper changes nothing (an enforcement
+change may leave the tenant's empty guard row, which holds no rule), reports nothing, and answers the failure reason
+`freshness_required`, so your application can ask the caller to authenticate again and retry.
 
 ## Why the default refuses
 
@@ -166,9 +166,11 @@ match on its stable name, never on its position.
 ## The order every change follows
 
 Each change finds what it changes and validates what it was given; then, in one transaction on the storage connection,
-it takes its locks, asks the contract, and only then writes, reporting the change inside it. So a refusal never leaves
-a partial change or an event behind, and your contract is asked after the locks the package takes for the change: it
-may lock the caller's session row there, with a current read, and keep that lock until the change commits.
+it takes its locks, asks the contract, and only then writes, reporting the change inside it. So a refusal never leaves a
+partial change or an event behind, and your contract is asked after the locks the package takes for the change: it may
+lock the caller's session row there, with a current read, and keep that lock until the change commits. The one exception
+is a key change, which locks its key rows after the answer, always under the connection's lock it already holds, so it
+cannot close a cycle through your session row.
 
 Verifying a domain, adding a key and refreshing metadata also ask once before their DNS lookup, key generation or
 fetch, when no transaction is open, so a stale caller spends none of them; the answer under the locks still decides.

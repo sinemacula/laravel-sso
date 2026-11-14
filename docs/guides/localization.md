@@ -15,13 +15,13 @@ translation files, where you show them.
 Each message is a case of `SineMacula\Laravel\Sso\Localization\Enums\Message`. Its value is the line's key in the
 package's `messages` file, so its full translation key is `sso::messages.{key}`.
 
-| Case                       | Key                        | English                                                                         | Where it appears                                                                               |
-|----------------------------|----------------------------|---------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------|
-| `POST_NAVIGATION_TITLE`    | `post_navigation.title`    | Signing you in                                                                  | The title of the page your client builds to post an `AuthnRequest` by HTTP-POST                |
-| `POST_NAVIGATION_CONTINUE` | `post_navigation.continue` | Continue                                                                        | The button on that page, for a browser that does not post the request itself                   |
-| `POST_NAVIGATION_NOSCRIPT` | `post_navigation.noscript` | JavaScript is turned off in your browser. Select Continue to finish signing in. | The text on that page shown when JavaScript is turned off                                      |
-| `COMPLETION_INVALID`       | `completion.invalid`       | The sign-in response could not be accepted.                                     | The body of the `400` a completion answers when no trusted redirect target is known            |
-| `COMPLETION_REDIRECTING`   | `completion.redirecting`   | Returning you to the application.                                               | The body of a completion's redirect to your redirect URI, for a client that does not follow it |
+| Case                       | Key                        | English                                                                         | Where it appears                                                                                                        |
+|----------------------------|----------------------------|---------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| `POST_NAVIGATION_TITLE`    | `post_navigation.title`    | Signing you in                                                                  | The title of the page your client builds to post an `AuthnRequest` by HTTP-POST                                         |
+| `POST_NAVIGATION_CONTINUE` | `post_navigation.continue` | Continue                                                                        | The button on that page, for a browser that does not post the request itself                                            |
+| `POST_NAVIGATION_NOSCRIPT` | `post_navigation.noscript` | JavaScript is turned off in your browser. Select Continue to finish signing in. | The text on that page shown when JavaScript is turned off                                                               |
+| `COMPLETION_INVALID`       | `completion.invalid`       | The sign-in response could not be accepted.                                     | The body of the `400` a completion answers when no trusted redirect target is known, and of its `429` when rate limited |
+| `COMPLETION_REDIRECTING`   | `completion.redirecting`   | Returning you to the application.                                               | The body of a completion's redirect to your redirect URI, for a client that does not follow it                          |
 
 ## Reading a message
 

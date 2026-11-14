@@ -314,9 +314,10 @@ It prints `[subject] OK`, `[subject] not enabled` for what is off, or one line p
 a problem. The subjects are `features` (always checked), `extensions`, `storage`, `endpoints`, `applications`, `clock`,
 `secrets`, `fetcher`, `logging`, `rate_limits`, `freshness`, `keys`, `mapping`, `domains`, `flows`, `linking`,
 `metadata`, `pruning` and `operations` (each checked while a protocol is on), and `saml2` and `oidc` (each checked while
-its protocol is on). The check reads configuration only: it opens no database connection and prints no secret or
-configured value. What the checks from `clock` to `operations` cover is in their guides and sections: [Clock](clock.md),
-[Secrets](secrets.md), [Outbound requests](outbound-requests.md), [Logging](logging.md), [Rate limits](rate-limits.md),
+its protocol is on). The check reads configuration only: it opens no database connection and prints no secret, and
+no configured value except the name of a database connection that is not configured. What the checks from `clock` to
+`operations` cover is in their guides and sections: [Clock](clock.md), [Secrets](secrets.md),
+[Outbound requests](outbound-requests.md), [Logging](logging.md), [Rate limits](rate-limits.md),
 [Fresh authentication](freshness.md), [Keys and certificates](keys.md), [Managing connections](managing-connections.md),
 [Domains](domains.md), [Flows](#flows), [Linking by domain](linking-by-domain.md), [SAML metadata](saml-metadata.md) and
 [Operations](operations.md).

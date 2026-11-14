@@ -211,7 +211,7 @@ A refused result carries one of these codes:
 | `principal_scope_unknown`             | the link's verified domain provenance needs a scope your contract could not judge, this once |
 | `link_reserved`                       | a live reservation holds the subject, which a `link` waits out                               |
 | `reservation_invalid`                 | the reservation is gone, expired, or a condition of it no longer holds                       |
-| `identity_mismatch`                   | the caller is not the identity the `link` is bound to                                        |
+| `identity_mismatch`                   | the caller is not the `link`'s identity, or a `reauthenticate`'s link is gone or replaced    |
 | `freshness_required`                  | the caller of a `link` did not authenticate recently enough                                  |
 | `link_ineligible`                     | the identity may not link through the connection                                             |
 | `independent_authentication_required` | the identity holds a verified domain link, and the caller did not authenticate apart from it |
@@ -349,9 +349,10 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
 
 - `lock()` takes the locks a redemption holds until your transaction ends: with the `enforcement` feature on and the
   default enforcement contract bound, the tenant's enforcement row (named by the inheritance contract, and inserted
-  empty when the tenant has none) and then, in one statement in id order, the connection and the connections the rule
-  names; otherwise the connection alone; then the domain claim of the reservation you name. Read your code plainly to
-  learn the result before it, if you need to, but lock your code only after it.
+  empty when the tenant has none) and then, in one statement in id order, the connection, the connections the rule
+  names and, for a `link`, the connections holding the identity's verified domain links; otherwise the connection and
+  those domain links' connections; then the domain claim of the reservation you name. Read your code plainly to learn
+  the result before it, if you need to, but lock your code only after it.
 - `admit()` is `recheck()` followed by the purpose's writes: activating a reservation, creating or confirming a link, or
   renewing a session. It answers an `Admission`: `isPassed()`, or the `outcome` that refused it, with the `identity`
   established, the `linkId` it resolved through, and the `evidence` accepted. `$outcome->reason()` gives the

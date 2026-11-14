@@ -6,8 +6,8 @@ Every log call it makes goes through one logger, `SineMacula\Laravel\Sso\Logging
 
 - writes to the channel you choose, or to your default channel;
 - sanitises the message and every string in the context: control characters and Unicode direction controls removed,
-  whitespace collapsed, secrets replaced with `[redacted]`, and the text cut to at most 512 characters (ending in `…`
-  when cut);
+  whitespace collapsed, secrets replaced with `[redacted]`, and the text cut to at most
+  `logging.max_diagnostic_length` characters (512 by default), ending in `…` when cut;
 - redacts the context: the value under any redacted key is `[redacted]`, an exception is reduced to its class,
   sanitised message and code (no trace), and any other object is written as `[object <class>]`, never dumped.
 

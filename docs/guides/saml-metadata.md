@@ -326,9 +326,9 @@ the next validated fetch once something brings the connection back.
 
 Every metadata document, imported or refreshed, given as XML or fetched, is capped at `sso.metadata.max_bytes`: 1 MiB by
 default, configurable up to a hard ceiling of 256 MiB, and checked at boot. It replaces the fetcher's
-`max_response_bytes` for metadata alone; every other request to a provider (discovery, JWKS, token, UserInfo) keeps the
-fetcher's cap. A fetch stops reading as soon as the response passes the cap (`fetch_failed`), and a document over it is
-never parsed (`metadata_invalid`, `too_large`).
+`max_response_bytes` for metadata, as each OIDC request (discovery, JWKS, token, UserInfo) has its own cap under
+`sso.oidc`; raising it raises no other request's. A fetch stops reading as soon as the response passes the cap
+(`fetch_failed`), and a document over it is never parsed (`metadata_invalid`, `too_large`).
 
 A federation's aggregate (an `EntitiesDescriptor` of every member) is supported out of the box once the cap allows it:
 
@@ -347,11 +347,12 @@ A federation's aggregate (an `EntitiesDescriptor` of every member) is supported 
 > and timeout (`--timeout`, above `sso.metadata.queue.timeout_seconds`), the job's `timeout_seconds`,
 > `claim_seconds` at least as long, and the queue connection's `retry_after` longer than the job's timeout. The
 > download is bounded by the fetcher's `timeout_seconds` (`SSO_FETCHER_TIMEOUT_SECONDS`, 10 by default, at most 60),
-> which every outbound request shares, so raising it raises the deadline of token, UserInfo, discovery and JWKS requests
-> too: a file of 64 MiB needs a sustained 54 Mbit/s to arrive in 10 seconds, and 9 Mbit/s in 60. Import such a URL
-> from the console or a queued job, never a web request. Where the federation publishes a URL per entity (an MDQ
-> service), use it instead: it is a few KiB, needs no raised cap, and is still signed by the federation; it is the only
-> way when the aggregate cannot download within 60 seconds.
+> which discovery and JWKS requests share, so raising it raises their deadline too (token and UserInfo requests keep
+> `sso.oidc.token_timeout_seconds` and `sso.oidc.userinfo_timeout_seconds`): a file of 64 MiB needs a sustained
+> 54 Mbit/s to arrive in 10 seconds, and 9 Mbit/s in 60. Import such a URL from the console or a queued job, never a
+> web request. Where the federation publishes a URL per entity (an MDQ service), use it instead: it is a few KiB, needs
+> no raised cap, and is still signed by the federation; it is the only way when the aggregate cannot download within
+> 60 seconds.
 
 ```dotenv
 SSO_METADATA_MAX_BYTES=67108864

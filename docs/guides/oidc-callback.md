@@ -125,8 +125,8 @@ connection are voided, and a completion waiting on the token endpoint is refused
 The connection signs an RFC 7523 client assertion for each token request with its own key, so no secret is shared:
 
 1. Turn on `client_authentication` `private_key_jwt`, then add a key with
-   `KeyService::addNext($tenantId, $connectionId, KeyUse::CLIENT_ASSERTION)` and make it current with `makeCurrent()`
-   (see [Keys](keys.md)).
+   `KeyService::addNext($tenantId, $connectionId, KeyUse::CLIENT_ASSERTION, $client)`. The connection's first key of
+   that use is current at once; a later one is added as `next` until you call `makeCurrent()` (see [Keys](keys.md)).
 2. Register the connection's public JWKS URL at the provider, serving its body from your application, or upload its
    keys where the provider requires that (see [Service provider metadata](service-provider-metadata.md)).
 3. Give the provider's token endpoint as the audience it expects. The assertion's `aud` is the connection's

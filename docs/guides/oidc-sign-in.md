@@ -129,7 +129,7 @@ authentication and nothing else; see [Starting a Flow](starting-a-flow.md#purpos
 | Error                    | Why                                                                                                  |
 |--------------------------|------------------------------------------------------------------------------------------------------|
 | `connection_unavailable` | Disabled, incomplete, changed while starting, or its endpoint's query names a parameter              |
-| `metadata_expired`       | A refresh validated the discovery document or the JWKS longer ago than the limit                     |
+| `metadata_expired`       | The discovery document or the JWKS was last validated longer ago than the limit                      |
 | `freshness_required`     | A `link` from a caller who did not authenticate recently enough                                      |
 | `session_ineligible`     | A `reauthenticate` for an identity not signed in through the connection on the application's session |
 

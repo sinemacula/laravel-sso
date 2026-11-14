@@ -23,10 +23,11 @@ $keys = app(KeyService::class);
 | `keys.expiry_thresholds`    | `[30, 14, 7, 1, 0]` |                                 | The days before its end of validity a key is warned of: see [Operations](operations.md)      |
 | `keys.expiry_claim_seconds` | `300`               | `SSO_KEYS_EXPIRY_CLAIM_SECONDS` | How long one reporter holds a key while it sends a warning: `1` to `3600` seconds            |
 
-Each is read when a key is generated or rotated. A value outside its range, or anything but a whole number (or the
-digit string `env()` gives for one), fails closed with a message naming its key, such as
-`sso.keys.rsa_bits must be one of 3072, 4096.`, and stops the boot outside the console while a protocol is on;
-`php artisan sso:check` lists each under `[keys]`. Elliptic curve keys are always generated on P-256.
+Each is read when it is used: the key settings when a key is generated or rotated, the expiry settings when
+`sso:keys:expiring` runs. A value outside its range, or anything but a whole number (or the digit string `env()` gives
+for one), fails closed with a message naming its key, such as `sso.keys.rsa_bits must be one of 3072, 4096.`, and stops
+the boot outside the console while a protocol is on; `php artisan sso:check` lists each under `[keys]`. Elliptic curve
+keys are always generated on P-256.
 
 ## Generating and rotating service provider keys
 
@@ -188,10 +189,11 @@ invalid change writes nothing and dispatches no event.
 ## Fresh authentication
 
 Adding, making current and retiring a service provider key ask for `sso.keys.rotate`; trusting and distrusting an
-identity provider certificate ask for `sso.connection.trust`. Each asks once, after what was given has been checked and
-before anything is generated or written, with the maximum age configured for that operation under
-`freshness.max_age_seconds`. Until your application binds a freshness contract, every change is refused with
-`freshness_required` (see [Fresh authentication](freshness.md)).
+identity provider certificate ask for `sso.connection.trust`. Each asks after what was given has been checked, under the
+connection's lock and before anything is written, with the maximum age configured for that operation under
+`freshness.max_age_seconds`. Adding a key also asks once before the key pair is generated, when no transaction is open,
+so a stale caller spends no key generation; the answer under the lock decides. Until your application binds a freshness
+contract, every change is refused with `freshness_required` (see [Fresh authentication](freshness.md)).
 
 ## Events
 

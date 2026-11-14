@@ -3,12 +3,11 @@
 ## Purpose
 
 This note records how an OpenID Connect connection is filled in from its issuer's discovery document, how it is kept up
-to date from it, and how its JWKS is refetched when an ID token names a key it does not hold (SSO-2.8, SSO-2.9,
-SSO-2.13, SSO-7.3, SSO-10.3, SSO-11.12): the strict reader of the document, the import that proposes settings, the trust
-reset an update of the issuer or JWKS URI makes, the unknown-`kid` refetch and its cooldown, and the OIDC source of the
-shared refresh machinery. The machinery itself (the claim and its token, the backoff, the queue, the command, the
-compare and set) is `metadata-refresh.md`; the driver around it is `oidc-driver.md`; the JOSE adapter, which admits keys
-and selects among them, is `jose-adapter.md`.
+to date from it, and how its JWKS is refetched when an ID token names a key it does not hold: the strict reader of the
+document, the import that proposes settings, the trust reset an update of the issuer or JWKS URI makes, the
+unknown-`kid` refetch and its cooldown, and the OIDC source of the shared refresh machinery. The machinery itself (the
+claim and its token, the backoff, the queue, the command, the compare and set) is `metadata-refresh.md`; the driver
+around it is `oidc-driver.md`; the JOSE adapter, which admits keys and selects among them, is `jose-adapter.md`.
 
 ## Invariants
 
@@ -25,8 +24,8 @@ and selects among them, is `jose-adapter.md`.
   member it does not name is ignored. What it read came from whoever serves the issuer's URL, so it is held in a
   `\SensitiveParameterValue`: a dump and `json_encode()` show the names, and it refuses to be serialised.
 - The document is found at the issuer with any trailing `/` removed and `/.well-known/openid-configuration` appended,
-  path included (OpenID Connect Discovery §4), never by RFC 8414's insertion. Every fetch goes through the fetcher as a
-  `discovery` or `jwks` request held to its own cap (SSO-2.9), with no credential. A refused or failed fetch is
+  path included (OpenID Connect Discovery section 4), never by RFC 8414's insertion. Every fetch goes through the
+  fetcher as a `discovery` or `jwks` request held to its own cap, with no credential. A refused or failed fetch is
   `fetch_refused` or `fetch_failed`, a response not `2xx` or over the cap included.
 - `Metadata\DiscoveryImporter::import()` follows one order: `LogicException` inside a transaction on the storage
   connection; `protocol_unavailable` while `sso.features.oidc` is off; `settings_invalid` for an issuer that is not a
@@ -112,12 +111,11 @@ and selects among them, is `jose-adapter.md`.
   records a failure and keeps the last good settings and keys.
 - A refresh may change only `authorization_endpoint`, `token_endpoint`, `jwks_uri`, `userinfo_endpoint` (set or changed,
   never removed) and `returns_iss` (false to true only), and replaces the JWKS exactly. It never writes the issuer, the
-  client id or authentication, a secret, the scopes, the algorithms, the mapping, what a subject means or enforcement.
-  `returns_iss` is outside SSO-2.8's list of what a refresh changes, but a refresh may still turn it on
-  ([RD-32](requirements.md#recorded-decisions)): it only tightens what a callback must carry, and it voids what is in
-  flight as a trust change. Any of those settings changing, or a key removed or
-  replaced under the same `kid`, calls `voidFor()` exactly once. Additions alone void nothing and leave the trust
-  version as it was.
+  client id or authentication, a secret, the scopes, the algorithms, the mapping, what a subject means or enforcement. A
+  refresh may still turn `returns_iss` on, though it is neither a certificate nor an endpoint: it only tightens what a
+  callback must carry, and it voids what is in flight as a trust change. Any of those settings changing, or a key
+  removed or replaced under the same `kid`, calls `voidFor()` exactly once. Additions alone void nothing and leave the
+  trust version as it was.
 - `metadata_fetched_at` is the moment the document validated and `jwks_fetched_at` the moment the JWKS did, each carried
   into the commit, so the 30-day stale limit counts from each resource's own validated fetch. A refetch stamps
   `jwks_fetched_at` too. `MetadataExpiry` applies to each as soon as it is stamped, whether or not the connection's
@@ -141,8 +139,8 @@ and selects among them, is `jose-adapter.md`.
   reached. The count waits for the next claim: a flood that stops is summarised by the next unknown `kid`.
   `JwksRefetcher` answers how it ended and logs nothing, and `DiscoveryImporter` logs nothing. The refresher logs a
   refresh that did not apply, as it does for any source.
-- Reads that decide a write are on the write connection (SSO-11.3); nothing depends on a cache (SSO-11.6); a database
-  error propagates (SSO-11.4); none of these classes holds anything between calls (SSO-11.2).
+- Reads that decide a write are on the write connection; nothing depends on a cache; a database error propagates; none
+  of these classes holds anything between calls.
 
 ## Success Path
 

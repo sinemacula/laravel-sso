@@ -2,10 +2,10 @@
 
 ## Purpose
 
-This note records the package's scheduled work (SSO-11.11, SSO-11.12): the clean-up of what it no longer needs, the
-report of keys and certificates nearing expiry, the helper that puts the commands on the application's schedule, and
-what makes each safe on several servers at once. How a domain is rechecked and how metadata is refreshed are in
-`domain-rechecks.md` and `metadata-refresh.md`; this note records why they are safe to run on several servers.
+This note records the package's scheduled work: the clean-up of what it no longer needs, the report of keys and
+certificates nearing expiry, the helper that puts the commands on the application's schedule, and what makes each safe
+on several servers at once. How a domain is rechecked and how metadata is refreshed are in `domain-rechecks.md` and
+`metadata-refresh.md`; this note records why they are safe to run on several servers.
 
 ## Invariants
 
@@ -19,7 +19,7 @@ what makes each safe on several servers at once. How a domain is rechecked and h
   with no mutex, so `register()` never throws: the application calls it as each console command starts, `sso:check`
   among them, and that names the setting.
 - Every command is correct under duplicate execution by what it does in the database, so by default each runs on every
-  server and no task registered reads or writes a cache. A stale mutex can never suppress maintenance (SSO-11.6).
+  server and no task registered reads or writes a cache. A stale mutex can never suppress maintenance.
 - `schedule:run` itself is the framework's. On Laravel 13 it reads its pause signal from the default cache before any
   task, so a cache that is down stops the whole schedule, and one that answers anything truthy reads as paused, until
   the application calls `Schedule::withoutInterruptionPolling()`, a choice for all of its tasks that also turns off
@@ -69,7 +69,7 @@ what makes each safe on several servers at once. How a domain is rechecked and h
 - An exception stops the kind it came from, the kinds after it still take their turn, and the transactions committed
   before it stand and are reported, a connection's reservations among them when a later connection's fail. The run then
   throws `Pruning\PruneFailedException`, holding the report and chaining the first exception, so a database error still
-  propagates (SSO-11.4). A run begun again finds what is left.
+  propagates. A run begun again finds what is left.
 - A run refuses to start inside a transaction on the storage connection or the counters' (a `LogicException`), since it
   would turn every short batch into one long one.
 - A run dispatches no event, being housekeeping and not an administrative change. It logs one line,

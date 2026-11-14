@@ -3,12 +3,13 @@
 ## Purpose
 
 This note records the comparison behind the choice of JOSE library: which library the package uses to verify OIDC ID
-tokens against an issuer's JWKS (SSO-7.3, SSO-2.6) and to sign RFC 7523 `private_key_jwt` client assertions, and what
-the package's JOSE adapter must add around it. The two candidates were run against the same hostile tokens and the same
-time checks, in one process, on PHP 8.3, 8.4 and 8.5. The criteria were: algorithm pinned per key, `none` and HMAC
-refused by construction, PS and ES verification and signing, and a clock and leeway given per call rather than held in
-static state (SSO-11.2, SSO-11.13, Octane). Being used elsewhere in the suite did not count in either library's favour.
-The package uses `web-token/jwt-library` `^4.2.4`, under the rules in the decision below.
+tokens against an issuer's JWKS and to sign RFC 7523 `private_key_jwt` client assertions, and what the package's JOSE
+adapter must add around it. The two candidates were run against the same hostile tokens and the same time checks, in one
+process, on PHP 8.3, 8.4 and 8.5. The criteria were: algorithm pinned per key, `none` and HMAC refused by construction,
+PS and ES verification and signing, and a clock and leeway given per call rather than held in static state (nothing kept
+between requests in an Octane worker, and every time check on the package's clock). Being used elsewhere in the suite
+did not count in either library's favour. The package uses `web-token/jwt-library` `^4.2.4`, under the rules in the
+decision below.
 
 ## Method
 
@@ -76,14 +77,15 @@ The package uses `web-token/jwt-library` `^4.2.4`, under the rules in the decisi
   allow-list, it refuses `none` and every HMAC algorithm because they are not in it. HMAC is also refused a second time
   because it needs an `oct` key. `None` must never be registered, since its `verify()` does not look at the key.
 - Per-key pinning depends on the JWK. When a JWK carries `alg`, `KeyChecker` refuses any other header algorithm. When it
-  does not, the key can be used with every allowed algorithm that fits its `kty`. Both are acceptable under SSO-7.3 (the
-  allow-list is the connection's), but a key is pinned only when the issuer publishes `alg`, or when the adapter pins it
+  does not, the key can be used with every allowed algorithm that fits its `kty`. Both are acceptable, since the
+  allow-list is the connection's, but a key is pinned only when the issuer publishes `alg`, or when the adapter pins it
   on import.
 - `kid` is not used for key selection. `verifyWithKeySet()` tries every key in the set and returns the first that
   verifies. A forged `kid` cannot pass an unsigned token this way, because the signature still has to verify under one
-  of the issuer's keys. It does break SSO-7.3's "the key is chosen by `kid`", and the unknown-`kid` refetch depends on
-  knowing that a `kid` is unknown. `JWKSet::has()` and `get()` also turn the string `"0"` into a position. The adapter
-  therefore selects the key itself, by exact string equality on each key's own `kid`, and calls `verifyWithKey()`.
+  of the issuer's keys. It does break the package's rule that the key is chosen by `kid`, and the unknown-`kid` refetch
+  depends on knowing that a `kid` is unknown. `JWKSet::has()` and `get()` also turn the string `"0"` into a position.
+  The adapter therefore selects the key itself, by exact string equality on each key's own `kid`, and calls
+  `verifyWithKey()`.
 - The adapter must add the checks the library leaves out: a minimum RSA modulus (1024-bit keys verify), a curve that
   matches the algorithm (a P-256 key verified an ES512 header), and refusing `crit`. `JWSVerifier` ignores `crit`;
   `HeaderCheckerManager` enforces it.
@@ -92,10 +94,10 @@ The package uses `web-token/jwt-library` `^4.2.4`, under the rules in the decisi
   extends `Psr\Clock\ClockInterface`, so it can be passed straight in. Consecutive calls and interleaved fibres each
   kept their own clock and leeway. The library declares no static properties.
 - The `exp` boundary is off by one. The library accepts a token at `now == exp + leeway`, where RFC 7519 requires
-  refusing it on or after `exp`. Claim types are strict (`int` or `float` only), and claims can be made mandatory.
-  SSO-7.4 needs checks the library does not have anyway (`iat` maximum age, `auth_time` against `max_age`, `azp`,
-  trusted audiences, `nonce`), so the package makes every time and claim check itself against `Contracts\Clock` and
-  `ClockSkew`. That fixes the boundary in one place.
+  refusing it on or after `exp`. Claim types are strict (`int` or `float` only), and claims can be made mandatory. The
+  package's ID token rules need checks the library does not have anyway (`iat` maximum age, `auth_time` against
+  `max_age`, `azp`, trusted audiences, `nonce`), so the package makes every time and claim check itself against
+  `Contracts\Clock` and `ClockSkew`. That fixes the boundary in one place.
 - Signing: `JWSBuilder` signed PS256 and ES256 client assertions from private JWKs, with the header the package chooses
   (`alg`, `kid`, `typ`). The other library and plain OpenSSL both verified them. `JWKFactory` can also build a JWK from
   a PEM.
@@ -122,23 +124,22 @@ The package uses `web-token/jwt-library` `^4.2.4`, under the rules in the decisi
 - Time is static and cannot be switched off. `decode()` always checks `exp`, `nbf` and `iat`, against `JWT::$timestamp`,
   or `time()` when that is null, with `JWT::$leeway`. There is no per-call parameter. The package's clock can be
   honoured only by setting both statics before each `decode()` and restoring them in `finally`. That worked for calls
-  made one after another. It is still process-wide state, which SSO-11.2 forbids ("no ... state in singletons or
-  statics"). The comparison showed both ways it fails: a value left behind made the next call accept a token that had
-  expired 120 s earlier, and an interleaved fibre lost its settings to the other request's restore. Octane serves one
-  request per worker at a time today, so a synchronous set-decode-restore does not interleave. The window is still
-  shared with any other code in the application that uses this library and sets `JWT::$leeway` for its own reasons, and
-  with anything that could suspend inside it. Leaving the statics alone instead adds a second time check on `time()`
-  that the package does not control, which breaks SSO-11.13's frozen clock.
+  made one after another. It is still process-wide state, which the package forbids: nothing of a request may be kept in
+  a singleton or a static. The comparison showed both ways it fails: a value left behind made the next call accept a
+  token that had expired 120 s earlier, and an interleaved fibre lost its settings to the other request's restore.
+  Octane serves one request per worker at a time, so a synchronous set-decode-restore does not interleave. The window is
+  still shared with any other code in the application that uses this library and sets `JWT::$leeway` for its own
+  reasons, and with anything that could suspend inside it. Leaving the statics alone instead adds a second time check on
+  `time()` that the package does not control, which breaks the package's frozen test clock.
 - Claim typing is loose, and `crit` is ignored. Numeric strings pass as `exp`, `iat` and `nbf`. `exp` is not required.
-  `iat` is skipped when `nbf` is present. `crit` is ignored. The package would check claims itself in any case
-  (SSO-7.4).
+  `iat` is skipped when `nbf` is present. `crit` is ignored. The package would check claims itself in any case.
 - Algorithm breadth: there is no PS384, PS512 or ES512. PS256 needs `phpseclib/phpseclib` 3 (the code refers to the
   `phpseclib3` namespace, and phpseclib 4.x, already released, uses `phpseclib4`). It runs in PHP rather than OpenSSL,
   so PS256 verification costs about ten times as much as RS256. That is still under a millisecond.
 - `kid` handling: an exact array-key lookup refused paths, SQL-like strings and unknown ids. Keys without a `kid` are
   indexed by position, so a header `kid` of `"0"` or `0` selected one. An array `kid` throws a `TypeError`.
-  `CachedKeySet` fetches the JWKS over HTTP from inside the key lookup, outside the package's fetcher (SSO-2.9), so it
-  would not be used.
+  `CachedKeySet` fetches the JWKS over HTTP from inside the key lookup, outside the package's fetcher, so it would not
+  be used.
 - Signing: `JWT::encode()` signed PS256 and ES256 assertions from PEMs, and they verified everywhere. It always adds
   `typ` `JWT`.
 - PHP, dependencies and maintenance: it requires `php ^8.0` and nothing at runtime. With phpseclib 3 it adds phpseclib
@@ -150,12 +151,13 @@ The package uses `web-token/jwt-library` `^4.2.4`, under the rules in the decisi
 ## Decision
 
 The package uses `web-token/jwt-library`, constrained to `^4.2.4` (the release tested here), behind the package's JOSE
-adapter. The deciding question was whether `firebase/php-jwt`'s static leeway could be isolated per request. It
-cannot: the only per-call isolation is to set and restore process-wide statics around each `decode()`, which SSO-11.2
-rules out. The library's own time checks would otherwise run on `time()`, which breaks SSO-11.13. firebase also lacks
-PS384, PS512 and ES512, has no algorithm allow-list, and turns an `oct` key in a fetched JWKS into an HMAC key. Its
-real strengths (a `Key` pinned to one algorithm, a 2048-bit RSA minimum, the correct `exp` boundary) are easy to
-build into the adapter. firebase's static clock is not something an adapter can remove.
+adapter. The deciding question was whether `firebase/php-jwt`'s static leeway could be isolated per request. It cannot:
+the only per-call isolation is to set and restore process-wide statics around each `decode()`, which the package's rule
+against state kept between requests rules out. The library's own time checks would otherwise run on `time()`, which
+breaks the package's frozen test clock. firebase also lacks PS384, PS512 and ES512, has no algorithm allow-list, and
+turns an `oct` key in a fetched JWKS into an HMAC key. Its real strengths (a `Key` pinned to one algorithm, a 2048-bit
+RSA minimum, the correct `exp` boundary) are easy to build into the adapter. firebase's static clock is not something an
+adapter can remove.
 
 The adapter, not the library, carries these rules:
 
@@ -163,7 +165,7 @@ The adapter, not the library, carries these rules:
   asymmetric algorithms (RS, PS and ES at 256 bits and above). `None` and HS* are never registered, whatever the
   configuration says, and the configuration check refuses them.
 - Key selection: a `kid`, when present, must be a non-empty string, and the key is the one stored JWK whose own `kid` is
-  identical to it. An unknown `kid` follows SSO-7.3's refetch-once path and is otherwise refused. `verifyWithKeySet()`,
+  identical to it. An unknown `kid` follows the refetch-once path and is otherwise refused. `verifyWithKeySet()`,
   `JWKSet::get()` and `JWKSet::has()` are never used. A token with no `kid` is verified only when exactly one stored key
   is admissible for its algorithm (after `alg`, `kty` and curve, strength, `use` and `key_ops`); none is an unknown key
   (the refetch-once path), two or more a refusal. An unknown supplied `kid` never falls back to a key without one.
@@ -173,8 +175,9 @@ The adapter, not the library, carries these rules:
   JWK has one, which the library also checks.
 - Headers: a token whose protected header carries `crit`, `b64`, `enc` or `zip` is refused.
 - Time and claims: the package checks every time and claim itself against `Contracts\Clock` and `ClockSkew::seconds()`.
-  `exp` is refused at or after `exp + skew`, and the rest of SSO-7.4 applies, so the library's `exp` boundary never
-  decides anything. The adapter keeps no clock, leeway, key or token in a property that outlives the call.
+  `exp` is refused at or after `exp + skew`, and the rest of the package's ID token rules apply, so the library's `exp`
+  boundary never decides anything. The adapter keeps no clock, leeway, key or token in a property that outlives the
+  call.
 - Client assertions: `JWSBuilder` signs them from the connection's stored private key, with that key's `kid` and `typ`
   `JWT`, under the algorithm the connection's `client_assertion_algorithm` pins: for an RSA key `PS256` (the default) or
   `RS256`, for a P-256 key `ES256` (the default and only one). `PS256` is the default for its stronger padding, and

@@ -3,10 +3,10 @@
 ## Purpose
 
 This note records how the package answers an unsolicited SAML response, one the identity provider sent without the
-service provider asking (SSO-5.8, SSO-6.11): it is validated in full by the unsolicited profile, recorded against
-replay, and answered by re-initiation, a redirect to the connection's application start URL so the application starts
-an ordinary SP-initiated flow. It never signs anyone in. Correlation, validation and replay recording are the SAML
-driver's and the completion's (`saml-responses.md`, `completion.md`); the lock order is `flows.md`'s.
+service provider asking: it is validated in full by the unsolicited profile, recorded against replay, and answered by
+re-initiation, a redirect to the connection's application start URL so the application starts an ordinary SP-initiated
+flow. It never signs anyone in. Correlation, validation and replay recording are the SAML driver's and the completion's
+(`saml-responses.md`, `completion.md`); the lock order is `flows.md`'s.
 
 Consuming an unsolicited assertion directly is not supported. Such an assertion is bound to no request and no client,
 so the package cannot tell who posted it:
@@ -53,9 +53,9 @@ completes it from the session it already has.
   when the URL has no query and after an `&` when it has one (directly when it already ends in `?` or `&`). The posted
   `RelayState` is never read, so it can never become a redirect target.
 - Events report only: `UnsolicitedResponseReinitiated` once the record commits, or exactly one `FlowFailed` for the
-  `assertion` flow, each naming the connection, its tenant and its protocol and nothing else of the flow (SSO-10.4). No
-  event or log carries the response, the assertion, the `RelayState`, the `NameID` or an attribute's value; a
-  connection that does not allow IdP-initiated sign-in logs a notice naming the connection alone.
+  `assertion` flow, each naming the connection, its tenant and its protocol and nothing else of the flow. No event or
+  log carries the response, the assertion, the `RelayState`, the `NameID` or an attribute's value; a connection that
+  does not allow IdP-initiated sign-in logs a notice naming the connection alone.
 
 ## Success Path
 
@@ -99,7 +99,7 @@ completes it from the session it already has.
   second finds the record. On PostgreSQL a racer may instead fail to serialise (SQLSTATE `40001`), which records
   nothing and propagates as a server error.
 - Every refusal is `rejected`, a `400` with no redirect: an unsolicited response has no trusted redirect target.
-- A database error propagates as a server error and rolls the record back (SSO-11.4).
+- A database error propagates as a server error and rolls the record back.
 
 ## Implementation Anchors
 

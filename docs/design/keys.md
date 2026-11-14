@@ -2,11 +2,10 @@
 
 ## Purpose
 
-This note records how a connection's keys and certificates are kept, generated, rotated and read (SSO-2.5 to SSO-2.7,
-SSO-2.11, SSO-2.12, SSO-5.9): the service provider's own key pairs (SAML signing and encryption, OIDC
-`private_key_jwt`), each moving through `next`, `current` and `retiring`, and the identity provider signing certificates
-a SAML connection trusts as a set. Which signature and encryption algorithms each key serves is decided with the SAML
-and OIDC drivers, not here.
+This note records how a connection's keys and certificates are kept, generated, rotated and read: the service provider's
+own key pairs (SAML signing and encryption, OIDC `private_key_jwt`), each moving through `next`, `current` and
+`retiring`, and the identity provider signing certificates a SAML connection trusts as a set. Which signature and
+encryption algorithms each key serves is decided with the SAML and OIDC drivers, not here.
 
 ## Invariants
 
@@ -43,9 +42,9 @@ and OIDC drivers, not here.
   generation writes a minimal one (no default subject field) to a temporary file of its own and removes it, whatever
   happens; the system's file, whose default subject fields would otherwise land in the certificate, is never read.
 - A private key is encrypted through `Contracts\SecretEncrypter` before it is written, and is never returned by a
-  helper (SSO-2.5). Between generation and encryption it is held as a `Secrets\Secret` inside `Keys\GeneratedKey`, which
-  shows `[redacted]` in a dump and refuses to be serialised. The key ring decrypts it only for the call that signs or
-  decrypts with it, again as a `Secret`. A trusted certificate has no private key.
+  helper. Between generation and encryption it is held as a `Secrets\Secret` inside `Keys\GeneratedKey`, which shows
+  `[redacted]` in a dump and refuses to be serialised. The key ring decrypts it only for the call that signs or decrypts
+  with it, again as a `Secret`. A trusted certificate has no private key.
 - States and transitions of an own key (`Keys\Enums\KeyState`); at most one `current` and one `next` of a use per
   connection:
 
@@ -62,10 +61,11 @@ and OIDC drivers, not here.
   plus `sso.keys.overlap_seconds` (a week by default; 0 to 90 days). Decryption accepts the current encryption key and
   each retiring one whose `retiring_until` is after the clock's now, the most recently current first; an overlap of 0
   ends as the key is replaced. A retiring key stays a row, and still decrypts nothing, until it is retired.
-- Publishing: metadata and a JWKS carry the current key and then the next one (`KeyRing::published()`, SSO-5.9), so an
-  identity provider learns a key before it signs or encrypts with it.
-- Trusted certificates are a set (SSO-2.6): up to `KeyService::MAX_TRUSTED_CERTIFICATES` (10) per connection, each
-  judged before it is trusted by `Keys\CertificateInspector`, every violation at the setting `certificate`:
+- Publishing: metadata and a JWKS carry the current key and then the next one (`KeyRing::published()`), so an identity
+  provider learns a key before it signs or encrypts with it.
+- Trusted certificates are a set per use: up to `KeyService::MAX_TRUSTED_CERTIFICATES` (10) each for `idp_signing` and
+  `metadata_signing` per connection, each judged before it is trusted by `Keys\CertificateInspector`, every violation at
+  the setting `certificate`:
 
   | Given                                                        | Code                  |
   |--------------------------------------------------------------|-----------------------|
@@ -78,18 +78,18 @@ and OIDC drivers, not here.
   | An eleventh certificate                                      | `too_many`            |
   | A connection whose protocol is not `saml2`, or a key not RSA | `unsupported`         |
 
-- Expiry is reported, never enforced (SSO-2.6): a certificate's dates are read and stored, an expired certificate is
-  trusted, and the key ring offers every trusted certificate whatever its dates. `KeySummary::isExpiredAt()` and
-  `expiresWithin()` answer the report; `Keys\ExpiryReport` and `KeyNearingExpiry` warn of it (`event-model.md`).
+- Expiry is reported, never enforced: a certificate's dates are read and stored, an expired certificate is trusted, and
+  the key ring offers every trusted certificate whatever its dates. `KeySummary::isExpiredAt()` and `expiresWithin()`
+  answer the report; `Keys\ExpiryReport` and `KeyNearingExpiry` warn of it (`event-model.md`).
 - Every helper (`Keys\KeyService`) follows the management helpers' order (see `outcomes.md`): find the tenant's
   connection, and the key, through `Connections\ConnectionFinder` on the write connection; validate what was given;
-  check the key's state; ask `Freshness\FreshnessGate` with the use's operation; generate the key, when one is added;
-  then, in one transaction on the storage connection, read the connection again with `findForUpdate()` (which
-  serialises a connection's rotations), check the state again, write, and report through
-  `Administration\AdministrationEvents`. A key or certificate is always read constrained to its connection's id. The
-  keys read again under the connection's lock are read locked too: a plain read there would answer from the snapshot
-  of a transaction the caller opened (MySQL's `REPEATABLE READ`), which may predate a rotation committed before the
-  lock was taken.
+  check the key's state; for `addNext()`, ask `Freshness\FreshnessGate` with the use's operation when no transaction is
+  open, so a stale caller spends nothing, and generate the key; then, in one transaction on the storage connection, read
+  the connection again with `findForUpdate()` (which serialises a connection's rotations), ask `FreshnessGate` with the
+  use's operation, check the state again, write, and report through `Administration\AdministrationEvents`. A key or
+  certificate is always read constrained to its connection's id. The keys read again under the connection's lock are
+  read locked too: a plain read there would answer from the snapshot of a transaction the caller opened (MySQL's
+  `REPEATABLE READ`), which may predate a rotation committed before the lock was taken.
 - Results are `Keys\KeyResult` values, status `Keys\Enums\KeyStatus`: `added`, `made_current`, `retired`, `trusted`
   and `distrusted` carry the `KeySummary` of the key acted on (as it was, for a removal), and `made_current` the key it
   replaced; `refused` carries `freshness_required`, `connection_not_found`, `key_not_found` or `key_state_conflict`;
@@ -120,13 +120,13 @@ and OIDC drivers, not here.
 - A connection's first metadata signing anchor brings it to hold a stale deadline and, unless `metadata_refresh` is
   `false`, to refresh from its `metadata_url`, and clears what was stamped before, in the same transaction; removing its
   last ends both (`Metadata\SamlRefreshRule`, `metadata-refresh.md`).
-- Distrusting a certificate, and trusting a metadata signing anchor, is a trust change (SSO-2.13): in its
-  transaction, under the connection's lock, it voids the connection's unfinished authorisation requests and unredeemed
-  handoff codes and raises its trust version (`Connections\InFlightVoider`; see
-  [connection-lifecycle.md](connection-lifecycle.md)), so none completes or is redeemed against the certificates it was
-  started under. Trusting another identity provider certificate is additive and voids nothing, so a provider's next
-  certificate can be trusted before it switches; it still asks `sso.connection.trust`. Rotating one of the service
-  provider's own keys (`addNext()`, `makeCurrent()`, `retire()`) keeps what subjects mean and voids nothing.
+- Distrusting a certificate, and trusting a metadata signing anchor, is a trust change: in its transaction, under the
+  connection's lock, it voids the connection's unfinished authorisation requests and unredeemed handoff codes and raises
+  its trust version (`Connections\InFlightVoider`; see [connection-lifecycle.md](connection-lifecycle.md)), so none
+  completes or is redeemed against the certificates it was started under. Trusting another identity provider certificate
+  is additive and voids nothing, so a provider's next certificate can be trusted before it switches; it still asks
+  `sso.connection.trust`. Rotating one of the service provider's own keys (`addNext()`, `makeCurrent()`, `retire()`)
+  keeps what subjects mean and voids nothing.
 - A malformed key setting fails closed with an `InvalidArgumentException` naming its key (and `[keys]` reports it at
   boot); an OpenSSL failure is a `RuntimeException` naming the step, never the key, with OpenSSL's error queue cleared;
   a `SecretEncrypter` that cannot encrypt, a ciphertext that cannot be decrypted, and a database error propagate.

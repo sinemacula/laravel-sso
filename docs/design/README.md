@@ -13,9 +13,10 @@ Each note follows the same structure:
 - `Authoritative Tests`
 - `Change Triggers`
 
-A note that records a choice of library (`saml-library.md`, `jose-library.md`) follows `Purpose`, `Method`,
-`Results`, `Findings`, `Decision`, `Implementation Anchors` and `Change Triggers` instead, since it describes a
-decision and its evidence rather than a contract.
+A note that records a choice of library (`saml-library.md`, `jose-library.md`) follows `Purpose`, `Method`, `Results`,
+`Findings`, `Decision`, `Implementation Anchors` and `Change Triggers` instead (`saml-library.md` adds `Criteria
+Summary` before `Decision`, and `jose-library.md` adds `Authoritative Tests`), since it describes a decision and its
+evidence rather than a contract.
 
 The notes are:
 
@@ -73,8 +74,8 @@ The notes are:
   results behind the choice, and the conditions the package's adapter holds the library to.
 - `saml-driver.md`: the `saml2` driver as a whole, each call and its collaborator, and how it plugs into the completion
   without bypassing consumption, the lock order or enforcement.
-- `saml-adapter.md`: the one namespace that calls the SAML library, its hardened parsing, caps and structure checks,
-  the pinned verifier and the SSO-6.7 signature and encryption policy, and the values a read response is given as.
+- `saml-adapter.md`: the one namespace that calls the SAML library, its hardened parsing, caps and structure checks, the
+  pinned verifier and the package's signature and encryption policy, and the values a read response is given as.
 - `saml-requests.md`, `saml-responses.md`, `idp-initiated.md`, `service-provider-metadata.md` and `metadata-refresh.md`:
   the SAML driver's `AuthnRequest` and its bindings, the validation of a solicited response and its replay record,
   re-initiation from an unsolicited response, the service provider's metadata, and metadata import, scheduled refresh,
@@ -103,11 +104,6 @@ The notes are:
   writes, which events belong to it, and what stands when it rolls back.
 - `standalone-acceptance.md`: how the package is shown to stand alone: what each seam's default does with no sibling
   installed, what an application must supply to go further, and how default and adapter acceptance are kept apart.
-- `requirements.md`: the requirement closure matrix: every clause of the requirements, split into obligations that can
-  each be proven on their own, with the code, the test and assertion, and the documentation behind each, its status, and
-  the recorded decision behind each reconciled row. It follows its own structure (`Purpose`, `Summary`,
-  `Reading the Matrix`, the twelve sections, the context, `Recorded Decisions` and `Change Triggers`) rather than the
-  one above.
 
 These documents are secondary to the code and tests, not a replacement for them. If a note and a cited test disagree,
 the test should be treated as authoritative until the mismatch is resolved.

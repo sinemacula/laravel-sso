@@ -3,10 +3,9 @@
 ## Purpose
 
 This note records how the `oidc` driver reads a callback, correlates it, judges it against the request consumed for it,
-and exchanges its code at the token endpoint (SSO-5.4, SSO-5.5, SSO-5.7, SSO-7.1, SSO-7.2, SSO-7.6, RFC 9207, RFC 9700
-section 4.4.2, RFC 7523). The driver as a whole is `oidc-driver.md`; the request's consumption and the completion's
-locks are `completion.md` and `authorization-requests.md`; the ID token is `oidc-id-tokens.md`; UserInfo and the claims
-are `oidc-claims.md`.
+and exchanges its code at the token endpoint (RFC 9207, RFC 9700 section 4.4.2, RFC 7523). The driver as a whole is
+`oidc-driver.md`; the request's consumption and the completion's locks are `completion.md` and
+`authorization-requests.md`; the ID token is `oidc-id-tokens.md`; UserInfo and the claims are `oidc-claims.md`.
 
 ## Invariants
 
@@ -31,7 +30,7 @@ are `oidc-claims.md`.
 - `CallbackCorrelator::correlate()` is the driver's `correlate()`. It answers `Correlation::solicited($state)` only for
   a `GET` (`response_mode=query` alone) whose query is not refused and whose `state` is exactly 43 base64url characters,
   the package's 256-bit state. Anything else is `Correlation::uncorrelated()`, which the pipeline reports as
-  `request_unknown` with no redirect target and nothing consumed (SSO-5.7). It logs nothing and reads no other value.
+  `request_unknown` with no redirect target and nothing consumed. It logs nothing and reads no other value.
 - The state is only ever looked up by its digest, by the consumption (`authorization-requests.md`), which refuses a
   request started through another connection with `connection_mismatch`, redirected to that request's application. So a
   response without `iss` is accepted only at the callback of the request's own connection: the mix-up defence of RFC
@@ -66,13 +65,13 @@ consumed. Each refusal is a value, and the request stays consumed whatever happe
   - no secret, no current key or an unknown method: `null`, which the callback refuses with `connection_unavailable`.
 - `TokenExchange::send()` sends `FetchRequest::token()` through the fetcher once, with exactly
   `grant_type=authorization_code`, `code`, `redirect_uri` (the endpoint resolver's callback, as the start sent it, never
-  from the request, SSO-5.5) and `code_verifier`; `OidcLimits::tokenTimeoutSeconds()` and `maxTokenResponseBytes()` are
-  the request's own. `FetchRequest` refuses a form that would add a second client authentication.
+  from the request) and `code_verifier`; `OidcLimits::tokenTimeoutSeconds()` and `maxTokenResponseBytes()` are the
+  request's own. `FetchRequest` refuses a form that would add a second client authentication.
 - It is one attempt: nothing here or in the fetcher retries a request carrying a credential. A timeout or a server error
   is refused and the request stays consumed, since the code may have been spent.
 - The PKCE verifier is decrypted by `ConsumedRequest::codeVerifier()` inside `send()` alone, once the response has
   passed every check before the token request. A request that keeps none is a `LogicException`; a ciphertext no key
-  decrypts propagates (SSO-11.4).
+  decrypts propagates.
 - `send()` refuses to run inside a transaction on the storage connection, as `CompletionService` does, so a provider
   call never holds a lock.
 
@@ -100,8 +99,8 @@ ignored and never retained.
   `connection_id`, `request_reference` and `error`.
 - `error` is logged only when it has the shape of a code (`[A-Za-z0-9_.:-]{1,64}`), otherwise as `[unrecognized]`, so
   prose a provider puts there reaches no log. `error_description` and `error_uri` are never read, so they reach no log,
-  event or result (SSO-5.7). The response body, the tokens, the code, the state, the verifier and the client assertion
-  are never logged or evented (SSO-7.6).
+  event or result. The response body, the tokens, the code, the state, the verifier and the client assertion are never
+  logged or evented.
 
 ### Transactions and trust
 
@@ -114,7 +113,7 @@ ignored and never retained.
 
 ### Statelessness
 
-Every class here holds its collaborators only, and reads the limits on each call (SSO-11.2).
+Every class here holds its collaborators only, and reads the limits on each call.
 
 ## Success Path
 
@@ -137,7 +136,7 @@ Every class here holds its collaborators only, and reads the limits on each call
   is `request_unknown`.
 - A verified response whose connection changed meanwhile: `[ResultVerified, FlowFailed]` with `connection_unavailable`.
 - A database error, an undecryptable verifier or secret, and a misconfigured limit propagate as server errors with the
-  request consumed (SSO-11.4), never as a failure redirect.
+  request consumed, never as a failure redirect.
 - A token request to an address the fetcher refuses: `fetch_refused`.
 
 ## Implementation Anchors

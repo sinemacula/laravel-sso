@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This note records how the OIDC driver starts an authorisation code flow (SSO-5.4, SSO-5.10, SSO-2.4, SSO-7.1): the URL
-it sends the browser to, the order and encoding of its parameters, what an extra parameter or an authorisation endpoint
-with a query of its own may and may not do, and what the request keeps. How the start is stored and reported is in
-`authorization-requests.md`; how the driver is put together is in `oidc-driver.md`; how the callback is checked against
-what the request kept is in `oidc-callback.md`.
+This note records how the OIDC driver starts an authorisation code flow: the URL it sends the browser to, the order and
+encoding of its parameters, what an extra parameter or an authorisation endpoint with a query of its own may and may not
+do, and what the request keeps. How the start is stored and reported is in `authorization-requests.md`; how the driver
+is put together is in `oidc-driver.md`; how the callback is checked against what the request kept is in
+`oidc-callback.md`.
 
 ## Invariants
 
@@ -31,7 +31,7 @@ what the request kept is in `oidc-callback.md`.
 |-------------------------|----------------------------------------------------------------------------------------|
 | `response_type`         | `code`, the only response type (no implicit or hybrid flow)                            |
 | `client_id`             | The connection's client id                                                             |
-| `redirect_uri`          | The connection's callback from `Contracts\EndpointResolver`, exactly (SSO-5.5)         |
+| `redirect_uri`          | The connection's callback from `Contracts\EndpointResolver`, exactly                   |
 | `scope`                 | The connection's scopes joined by single spaces, in stored order                       |
 | `state`                 | `StartRequest::$state`, 43 random base64url characters, never the public reference     |
 | `nonce`                 | `StartRequest::$nonce`, 43 random base64url characters                                 |
@@ -45,8 +45,8 @@ what the request kept is in `oidc-callback.md`.
   one with none sends nothing. For a `reauthenticate` it is always `0`, whatever is configured.
 - No `response_mode` is sent: the code flow's default query mode is the only one the callback accepts. `request` and
   `request_uri` are never sent.
-- The PKCE verifier never leaves the API (SSO-5.2); only its challenge is sent. It is independent of the client's own
-  verifier, whose challenge the request keeps for the handoff (`authorization-requests.md`).
+- The PKCE verifier never leaves the API; only its challenge is sent. It is independent of the client's own verifier,
+  whose challenge the request keeps for the handoff (`authorization-requests.md`).
 - The query is encoded per RFC 3986 (`http_build_query()` with `PHP_QUERY_RFC3986`): a space is `%20`, never `+`.
 
 ### Extra parameters
@@ -57,7 +57,7 @@ what the request kept is in `oidc-callback.md`.
   `OidcSettings::RESERVED_PARAMETERS` or is one the request already sets (`prompt` and `max_age` for a `reauthenticate`,
   `max_age` when the connection configures one), or when it is not a string under a name. An extra parameter therefore
   never sets, overrides or repeats one the flow controls.
-- A `reauthenticate` leaves an extra `prompt` out: `prompt=login` wins (SSO-5.10). Every other purpose sends it.
+- A `reauthenticate` leaves an extra `prompt` out: `prompt=login` wins. Every other purpose sends it.
 
 ### An endpoint with a query
 
@@ -71,8 +71,8 @@ what the request kept is in `oidc-callback.md`.
 ### What the request keeps
 
 - `Start` carries the connection's issuer, exactly as configured and never normalised, and `returns_iss`: whether the
-  provider must return the RFC 9207 `iss` (SSO-7.1). An administrator sets it, or an import or a refresh does when the
-  discovery document advertises `authorization_response_iss_parameter_supported` (`oidc-discovery.md`).
+  provider must return the RFC 9207 `iss`. An administrator sets it, or an import or a refresh does when the discovery
+  document advertises `authorization_response_iss_parameter_supported` (`oidc-discovery.md`).
 - The start pipeline stores them as `expected_issuer` and `issuer_required`, beside `state_digest` and `nonce_digest`
   (the lower-case hex SHA-256 of each, never the value), `code_verifier` (the PKCE verifier, encrypted),
   `handoff_challenge`, and `trust_version`, the connection's as it read it before asking the driver
@@ -109,7 +109,7 @@ what the request kept is in `oidc-callback.md`.
 - A trust change committed while the driver ran: `connection_unavailable`, nothing stored.
 - Every refusal stores nothing and reports exactly one `FlowFailed(authorization_request, reason)`.
 - A `StartRequest` with no nonce or PKCE verifier, an incomplete connection asked anyway, and an endpoint resolver that
-  throws: the exception propagates (SSO-11.4).
+  throws: the exception propagates.
 
 ## Implementation Anchors
 

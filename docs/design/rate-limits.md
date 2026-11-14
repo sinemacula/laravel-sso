@@ -2,10 +2,10 @@
 
 ## Purpose
 
-This note records how the package limits each flow an attacker could drive at volume (SSO-11.8): which flows and
-scopes are counted, how a counter is keyed so the table gives nothing back, the canonical forms values are counted in,
-how a count changes atomically across servers, why an attempt counts against every limit or none, why the limits are
-always on, why the counters may live on a connection of their own, and how a full limit is answered.
+This note records how the package limits each flow an attacker could drive at volume: which flows and scopes are
+counted, how a counter is keyed so the table gives nothing back, the canonical forms values are counted in, how a count
+changes atomically across servers, why an attempt counts against every limit or none, why the limits are always on, why
+the counters may live on a connection of their own, and how a full limit is answered.
 
 ## Invariants
 
@@ -62,7 +62,7 @@ always on, why the counters may live on a connection of their own, and how a ful
   attempt, and the attempt is refused with `max(1, windowEnd - now)`. A give-back never touches a later window, and a
   refused attempt is counted nowhere.
 - Database errors propagate. The store and the limiter catch nothing, so a limiter that cannot count never lets an
-  attempt through (SSO-11.4); the flow fails as a server error.
+  attempt through; the flow fails as a server error.
 - The counters live in `sso.rate_limits.table` (default `sso_rate_limits`) on `sso.rate_limits.connection`, or the
   storage connection when that names none (`Database\StorageConnection::connectionFor('rate_limits.table')`). The model,
   the store and the migration resolve the same connection. A separate connection exists because a flow may run inside
@@ -72,9 +72,8 @@ always on, why the counters may live on a connection of their own, and how a ful
 - Times are whole seconds in UTC, whatever the application timezone, written and read through
   `Models\Casts\UtcDateTime`. The column holds no offset, so in a timezone with daylight saving the hour a fall-back
   repeats would name two instants with one value, and a live window could read as ended, letting every attempt restart
-  the count. Every time is read from the one bindable clock (`Contracts\Clock`, SSO-11.13).
-- The limiter, the store, the keys and the limits hold nothing between calls, and the limiter is bound scoped
-  (SSO-11.2).
+  the count. Every time is read from the one bindable clock (`Contracts\Clock`).
+- The limiter, the store, the keys and the limits hold nothing between calls, and the limiter is bound scoped.
 
 ## Success Path
 

@@ -233,6 +233,7 @@ to every code: see [Redeeming a Handoff](redeeming-a-handoff.md).
 | `ReauthenticationCompleted`   | The renewal committed, straight after `HandoffRedeemed`; never on rollback |
 
 A response the driver refuses reports one `FlowFailed` with no `ResultVerified`. A refusal after that, at completion,
-reports `ResultVerified` then one `FlowFailed`, and one at redemption reports one `FlowFailed`. Every context names the
-identity and the session the flow was started for. None carries a subject, an email, the authentication context, the
-code or the verifier. See [Events](events.md).
+reports `ResultVerified` then one `FlowFailed`, and one at redemption reports one `FlowFailed`. Every context tied to
+the flow's request or code names the identity and the session the flow was started for; a redemption refused before
+its code is found carries only the purpose. None carries a subject, an email, the authentication context, the code or
+the verifier. See [Events](events.md).

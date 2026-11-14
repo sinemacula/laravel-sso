@@ -2,12 +2,11 @@
 
 ## Purpose
 
-This note records how a connection is disabled and deleted, what a change to the trust of a connection does to the
-flows in flight through it, and how a change that alters what the connection's subjects mean is refused while it has
-links and made only through an explicit migration (SSO-2.1, SSO-2.11, SSO-2.12, SSO-2.13, SSO-4.5, SSO-10.3,
-SSO-10.5). It builds on `flows.md` (the tables, the lock order, `voided_at`), `connection-settings.md` (the update
-helper), `keys.md` (trusted certificates), `domains.md` (`DomainWithdrawal`) and `enforcement.md`
-(`SessionRevocation`).
+This note records how a connection is disabled and deleted, what a change to the trust of a connection does to the flows
+in flight through it, and how a change that alters what the connection's subjects mean is refused while it has links and
+made only through an explicit migration. It builds on `flows.md` (the tables, the lock order, `voided_at`),
+`connection-settings.md` (the update helper), `keys.md` (trusted certificates), `domains.md` (`DomainWithdrawal`) and
+`enforcement.md` (`SessionRevocation`).
 
 ## Invariants
 
@@ -26,8 +25,7 @@ helper), `keys.md` (trusted certificates), `domains.md` (`DomainWithdrawal`) and
   are; another connection's rows are never touched.
 - It then raises the connection's `trust_version` by one and calls `reservationsVoided($locked)`, which deletes the
   connection's open link reservations (state `reserved`, `Links\ReservationWithdrawal`), under the same lock and in the
-  same transaction, as `Domains\DomainWithdrawal::linkingWithdrawn()` does for a domain's withdrawal (SSO-8.8,
-  `linking.md`).
+  same transaction, as `Domains\DomainWithdrawal::linkingWithdrawn()` does for a domain's withdrawal (`linking.md`).
 - Every completion and redemption takes the connection's row lock first (`flows.md`), so a void either waits for a
   completion or redemption that holds the lock, and then finds its request finished or its code redeemed, or is waited
   for, and the completion refuses a voided request with `connection_unavailable` and the redemption a voided code with
@@ -95,7 +93,7 @@ code issued before a disable is never redeemed after the enable. A refused or un
 
 - `disable()` and `delete()` call `Contracts\SessionRevocation`, resolved from the container at that moment, with
   `RevocationScope::connection($tenantId, $connectionId, $reason)` (kind `connection`, reason `connection_disabled` or
-  `connection_deleted`), inside their transaction, after the write and before the report (SSO-4.5).
+  `connection_deleted`), inside their transaction, after the write and before the report.
 - A subject migration revokes `RevocationScope::identityInConnection()` (reason `link_removed`, naming the old link's
   id) for the identity of each link it removes and each relinked link of verified domain provenance, whose new row a
   later revocation by link could not reach the old sessions through, and none for any other link it relinks, whose
@@ -107,9 +105,10 @@ code issued before a disable is never redeemed after the enable. A refused or un
 - A protocol's `subjectNames()` lists the settings a change to which may alter what existing subjects mean: the OIDC
   `issuer` and `client_id`; the SAML `idp_entity_id`, `subject_source`, `subject_attribute` and `name_id_format`.
 - `ConnectionService::update()` refuses a change to any of them with `connection_has_links` while the connection has a
-  link: an active one, or a reserved one whose reservation expires after now, found by a locking read on the write
-  connection. Freshness is asked first, as for every update, so a stale caller is `freshness_required` whatever the
-  links. A link of another connection does not count; a reservation that expired at now or before does not count.
+  link: an active or suspended one, or a reserved one whose reservation expires after now, found by a locking read on
+  the write connection. Freshness is asked first, as for every update, so a stale caller is `freshness_required`
+  whatever the links. A link of another connection does not count; a reservation that expired at now or before does not
+  count.
 - `Connections\SubjectMigration` (`@api`, final, readonly, resolved per request) is the explicit way to make such a
   change. `migrate($tenantId, $connectionId, $changes, $relinks, $removals, $client, $caller)` takes the change as
   `update()` does and an exhaustive disposition of the connection's links: the relinks, each link id mapped to a list of
@@ -128,12 +127,12 @@ code issued before a disable is never redeemed after the enable. A refused or un
      waited for the lock is among the locked links on MySQL and under PostgreSQL's `READ COMMITTED`; under PostgreSQL's
      `REPEATABLE READ`, whose snapshot may predate it, the creation's write to the connection's `links_version` makes
      the migration's lock fail to serialise (SQLSTATE `40001`, which propagates) rather than go on without the link;
-  3. the change is validated as `update()` validates one (it is `ConnectionService::changeLocked()`, the narrow
-     internal method `update()` runs once it holds the lock), with the relinks after the change's own violations, each
-     at `relinks.<id>`: `not_allowed` for a reserved link (which may be removed, not relinked), `invalid_type` for
-     anything but a list of one to three parts (a string subject, then a string or `null`), `invalid_format` for an
-     empty or overlong subject, issuer or format; any violation is `invalid` (`settings_invalid`), and a change that
-     changes nothing is `unchanged`, touching no link;
+  3. the change is validated as `update()` validates one (it is `ConnectionService::changeLocked()`, the narrow internal
+     method `update()` runs once it holds the lock), with the relinks after the change's own violations, each at
+     `relinks.<id>`: `not_allowed` for a link that is not active (a reserved or suspended one, which may be removed, not
+     relinked), `invalid_type` for anything but a list of one to three parts (a string subject, then a string or
+     `null`), `invalid_format` for an empty or overlong subject, issuer or format; any violation is `invalid`
+     (`settings_invalid`), and a change that changes nothing is `unchanged`, touching no link;
   4. freshness is asked through `FreshnessGate::checkAll()` with `sso.connection.trust`, each operation the change
      asks and `sso.link.remove`, in `FreshnessOperation`'s order (`freshness_required`);
   5. in a savepoint: the change is written and reported, what is in flight voided, every link of the connection
@@ -141,11 +140,11 @@ code issued before a disable is never redeemed after the enable. A refused or un
      domain, revoked;
   6. each relinked identity is linked to its new subject through `Links\LinkStore::create()` with the origin
      `migration`, in the order the relinks are given. A link of verified domain provenance keeps it, since only a
-     confirming `link` clears it (SSO-8.8), so the row is still judged by `Contracts\PrincipalScope` and found by
+     confirming `link` clears it, so the row is still judged by `Contracts\PrincipalScope` and found by
      `Linking\ScopeWidening`; any other relinked link's provenance is `migration`. A new subject already linked in the
-     connection (another relink's included) is `duplicate` at `relinks.<id>`, an identity at its link limit
-     `too_many`; either is `invalid` and rolls the whole migration back, the change, the removals, the revocations'
-     writes and the voiding included.
+     connection (another relink's included) is `duplicate` at `relinks.<id>`, an identity at its link limit `too_many`;
+     either is `invalid` and rolls the whole migration back, the change, the removals, the revocations' writes and the
+     voiding included.
 - The result is `migrated` with the summary and the names of what changed, or a refusal as above.
 
 ### Events

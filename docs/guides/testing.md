@@ -70,8 +70,9 @@ config()->set('sso.applications', [
 ```
 
 Run the package's migrations as your application already runs its own, but never wrap a test in a transaction on the
-package's storage connection: the start, completion and import helpers refuse to run inside one, and a redemption that
-writes a session must open its own. Use `DatabaseMigrations` or `DatabaseTruncation`, not `RefreshDatabase`.
+package's storage connection: the start, completion, discovery import and metadata refresh helpers refuse to run inside
+one, and a redemption that writes a session must open its own. Use `DatabaseMigrations` or `DatabaseTruncation`, not
+`RefreshDatabase`.
 
 The examples keep their sessions in `Tests\Integration\Examples\Application\ExampleSessions`, their eligibility in
 `EveryoneMayLink`, the people linking by a verified domain asks about in `ExampleDirectory`, and their provisioning in
@@ -882,8 +883,8 @@ own models.
 
 A binding that records a renewal and writes it later, in the same transaction, overrides
 `ReauthenticationSessionsContract::completeRenewal()` to write it, and a freshness binding that judges an identity
-without a session overrides `FreshnessContract::judgesSessions()` to answer `false`. The kits ask inside a transaction on
-`sso.storage.connection` where the package does, and leave the database to your test case. They cannot prove what
+without a session overrides `FreshnessContract::judgesSessions()` to answer `false`. The kits ask inside a transaction
+on `sso.storage.connection` where the package does, and leave the database to your test case. They cannot prove what
 needs a second connection, such as a lock held until commit or a race; test those against MySQL and PostgreSQL yourself.
 
 ## Keeping the examples honest
@@ -891,13 +892,13 @@ needs a second connection, such as a lock held until commit or a race; test thos
 The examples run with the package's Integration suite. Two checks keep them what this guide says:
 
 - `tests/Unit/Documentation/ExampleSnippetsTest.php` reads every `<!-- snippet: <path>#<region> -->` marker in the
-  guides and the README, and fails when the fenced block after it is not exactly that region of that source, or when an
-  example's region is shown nowhere. A region is the lines between `// @snippet-start <region>` and
-  `// @snippet-end <region>`, with their shared indentation removed; as with any inline comment, no blank line follows
-  either.
+  guides and the README, and fails when the fenced block after it is not exactly that region of that source, when an
+  example's region is shown nowhere, or when a PHP block in the guides or the README has no marker. A region is the
+  lines between `// @snippet-start <region>` and `// @snippet-end <region>`, with their shared indentation removed; as
+  with any inline comment, no blank line follows either.
 - `tests/Unit/Documentation/ExamplesUsePublicApiTest.php` fails when an example names a class of the package marked
   `@internal`, a model, or a test trait or fixture of the package's, reads a table or builds a verified result, and
   when a public testing helper is missing from this guide.
 
-Any guide can show an executable example the same way: put the code in a test under `tests/Integration/Examples`,
-extending `ExampleTestCase`, mark the region, and put the marker before its snippet.
+Every PHP block in a guide is shown the same way: put the code in a test under `tests/Integration/Examples`, extending
+`ExampleTestCase`, mark the region, and put the marker before its snippet.

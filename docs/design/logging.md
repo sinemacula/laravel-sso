@@ -4,8 +4,8 @@
 
 This note describes how the package keeps secrets out of its logs: the one logger every package log call goes through,
 the sanitiser an identity provider's diagnostics pass through (length capped, control characters removed, secrets
-redacted), the redaction applied to every log call's context, and the harness flow tests use to prove that no
-verifier, handoff code, protocol state, assertion or provider token is ever logged (SSO-5.7, SSO-9.8, SSO-11.9).
+redacted), the redaction applied to every log call's context, and the harness flow tests use to prove that no verifier,
+handoff code, protocol state, assertion or provider token is ever logged.
 
 ## Invariants
 
@@ -15,8 +15,8 @@ verifier, handoff code, protocol state, assertion or provider token is ever logg
   (`SsoServiceProvider::LOGGING_CLASSES`). `LoggerInterface` is never bound for the whole application, so the
   application's own logging is left alone. The logger sanitises the message, redacts the context and writes both to the
   channel `sso.logging.channel` names, or to Laravel's default channel when it names none. The channel is resolved on
-  each call, never kept, so the logger holds nothing of one request or job for the next (SSO-11.2). A level PSR-3 does
-  not define is refused with PSR-3's `InvalidArgumentException`.
+  each call, never kept, so the logger holds nothing of one request or job for the next. A level PSR-3 does not define
+  is refused with PSR-3's `InvalidArgumentException`.
 - A message, and every string in a context, is sanitised by `Logging\DiagnosticSanitizer`. In order:
   - invalid UTF-8 is scrubbed (each bad byte becomes `?`);
   - tabs and line breaks become spaces, and every other C0 control, DEL, every C1 control and the Unicode
@@ -98,10 +98,9 @@ verifier, handoff code, protocol state, assertion or provider token is ever logg
   `relay_state`, `relaystate`, `nonce`, `assertion`, `saml_response`, `samlresponse`, `saml_request`, `samlrequest`,
   `private_key`, `privatekey`, `authorization`, `cookie`, `set_cookie`, `client_assertion` and `signature`.
   `sso.logging.redacted_keys` adds keys; nothing removes a built-in one.
-- The public reference is the only flow identifier a log carries (SSO-9.8). Package code logs it under a key that is
-  not redacted (`request_reference`, as events carry it), with the reason as a `FailureReason`, and never logs a
-  verifier, code, state, nonce, assertion or token, even redacted, on purpose: redaction is the backstop, not the
-  design.
+- The public reference is the only flow identifier a log carries. Package code logs it under a key that is not redacted
+  (`request_reference`, as events carry it), with the reason as a `FailureReason`, and never logs a verifier, code,
+  state, nonce, assertion or token, even redacted, on purpose: redaction is the backstop, not the design.
 - Every setting is read on each call through `Logging\LoggingSettings`, and a malformed one fails closed with an
   `InvalidArgumentException` naming its key, so a log call never goes out unsanitised, uncapped or under fewer
   redacted keys than configured. A sanitiser pattern that cannot run over the text (a PCRE limit on a huge body)
@@ -143,9 +142,8 @@ verifier, handoff code, protocol state, assertion or provider token is ever logg
 - A secret shorter than 40 characters that is under no key, outside every recognised form, is not caught by the
   sanitiser. Package code never logs one; the redacted keys catch the ones it passes in a context.
 - A header written as `Name: value` is a pair: one under a redacted key loses its value, and a credential header
-  (`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`) loses the rest of the text, since its value may
-  carry spaces and parameters. Package code never logs transport headers (SSO-5.7); a header map in a context is
-  redacted by its keys.
+  (`Authorization`, `Proxy-Authorization`, `Cookie`, `Set-Cookie`) loses the rest of the text, since its value may carry
+  spaces and parameters. Package code never logs transport headers; a header map in a context is redacted by its keys.
 - Laravel's shared log context (`Log::shareContext()`, `Context`) is added by Laravel after redaction and is the
   application's own.
 

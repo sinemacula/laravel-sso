@@ -3,7 +3,8 @@
 declare(strict_types = 1);
 
 /*
- * The adapter's `sign_in` redemption, as its endpoint runs it with `$input`.
+ * The adapter's `sign_in` redemption, as its endpoint runs it with `$input`
+ * and the sign-in's `$context`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -11,6 +12,7 @@ declare(strict_types = 1);
 
 namespace Tests\Integration\Examples\IntegratingWithLaravelIam;
 
+use SineMacula\Laravel\Authentication\Sessions\SignInContext;
 use Tests\Integration\Examples\Clients;
 
 /** @var array{application: string, connection: string, code: string, verifier: string} $input */
@@ -19,7 +21,8 @@ $connectionId = $input['connection'];
 $code         = $input['code'];
 $verifier     = $input['verifier'];
 
-$client = Clients::browser();
+$client  = Clients::browser();
+$context = SignInContext::fromRequest(request());
 // @snippet-start iam-sign-in
 use Illuminate\Support\Facades\DB;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
@@ -29,7 +32,7 @@ use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 
 $storage = DB::connection(StorageConnection::name());
 
-$answer = $storage->transaction(static function () use ($application, $connectionId, $code, $verifier, $client): RedemptionResult|SignInResult {
+$answer = $storage->transaction(static function () use ($application, $connectionId, $code, $verifier, $client, $context): RedemptionResult|SignInResult {
     $redemption = app(HandoffRedemption::class)
         ->admit(Purpose::SIGN_IN, $application, $connectionId, $code, $verifier, $client);
 
@@ -43,7 +46,7 @@ $answer = $storage->transaction(static function () use ($application, $connectio
 
     app(AdmittedRedemptions::class)->record($redemption); // request scoped, for the link contract
 
-    $signIn = Auth::sessions()->signInExternally(ExternalResults::from($redemption)); // PR #127
+    $signIn = Auth::sessions()->signInExternally(ExternalResults::from($redemption), $context);
 
     if ($signIn->isFailed()) {
         throw new ExternalSignInRefused($signIn); // roll back: the code stays unspent

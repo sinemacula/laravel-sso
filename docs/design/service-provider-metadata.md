@@ -3,10 +3,10 @@
 ## Purpose
 
 This note records what the package answers when an administrator needs to register a connection at its identity
-provider (SSO-5.9): for a SAML connection, its service provider metadata (SAML 2.0 Metadata) as
-`application/samlmetadata+xml`; for any other protocol, whatever that protocol's driver describes. It covers what the
-metadata holds and leaves out, where each value comes from, how a key rotation shows in it, and the helper an
-application calls to serve it. Serving it at a URL is the application's: the package builds no route.
+provider: for a SAML connection, its service provider metadata (SAML 2.0 Metadata) as `application/samlmetadata+xml`;
+for any other protocol, whatever that protocol's driver describes. It covers what the metadata holds and leaves out,
+where each value comes from, how a key rotation shows in it, and the helper an application calls to serve it. Serving it
+at a URL is the application's: the package builds no route.
 
 ## Invariants
 
@@ -23,15 +23,15 @@ application calls to serve it. Serving it at a URL is the application's: the pac
   (`ConnectionFinder`), whatever the column's collation.
 - A connection whose protocol is not available (no driver registered under it, or its feature off) is
   `protocol_unavailable`, and no driver is asked.
-- A disabled connection is described, and so is one whose identity provider settings are incomplete: the metadata is
-  the service provider side only, and an administrator registers it before the connection is enabled. Being described
-  says nothing about being usable (SSO-2.1).
+- A disabled connection is described, and so is one whose identity provider settings are incomplete: the metadata is the
+  service provider side only, and an administrator registers it before the connection is enabled. Being described says
+  nothing about being usable.
 - The helper reads public data and changes nothing: it asks for no fresh authentication, writes nothing and reports no
-  event. It reads the connection from the write connection (SSO-11.3).
+  event. It reads the connection from the write connection.
 - Every call into the SAML library is made by `Protocols\Saml2\Library\MetadataWriter`, inside the adapter's namespace
   (`saml-adapter.md`); `Saml2\ServiceProviderMetadata` reads the package's own values and hands them to it.
-- The SAML metadata is one unsigned `md:EntityDescriptor` whose `entityID` is the entity id the endpoint resolver builds
-  (SSO-5.5), holding one `md:SPSSODescriptor`:
+- The SAML metadata is one unsigned `md:EntityDescriptor` whose `entityID` is the entity id the endpoint resolver
+  builds, holding one `md:SPSSODescriptor`:
   - `protocolSupportEnumeration` is SAML 2.0's protocol namespace;
   - `AuthnRequestsSigned` is `sign_authn_requests`, and `WantAssertionsSigned` is `want_assertions_signed`, each
     written `true` or `false`, defaults applied (off and on);
@@ -47,13 +47,13 @@ application calls to serve it. Serving it at a URL is the application's: the pac
 - AES-256-GCM is never advertised, since the library cannot decrypt it until saml2 v7 (`saml-library.md`, condition 5),
   and RSA 1.5 never is: the encryption methods come from `Saml2Options`, which keeps only the algorithms the settings
   allow, even when a stored list names others.
-- No secret is ever written (SSO-5.9). The writer takes only certificates, and refuses anything that is not exactly one
-  PEM certificate block, a private key included, before the library sees it. A published key with no certificate is
-  left out. The metadata is not signed.
+- No secret is ever written. The writer takes only certificates, and refuses anything that is not exactly one PEM
+  certificate block, a private key included, before the library sees it. A published key with no certificate is left
+  out. The metadata is not signed.
 - The metadata has no `ID`, `validUntil` or `cacheDuration`, so the same connection, keys, settings and endpoints always
   give the same bytes. It changes when a key is added, made current or retired, or a setting it reflects changes.
 - Every value is read afresh on each call; nothing is kept between calls, and the driver's collaborators hold no
-  connection state (SSO-11.2).
+  connection state.
 
 ## Success Path
 
@@ -81,7 +81,7 @@ application calls to serve it. Serving it at a URL is the application's: the pac
 - A connection with no keys is described with no `KeyDescriptor`; one that signs its requests or requires encrypted
   assertions is still not complete until it has the current key it needs (`connections.md`), but its metadata can be
   published first.
-- A database error propagates (SSO-11.4).
+- A database error propagates.
 
 ## Implementation Anchors
 

@@ -3,17 +3,16 @@
 ## Purpose
 
 This note records how the way a completion ended becomes the response the application's controller returns at the
-assertion consumer service and the OIDC callback (SSO-5.6, SSO-5.7, SSO-12.1): the status of each outcome after each
-HTTP method, where the handoff code, the failure code and the public reference go on the redirect URI, the headers
-every response carries, the body, and why the builder catches nothing (SSO-11.4). The package has no route or
-controller: it answers a value the application returns.
+assertion consumer service and the OIDC callback: the status of each outcome after each HTTP method, where the handoff
+code, the failure code and the public reference go on the redirect URI, the headers every response carries, the body,
+and why the builder catches nothing. The package has no route or controller: it answers a value the application returns.
 
 ## Invariants
 
 - `Responses\CompletionResponses::from(CompletionResult $result, string $method)` builds a
   `Responses\CompletionResponse` from a `Completion\CompletionResult` and the method the completion arrived by. It is
   the only way the package turns a result into a response; it reads nothing from the request but the method, and never
-  chooses or alters a target (SSO-5.5).
+  chooses or alters a target.
 - `CompletionResponse` (`final readonly`) holds the `status`, the `headers` (every header but `Location`), the plain
   text `body`, and the `Location` of a redirect, read through `location()`. It is Laravel's `Responsable`:
   `toResponse()` answers an `Illuminate\Http\Response` with exactly that status, those headers, that `Location` and
@@ -41,20 +40,20 @@ controller: it answers a value the application returns.
   then `reference` (the request's public reference), in that order, written by `http_build_query()` with RFC 3986
   encoding. A code and a reference are base64url and a reason is lower case with `_`, so the encoding changes none of
   them. A failed one carries the code and nothing else: never a reason in prose, the identity provider's error
-  description or an assertion (SSO-5.7).
+  description or an assertion.
 - Every response, the `400` and the `429` included, is sent with `HEADERS`, in this order: `Cache-Control: no-store`,
   `Referrer-Policy: no-referrer` and `Content-Type: text/plain; charset=UTF-8`; the `429` adds `Retry-After`. The
-  completed one carries the handoff code (SSO-9.8); the others carry the same headers so no response is cached and no
-  redirect leaks the URL in a `Referer`. Symfony writes `Cache-Control: no-store` as `no-store, private`, which only
-  narrows it, and adds a `Date` header.
-- The body is a message read through `Localization\Messages` in the translator's current locale (SSO-12.6):
+  completed one carries the handoff code; the others carry the same headers so no response is cached and no redirect
+  leaks the URL in a `Referer`. Symfony writes `Cache-Control: no-store` as `no-store, private`, which only narrows it,
+  and adds a `Date` header.
+- The body is a message read through `Localization\Messages` in the translator's current locale:
   `completion.redirecting` for a redirect, `completion.invalid` for a `400` and a `429`, the same whatever the reason.
 - The `Location` is held in a `\SensitiveParameterValue`. The debug view (`__debugInfo()`) and `json_encode()` show
   the status, the headers, the body and the `Location` with the value of every `code` parameter, in the query or the
   fragment, replaced by `[redacted]`; an export or an array cast sees only the wrapper. The response refuses to be
   serialised or unserialised (`LogicException`), since the `Location` carries the code.
 - `CompletionResponses` keeps only the `Messages` it was given, and is not bound: the container builds it with the
-  application's translator wherever it is resolved, so nothing of one request or job outlives it (SSO-11.2).
+  application's translator wherever it is resolved, so nothing of one request or job outlives it.
 
 ## Success Path
 
@@ -73,10 +72,10 @@ controller: it answers a value the application returns.
   below that) and no `Location`.
 - An unsolicited SAML response: `reinitiated`, a redirect to the connection's start URL exactly as given; it carries no
   code.
-- The builder catches nothing. A database error never becomes a `CompletionResult`, because the completion propagates
-  it as a server error (SSO-11.4), so it never reaches the builder and is never turned into a failure redirect; and an
-  error the builder meets itself (a translator that cannot read its lines, or the `LogicException` of a message with no
-  English line) propagates as thrown.
+- The builder catches nothing. A database error never becomes a `CompletionResult`, because the completion propagates it
+  as a server error, so it never reaches the builder and is never turned into a failure redirect; and an error the
+  builder meets itself (a translator that cannot read its lines, or the `LogicException` of a message with no English
+  line) propagates as thrown.
 - A redirect URI whose query is empty (`https://app.example.com/sso?`) has a query: the parameters follow `&`.
 
 ## Implementation Anchors

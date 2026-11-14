@@ -2,14 +2,14 @@
 
 ## Purpose
 
-This note records how a SAML connection is filled in from its identity provider's metadata and kept up to date from
-it (SSO-2.8, SSO-6.11, SSO-10.3, SSO-11.12): the metadata validation profile, the import that proposes settings, the
-scheduled and on-demand refresh that applies certificates and endpoints, the claim and the compare-and-set that keep
-racing servers and administrators from overwriting each other, the trust version, the backoff, and the expiry of what
-a refresh applied. The refresh machinery is shared by every protocol through `Metadata\MetadataSource`: an OIDC
-connection's discovery document and JWKS refresh through the same claim, compare-and-set, backoff, queue, command,
-stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter it reads metadata through is in
-`saml-adapter.md`; the keys and anchors in `keys.md`.
+This note records how a SAML connection is filled in from its identity provider's metadata and kept up to date from it:
+the metadata validation profile, the import that proposes settings, the scheduled and on-demand refresh that applies
+certificates and endpoints, the claim and the compare-and-set that keep racing servers and administrators from
+overwriting each other, the trust version, the backoff, and the expiry of what a refresh applied. The refresh machinery
+is shared by every protocol through `Metadata\MetadataSource`: an OIDC connection's discovery document and JWKS refresh
+through the same claim, compare-and-set, backoff, queue, command, stale limit and events (`oidc-driver.md`,
+`oidc-discovery.md`). The SAML adapter it reads metadata through is in `saml-adapter.md`; the keys and anchors in
+`keys.md`.
 
 ## Invariants
 
@@ -58,10 +58,9 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   `sso.features.saml2` is off every import is `protocol_unavailable`, before any lookup, read or fetch. A connection
   named must be the tenant's SAML connection (otherwise `connection_not_found`); its anchors then apply. `importUrl()`
   counts the attempt against `AttemptSubject::metadata()` when a connection is named, before it fetches through the
-  fetcher as a `metadata` request held to the metadata cap (SSO-2.9). It fetches while it is called, so a large
-  aggregate is imported from the console or a queued job, never a web request. A proposal that would not be valid
-  settings (a single sign-on URL that is not `https`, an entity id that is neither a URL nor a URN) is
-  `metadata_invalid`.
+  fetcher as a `metadata` request held to the metadata cap. It fetches while it is called, so a large aggregate is
+  imported from the console or a queued job, never a web request. A proposal that would not be valid settings (a single
+  sign-on URL that is not `https`, an entity id that is neither a URL nor a URN) is `metadata_invalid`.
 - The schedule refreshes a connection only while `sso.features.metadata_refresh` (on by default) is on, its protocol is
   available (`ProtocolManager::isAvailable()`, so a protocol switched off fetches and writes nothing) and its protocol's
   `Metadata\MetadataSource` says it does (`refreshes()`), a protocol with no source never refreshing. For a SAML
@@ -90,7 +89,9 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   another tenant's, `feature_disabled` for a protocol switched off or nothing to fetch, with nothing fetched), for the
   `Identities\Caller` it requires. Where the schedule would not refresh the connection (its setting or the feature off,
   or a SAML connection that has not opted in) it first asks `sso.connection.trust` freshness for that caller, and
-  `stale` is `freshness_required`. It then counts the attempt against `AttemptSubject::metadata()` (the import's limit,
+  `stale` is `freshness_required`; the write asks it again once the connection is locked, before the compare and set
+  (`RefreshWriter::locked()`), and a caller stale there releases the claim, writes nothing else, reports no event and is
+  `freshness_required`. It then counts the attempt against `AttemptSubject::metadata()` (the import's limit,
   `sso.rate_limits.metadata`): past it, `rate_limited` with `retryAfter`, before anything is claimed or fetched. Every
   entry refuses to run inside a transaction on the storage connection (`StorageConnection::assertNoTransaction()`).
 - The machinery is protocol-agnostic. `Metadata\MetadataRefresher` lists the due connections of every protocol that
@@ -188,7 +189,7 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   `metadata_url` or issuer, the anchor or `metadata_refresh`. An administrator's refresh asks none where the schedule
   would refresh the connection too, since it writes no more than the schedule would; it is rate limited and names the
   administrator instead. Where the schedule would not, the same refresh would replace what an administrator told the
-  schedule to leave alone, so it asks `sso.connection.trust` (SSO-2.12).
+  schedule to leave alone, so it asks `sso.connection.trust`.
 - Large federation metadata is supported once the cap allows it: the aggregate's signature is verified whole with the
   anchor and exactly one entity with the pinned id chosen. The whole document is held in memory, parsed and its
   signature checked in one piece (the library rebuilds the signed aggregate twice to verify it), so memory runs to
@@ -243,7 +244,7 @@ stale limit and events (`oidc-driver.md`, `oidc-discovery.md`). The SAML adapter
   connection at a per-entity URL.
 - Metadata validated the stale limit or longer before the refresh commits (a refresh stalled for longer than it) is
   refused `metadata_expired` at commit, though its `validUntil` is far off.
-- A database error propagates (SSO-11.4) and stops a scheduled run; the command reports the exception's class alone.
+- A database error propagates and stops a scheduled run; the command reports the exception's class alone.
 
 ## Implementation Anchors
 

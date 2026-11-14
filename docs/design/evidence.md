@@ -2,10 +2,10 @@
 
 ## Purpose
 
-This note describes what the package does with the identity provider's authentication context (SSO-8.7, SSO-9.5,
-SSO-9.10): how a connection says which of its provider's assertions count, how a result is judged, and what a redeemer
-receives. It amends nothing in `linking.md`: evidence stands on that state machine and adds no stage, no lock and no
-event. The guide is `docs/guides/evidence.md`.
+This note describes what the package does with the identity provider's authentication context: how a connection says
+which of its provider's assertions count, how a result is judged, and what a redeemer receives. It amends nothing in
+`linking.md`: evidence stands on that state machine and adds no stage, no lock and no event. The guide is
+`docs/guides/evidence.md`.
 
 ## Invariants
 
@@ -25,7 +25,7 @@ event. The guide is `docs/guides/evidence.md`.
 - `sign_in` asks only once an identity is established: after a reservation's activation, or for a link whose continuity
   held. An unlinked handoff and a refusal never ask.
 - `reauthenticate` asks once its link and session are judged, and the renewal carries what this authentication gave and
-  nothing earlier (SSO-9.5). The sign-in's provenance is the adapter's to keep apart (SSO-9.10).
+  nothing earlier. The sign-in's provenance is the adapter's to keep apart.
 - `AcceptedEvidence` holds only the accepted RFC 8176 methods, the raw context class as data, the connection's id as the
   credential reference and the provider's authentication time. No field is an assurance level. Its provider values are
   behind `\SensitiveParameterValue`, a dump and JSON show counts, and it refuses to be serialised or unserialised.
@@ -80,9 +80,9 @@ malformed and nothing else it refuses can be read as a policy. A row the package
 | `reauthenticate` | `first_factor_reauthentication`, with MFA purpose `reauthenticate` |
 | `link`           | none                                                               |
 
-It is offered to both the identity-level requirement (AUTH-3.6) and the tenant's (AUTH-2.12). It is an input to that
-policy and never an automatic pass. Which factors combine, including the first factor's channel, remains `laravel-mfa`'s
-or the application's (AUTH-3.12).
+It is offered to both the identity-level requirement and the tenant's. It is an input to that policy and never an
+automatic pass. Which factors combine, including the first factor's channel, remains `laravel-mfa`'s or the
+application's.
 
 ## Success Path
 

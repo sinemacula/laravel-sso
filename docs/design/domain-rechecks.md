@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This note records how verified domains stay verified (SSO-3.3, SSO-11.12): the scheduled recheck that looks each
-verified domain's TXT record up again, the lease that keeps several servers from checking one domain at once, the lock
-order its writes follow, the immediate suspension of linking when a record goes, the grace period during which the
-domain still routes discovery, the restoration and the lapse, and the events each reports (SSO-10.3 to SSO-10.5). How a
-domain is claimed and first verified, and the predicates it is judged by, are in `domains.md`.
+This note records how verified domains stay verified: the scheduled recheck that looks each verified domain's TXT record
+up again, the lease that keeps several servers from checking one domain at once, the lock order its writes follow, the
+immediate suspension of linking when a record goes, the grace period during which the domain still routes discovery, the
+restoration and the lapse, and the events each reports. How a domain is claimed and first verified, and the predicates
+it is judged by, are in `domains.md`.
 
 ## Invariants
 
@@ -50,14 +50,15 @@ domain is claimed and first verified, and the predicates it is judged by, are in
   was, so linking by the domain stops on its own once that check is older than the linking maximum age, while discovery
   still routes it. A claim already suspended keeps its lapse time, and lapses without a lookup once it has passed, as
   any claim past its grace does.
-- The result is written in one transaction on the storage connection (retried up to three times on a deadlock when it
-  is the outermost), which locks in the shared order: the connection's row by its id (a system job, scoped to no
-  tenant), then the claim by (`connection_id`, `domain`) through `DomainFinder::find(..., true)`. Every read that
-  decides the write is one of those locking reads; nothing locks by `verified_domain`. A connection gone, or a claim
-  gone, replaced by another row, no longer verified or holding another token than the one looked up (compared in
-  constant time), is `skipped`, its lease left to expire. So is a claim whose `recheck_leased_until` is no longer the
-  exact lease this check wrote, or is not after now: a lookup that outlasted its lease may be older than what a server
-  that took the claim over has since written (a suspension must never be lifted by an older answer).
+- The result is written in one transaction on the storage connection (tried at most three times in all on a deadlock or
+  serialisation failure when it is the outermost), which locks in the shared order: the connection's row by its id (a
+  system job, scoped to no tenant), then the claim by (`connection_id`, `domain`) through `DomainFinder::find(...,
+  true)`. Every read that decides the write is one of those locking reads; nothing locks by `verified_domain`. A
+  connection gone, or a claim gone, replaced by another row, no longer verified or holding another token than the one
+  looked up (compared in constant time), is `skipped`, its lease left to expire. So is a claim whose
+  `recheck_leased_until` is no longer the exact lease this check wrote, or is not after now: a lookup that outlasted its
+  lease may be older than what a server that took the claim over has since written (a suspension must never be lifted by
+  an older answer).
 - Under the locks, the claim read again decides the outcome:
   - Its grace has run out: it lapses (below).
   - The lookup failed (`lookup_failed`): nothing about the claim is written but the release of its lease; its check time
@@ -87,8 +88,8 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 - Events are dispatched through `Administration\DomainEvents`, inside the transaction and after the write, so they reach
   listeners once it commits and never when it rolls back; a recheck's context names the connection, its tenant and
   protocol, and no acting identity.
-- The recheck asks no freshness (no caller acts, and SSO-2.12 lists no recheck operation) and takes no rate-limit
-  attempt. It holds nothing between runs (SSO-11.2); resolve it per run.
+- The recheck asks no freshness (no caller acts, and `FreshnessOperation` names no recheck operation) and takes no
+  rate-limit attempt. It holds nothing between runs; resolve it per run.
 - The command prints `[<outcome>] <domain> (connection <id>)` for each entry other than `confirmed` and `skipped`, then
   `Domains rechecked:` and the count of each outcome, `resolver_threw` apart from `lookup_failed`. It exits 1 when a
   lookup failed, when the resolver threw, and when the run stopped on an exception, which it names by class alone;
@@ -123,9 +124,9 @@ domain is claimed and first verified, and the predicates it is judged by, are in
 - A resolver that throws on one claim is contained, and the run checks the rest; the command exits 1 so monitoring
   notices, and the warning logged names the exception's class.
 - A database error, or anything else thrown but by the resolver (the package's own storage, the withdrawal, the
-  settings), propagates (SSO-11.4) and stops the run, even when it is raised releasing the lease of a claim the resolver
-  threw on; the claims already written stay written and reported. The command exits 1 naming the exception's class,
-  never its message, which could carry a value read from the database or the DNS.
+  settings), propagates and stops the run, even when it is raised releasing the lease of a claim the resolver threw on;
+  the claims already written stay written and reported. The command exits 1 naming the exception's class, never its
+  message, which could carry a value read from the database or the DNS.
 - A malformed `recheck_grace_seconds` fails closed with an `InvalidArgumentException` naming its key, before a
   suspension is written.
 

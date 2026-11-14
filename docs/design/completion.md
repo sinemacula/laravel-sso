@@ -2,11 +2,11 @@
 
 ## Purpose
 
-This note records how a flow completes where the identity provider sends the browser back (SSO-5.5, SSO-5.6, SSO-5.7,
-SSO-6.10, SSO-8.1, SSO-8.6, SSO-9.2, SSO-12.1): the two helpers and what they check before the steps run, the stage
-behind each step and what it decides, the verified result and how it is built, the transactions and the locks, how a
-completion ends and what it reports. The steps, the tables, the value types and the lock order are in `flows.md`;
-consuming a request is in `authorization-requests.md`; the response values are in `completion-responses.md`.
+This note records how a flow completes where the identity provider sends the browser back: the two helpers and what they
+check before the steps run, the stage behind each step and what it decides, the verified result and how it is built, the
+transactions and the locks, how a completion ends and what it reports. The steps, the tables, the value types and the
+lock order are in `flows.md`; consuming a request is in `authorization-requests.md`; the response values are in
+`completion-responses.md`.
 
 ## Invariants
 
@@ -23,20 +23,20 @@ consuming a request is in `authorization-requests.md`; the response values are i
   application's controller: the service never reads the request being served, and the client rides on the
   `CompletionState` to every stage, the driver and each event.
 - The connection id is the one the application's route names; the route's URL is the endpoint resolver's, built from
-  configuration and never from the request (SSO-5.5). Before the steps run, in this order, each refusal reporting
-  exactly one `FlowFailed` and writing nothing:
+  configuration and never from the request. Before the steps run, in this order, each refusal reporting exactly one
+  `FlowFailed` and writing nothing:
   1. the completion is counted with `AttemptSubject::completion()` against the client's IP address (none for a client
-     with none) and the connection id (SSO-11.8), one count for both endpoints taken before the method is looked at; a
-     full limit is `rate_limited` with its wait;
+     with none) and the connection id, one count for both endpoints taken before the method is looked at; a full limit
+     is `rate_limited` with its wait;
   2. the method must be the endpoint's, compared exactly (`POST`, `GET`); anything else is `rejected(request_unknown)`;
-  3. the connection is read by exactly its id, of any tenant, from the write connection (SSO-11.3); an empty id or one
-     longer than a ULID is not looked up, and a row the collation merely counts as equal is not found; an unknown one is
+  3. the connection is read by exactly its id, of any tenant, from the write connection; an empty id or one longer than
+     a ULID is not looked up, and a row the collation merely counts as equal is not found; an unknown one is
      `rejected(connection_unavailable)`;
   4. its protocol must complete at the endpoint: `saml2` at the assertion consumer service, `oidc` at the callback, and
      a protocol an application registered with `extend()`, which the package cannot place, at either while its driver
      is registered; anything else is `rejected(connection_unavailable)`.
 - A connection that is not usable is not refused here: a disabled connection still consumes the request its response
-  names, and its failure is redirected to the request's application (SSO-5.7).
+  names, and its failure is redirected to the request's application.
 
 ### The stages
 
@@ -78,22 +78,22 @@ Each stage is in `Completion\Stages`.
   keeps the driver's reason; a verified response goes on with its `Results\VerifiedClaims` and the result built from
   them.
 - `RecordReplay`, the first locked step, records what the driver asked to record against replay
-  (`Protocols\ReplayRecord` on the verified completion: a SAML assertion's id, by connection and issuer, SSO-6.6)
-  through the single-use store until its expiry, inside the locked transaction, so it runs only after the driver's
-  validation passed, before any downstream effect, and a completion that rolls back records nothing. A repeat is
-  `replayed`; a record whose expiry is no longer after now is `assertion_expired`, recording nothing. A completion
-  that asked for no record goes on (see `saml-responses.md`).
+  (`Protocols\ReplayRecord` on the verified completion: a SAML assertion's id, by connection and issuer) through the
+  single-use store until its expiry, inside the locked transaction, so it runs only after the driver's validation
+  passed, before any downstream effect, and a completion that rolls back records nothing. A repeat is `replayed`; a
+  record whose expiry is no longer after now is `assertion_expired`, recording nothing. A completion that asked for no
+  record goes on (see `saml-responses.md`).
 - `ResolveLink` asks the bound `Contracts\Linker` for a typed `Links\LinkResolution`; only the connection, issuer and
-  subject select an identity (SSO-8.2). Only an `absent` link can reserve, be provisioned or take an unlinked handoff.
+  subject select an identity. Only an `absent` link can reserve, be provisioned or take an unlinked handoff.
 - `CheckEnforcement` judges the policy of the connection's tenant on the request's application. Under the default
   `DatabaseEnforcement` with the feature on, it is the policy the pipeline judged from the rows it locked at the start
   of the locked transaction, carried on the state (`CompletionState::$enforcementPolicy`), so nothing is read again;
   with another contract bound, that contract is asked now, and must itself serialise against its rule's changes.
   `EnforcementPolicy::isSatisfiedBy()` is the whole rule: a policy that requires nothing is satisfied by every
   connection, one that requires sign-in only by its connections. A satisfied policy leaves the state unchanged: the
-  session keeps the version its redemption judges under its own locks (SSO-4.6, SSO-9.10), so the completion's is kept
-  nowhere. No exemption is consulted at completion: an exemption admits a session, and the redemption rechecks
-  enforcement against the state then.
+  session keeps the version its redemption judges under its own locks, so the completion's is kept nowhere. No exemption
+  is consulted at completion: an exemption admits a session, and the redemption rechecks enforcement against the state
+  then.
 - `CheckPurpose` runs the rules of the flow's purpose (`Completion\Rules`): a suspended link ends a `sign_in` with
   `link_suspended`, a subject another flow's reservation holds with `link_reserved`; a `link` needs an eligible identity
   and a subject no other identity holds; a `reauthenticate` needs a result resolving to the identity it was started for.
@@ -101,21 +101,21 @@ Each stage is in `Completion\Stages`.
   holding no reservation stops T2 at the provisioning boundary, and the final continuation runs only `link_resolution`,
   `enforcement`, `purpose_rules`, `unlinked_decision` and `handoff_issuance`.
 - `DecideUnlinked` refuses a `sign_in` whose result resolved to no identity, and holds no reservation, with `unlinked`
-  unless the application allows unlinked handoffs (SSO-8.6). `link` and `reauthenticate` pass unchanged.
-- `IssueHandoff` asks `Contracts\ApplicationPolicy` again (SSO-9.2): anything but `allowed` is
-  `application_not_allowed`. A result carrying the provider's session deadline asks `Contracts\ProviderSessionDeadline`;
-  `limits_session` makes the deadline the session's latest end (SSO-6.10); a result with no deadline never asks. It then
-  issues through `Contracts\HandoffIssuer` a `Handoffs\HandoffGrant` of the result, the request's S256 challenge, an
-  expiry of the application's `handoff_ttl_seconds` from now, the connection's `trust_version` as its locked row holds
-  it (SSO-2.13), the linked identity, the request's identity and session, the session's latest end, the link and the
-  reservation. A code bound to a reservation expires exactly when it does, and its reference and stored expiry are
-  written to the reservation in the same transaction.
+  unless the application allows unlinked handoffs. `link` and `reauthenticate` pass unchanged.
+- `IssueHandoff` asks `Contracts\ApplicationPolicy` again: anything but `allowed` is `application_not_allowed`. A result
+  carrying the provider's session deadline asks `Contracts\ProviderSessionDeadline`; `limits_session` makes the deadline
+  the session's latest end; a result with no deadline never asks. It then issues through `Contracts\HandoffIssuer` a
+  `Handoffs\HandoffGrant` of the result, the request's S256 challenge, an expiry of the application's
+  `handoff_ttl_seconds` from now, the connection's `trust_version` as its locked row holds it, the linked identity, the
+  request's identity and session, the session's latest end, the link and the reservation. A code bound to a reservation
+  expires exactly when it does, and its reference and stored expiry are written to the reservation in the same
+  transaction.
 - A stage run before the steps it needs throws a `LogicException` naming what it needs: the pipeline's mistake.
 
 ### The verified result
 
-`Completion\ResultBuilder::build($claims, $connection, $consumed)` is the only place a `Results\VerifiedResult` is
-made, from what a driver verified and never from client input (SSO-8.1):
+`Completion\ResultBuilder::build($claims, $connection, $consumed)` is the only place a `Results\VerifiedResult` is made,
+from what a driver verified and never from client input:
 
 - the issuer, subject, NameID format, authentication context, linking email and asserted email are the claims', exactly
   as verified, and neither email is ever derived from the mapped attributes;
@@ -127,22 +127,22 @@ made, from what a driver verified and never from client input (SSO-8.1):
   routes now (`Domains\DomainStanding::routes()`: verified and before its lapse). A domain of another connection, a
   pending or lapsed claim, a claim at or past its lapse, and anything that is not an email are not verified. The claim
   is read through `Domains\DomainFinder` on the write connection;
-- `assertedEmail` (`Results\AssertedEmail`, OIDC only, SSO-7.7) is the email the provider asserted with its
-  `email_verified`, `true`, `false` or `null` for unknown, and their one source (`oidc-claims.md`). A result with none
-  stores no key for one, so a SAML result's stored form does not change. It is stored and restored with the handoff:
-  `toArray()` and `serialize()` hold it whole, and `restore()` checks it again. `json_encode()` of a result is the
-  stored form but for this one part, shown only as its source and flag, so that JSON cannot be restored; no dump shows
-  the email. The result's mapped attributes and linking email are stored and written in JSON as they are, so a result's
-  JSON is personal data and only its parts' own JSON (`VerifiedClaims`, `LinkingEmail`, `AssertedEmail`) is redacted.
+- `assertedEmail` (`Results\AssertedEmail`, OIDC only) is the email the provider asserted with its `email_verified`,
+  `true`, `false` or `null` for unknown, and their one source (`oidc-claims.md`). A result with none stores no key for
+  one, so a SAML result's stored form does not change. It is stored and restored with the handoff: `toArray()` and
+  `serialize()` hold it whole, and `restore()` checks it again. `json_encode()` of a result is the stored form but for
+  this one part, shown only as its source and flag, so that JSON cannot be restored; no dump shows the email. The
+  result's mapped attributes and linking email are stored and written in JSON as they are, so a result's JSON is
+  personal data and only its parts' own JSON (`VerifiedClaims`, `LinkingEmail`, `AssertedEmail`) is redacted.
 
 ### Transactions and locks
 
 - A completion runs outside any transaction on the storage connection. `CompletionService` checks at entry, before
   anything is written (the attempt included), and called inside one it is a `LogicException`
-  (`StorageConnection::assertNoTransaction()`). A caller's rollback would otherwise undo the request's consumption
-  (its `consumed_at` and its single-use record), so the same response could be replayed against a request SSO-5.1
-  says is consumed; and the caller's transaction would keep the connection's lock, taken by the consumption, across
-  the driver's validation, which may fetch (SSO-11.5).
+  (`StorageConnection::assertNoTransaction()`). A caller's rollback would otherwise undo the request's consumption (its
+  `consumed_at` and its single-use record), so the same response could be replayed against a request already consumed;
+  and the caller's transaction would keep the connection's lock, taken by the consumption, across the driver's
+  validation, which may fetch.
 - Correlation, consumption and validation run outside any transaction the pipeline opens; the consumption opens its
   own, so the request is consumed whether the response then passes or fails, and it commits before the driver
   validates (a fetch is never made inside a transaction). The consumption judges the request against the connection's
@@ -162,9 +162,11 @@ made, from what a driver verified and never from client input (SSO-8.1):
   when the inheritance contract, asked again, no longer names the tenant whose rule is locked: validation was based on
   the connection and the request as they were before, and a change since (a disable, a trust change that voids the
   connection's requests) wins. It is refused with `metadata_expired` when anything fetched for the locked connection has
-  expired by now (`Metadata\MetadataExpiry`, SSO-2.8): metadata that lapses, by its `validUntil` or the stale limit,
-  while the response is validated is never used. Otherwise every locked step runs in that transaction, on the rows as
-  locked, with the policy the locked rule gives.
+  expired by now (`Metadata\MetadataExpiry`): metadata that lapses, by its `validUntil` or the stale limit, while the
+  response is validated is never used. It is refused with `request_expired` when the verified response's deadline
+  (`Completion\VerifiedDeadlines`: `sso.linking.verified_result_max_age_seconds` from its validation, capped by the
+  request's expiry) has passed. Otherwise every locked step runs in that transaction, on the rows as locked, with the
+  policy the locked rule gives.
 - The same transaction sets the request's `completed_at`, whether the completion completed or was refused (a refusal at
   consumption or validation included), and reports the completion. A response no request matches marks nothing. A
   request whose application is no longer registered is marked completed by its consumption instead, in the same write
@@ -226,8 +228,8 @@ no target is dispatched at once.
 ## Failure / Edge Cases
 
 - A replay of a completed or refused response finds its request consumed: `rejected(request_unknown)`.
-- A response that names a request of another connection consumes it and fails with `connection_mismatch`, redirected
-  to that request's application (SSO-5.5).
+- A response that names a request of another connection consumes it and fails with `connection_mismatch`, redirected to
+  that request's application.
 - A request at or past its expiry consumes it and fails with `request_expired`.
 - A connection disabled after the start: the request is consumed, the driver is never asked, and the completion fails
   with `connection_unavailable`, redirected. Disabled while the driver validates: refused under the lock, after
@@ -240,8 +242,8 @@ no target is dispatched at once.
   target. Its request is terminal at once: the consumption's own write sets `completed_at` with `consumed_at`, since
   no locked step runs for a completion with no trusted target to answer to.
 - A database error, an issuer that throws, a stage that resolves to something else and a redirect URI resolver that
-  answers what no redirect URI may be all propagate as server errors (SSO-11.4); inside the locked transaction they roll
-  it back, so no code is kept, `completed_at` stays unset and nothing is reported, while the request stays consumed.
+  answers what no redirect URI may be all propagate as server errors; inside the locked transaction they roll it back,
+  so no code is kept, `completed_at` stays unset and nothing is reported, while the request stays consumed.
 - A completion called inside a transaction open on the storage connection is a `LogicException` before it writes
   anything: no attempt is counted, no request consumed and nothing reported.
 

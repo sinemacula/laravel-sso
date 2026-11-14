@@ -3,20 +3,19 @@
 ## Purpose
 
 This note records how the package makes a request to an address it does not control: an identity provider's metadata,
-discovery document, JWKS, token endpoint or UserInfo endpoint, each an address an administrator entered or that
-metadata or discovery supplied. Every such request goes through one fetcher, so a URL that points inside the
-application's network (server-side request forgery), a host that resolves one way when checked and another when
-connected to (DNS rebinding), a redirect that leads somewhere private, a response that never ends and a credential sent
-where it does not belong are refused in one place (SSO-2.9, the OWASP Server-Side Request Forgery Prevention Cheat
-Sheet).
+discovery document, JWKS, token endpoint or UserInfo endpoint, each an address an administrator entered or that metadata
+or discovery supplied. Every such request goes through one fetcher, so a URL that points inside the application's
+network (server-side request forgery), a host that resolves one way when checked and another when connected to (DNS
+rebinding), a redirect that leads somewhere private, a response that never ends and a credential sent where it does not
+belong are refused in one place (the OWASP Server-Side Request Forgery Prevention Cheat Sheet).
 
 ## Invariants
 
 - There is one fetcher: `Contracts\Fetcher::fetch(FetchRequest): FetchResult`. A request is built only through the named
   constructor of its purpose (`metadata`, `discovery`, `jwks`, `token`, `userInfo`), which pairs it with the only
   credential that purpose may carry; `metadata($url, $maxBytes)` may also carry a size cap of its own, at least a byte,
-  which the fetcher holds that response to in place of `max_response_bytes`. The default is `Fetching\GuzzleFetcher`,
-  a scoped default, so nothing of one request or job outlives it under Octane or a queue worker (SSO-11.2).
+  which the fetcher holds that response to in place of `max_response_bytes`. The default is `Fetching\GuzzleFetcher`, a
+  scoped default, so nothing of one request or job outlives it under Octane or a queue worker.
 - Every URL, the request's own and each redirect's, is checked the same way before anything is resolved or sent:
   - the scheme, compared without regard to case, is `https`; anything else is refused (`scheme`);
   - it carries no userinfo (`user@`, `user:pass@`, an empty `@`), so `https://idp.example.com@169.254.169.254/` cannot
@@ -100,12 +99,12 @@ Sheet).
   with `GET`, the purpose's headers and nothing else. A redirect to a refused scheme, host or address is refused; one
   past the limit fails (`too_many_redirects`). A `3xx` without a `Location` is a response like any other.
 - Credentials, exactly one, by kind (`FetchCredentials`), and nothing else ever sent (no cookie, no other header):
-  - `client_secret_basic`: `Authorization: Basic base64(urlencode(client_id) ":" urlencode(secret))` (RFC 6749
-    §2.3.1), so a colon or non-ASCII character in either cannot be misread;
+  - `client_secret_basic`: `Authorization: Basic base64(urlencode(client_id) ":" urlencode(secret))` (RFC 6749 section
+    2.3.1), so a colon or non-ASCII character in either cannot be misread;
   - `client_secret_post`: `client_id` and `client_secret` in the form;
-  - `private_key_jwt`: `client_id`, `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer`
-    and `client_assertion` in the form (RFC 7523 §2.2);
-  - `access_token`: `Authorization: Bearer <token>` (RFC 6750 §2.1), for UserInfo only.
+  - `private_key_jwt`: `client_id`, `client_assertion_type=urn:ietf:params:oauth:client-assertion-type:jwt-bearer` and
+    `client_assertion` in the form (RFC 7523 section 2.2);
+  - `access_token`: `Authorization: Bearer <token>` (RFC 6750 section 2.1), for UserInfo only.
 
   A token request is a `POST` whose body is `http_build_query(form + credential fields, '', '&', PHP_QUERY_RFC1738)`
   as `application/x-www-form-urlencoded`; its form cannot set a client authentication field of its own

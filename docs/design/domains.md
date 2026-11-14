@@ -3,9 +3,9 @@
 ## Purpose
 
 This note records how a tenant claims an email domain for one of its connections and proves it controls it with a DNS
-TXT record (SSO-3.1, SSO-3.2): what a claim holds, how a domain is normalised and which are refused, the resolver
-contract and its three outcomes, the one verified connection per domain, how the helpers lock and in which order, and
-the predicates every reader judges a domain by. The scheduled rechecks and lapses (SSO-3.3) are in `domain-rechecks.md`.
+TXT record: what a claim holds, how a domain is normalised and which are refused, the resolver contract and its three
+outcomes, the one verified connection per domain, how the helpers lock and in which order, and the predicates every
+reader judges a domain by. The scheduled rechecks and lapses are in `domain-rechecks.md`.
 
 ## Invariants
 
@@ -61,9 +61,9 @@ the predicates every reader judges a domain by. The scheduled rechecks and lapse
   `domain` index, in id order), or the connection's own claim by (`connection_id`, `domain`). Nothing takes a locking
   read by `verified_domain`, whose MySQL gap locks would deadlock with a verification's update; the unique index on it
   is the last guard, and a verification it refuses (caught in a savepoint) is `domain_unavailable`. A deadlock MySQL's
-  gap locks can still cause between claims of neighbouring domains is retried up to three times when the helper's
-  transaction is the outermost; inside the application's, it propagates. Everything else that locks domains (the
-  recheck, linking, a connection's deletion) keeps this order.
+  gap locks can still cause between claims of neighbouring domains is tried again, at most three times in all, when the
+  helper's transaction is the outermost; inside the application's, it propagates. Everything else that locks domains
+  (the recheck, linking, a connection's deletion) keeps this order.
 - Discovery reads `DomainFinder::claimsOf($domain)` without a lock, since it writes nothing on the strength of it, and
   routes by the claim `DomainClaims::routing($now)` picks ([discovery.md](discovery.md)).
 - Every outcome is a `Domains\DomainResult` (status `Domains\Enums\DomainStatus`): `claimed`, `verified`, `unchanged`
@@ -75,9 +75,9 @@ the predicates every reader judges a domain by. The scheduled rechecks and lapse
 - `DomainSummary` reads the token only through `verificationToken()`: held in a `\SensitiveParameterValue`, redacted
   from dumps, left out of `jsonSerialize()`, and the summary refuses to be serialised.
 - `Domains\DomainStanding` holds the predicates every reader uses: `isPendingExpired()` (pending, at or past its
-  expiry), `routes()` (verified and before `lapses_at`, even before a recheck marks it lapsed: discovery and SSO-8.1),
-  `allowsLinking()` (routes, not suspended, last successful check no later than now and within the maximum age,
-  capped at 86400 seconds: SSO-8.8) and `lookupName()`.
+  expiry), `routes()` (verified and before `lapses_at`, even before a recheck marks it lapsed; read by discovery and the
+  verified result), `allowsLinking()` (routes, not suspended, last successful check no later than now and within the
+  maximum age, capped at 86400 seconds) and `lookupName()`.
 - `Domains\DomainWithdrawal::linkingWithdrawn()` is the seam called, under the connection's and the domain's locks and
   before the write, whenever a domain stops allowing linking: a removal here, a suspension or a lapse in the recheck.
   It deletes the domain's open link reservations (`Links\ReservationWithdrawal`, `linking.md`).
@@ -108,8 +108,8 @@ the predicates every reader judges a domain by. The scheduled rechecks and lapse
 - A claim's check that the domain is verified elsewhere locks every claim of the domain, so a verification that races
   it is serialised with it.
 - A removal deletes a claim in any state; a verified domain removed frees it for another connection.
-- A database error, a resolver or a limiter that throws propagates (SSO-11.4); an empty tenant id is an
-  `InvalidArgumentException`; a malformed setting fails closed naming its key.
+- A database error, a resolver or a limiter that throws propagates; an empty tenant id is an `InvalidArgumentException`;
+  a malformed setting fails closed naming its key.
 
 ## Implementation Anchors
 
