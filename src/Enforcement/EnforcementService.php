@@ -405,7 +405,9 @@ final readonly class EnforcementService
     }
 
     /**
-     * Whether the stored rule has the same switch and set of ids.
+     * Whether a rule is stored with the same switch and set of ids; a tenant
+     * with none stores its first, an off rule included, since it stops one an
+     * inheritance would apply.
      *
      * @param  \SineMacula\Laravel\Sso\Enforcement\EnforcementSummary  $stored
      * @param  bool  $enabled
@@ -414,7 +416,7 @@ final readonly class EnforcementService
      */
     private static function isSame(EnforcementSummary $stored, bool $enabled, array $ids): bool
     {
-        return $stored->enabled === $enabled && $stored->connectionIds === EnforcementSummary::sorted($ids);
+        return $stored->version !== null && $stored->enabled === $enabled && $stored->connectionIds === EnforcementSummary::sorted($ids);
     }
 
     /**
