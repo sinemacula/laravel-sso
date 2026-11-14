@@ -21,10 +21,12 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   `EnforcementFinder::find()` answers none for it, `EnforcementSummary` is off with no connection, version or time,
   `policy()` requires nothing with version `null`, the writer judges it as no rule, and its first real change reports
   `previousVersion` `null`. It is never deleted, since another transaction may be waiting to lock it.
-- `version` is a new lower-case ULID on every change, never reused. It is exposed on `Enforcement\EnforcementPolicy`, on
-  `EnforcementSummary` and on `EnforcementChanged`, so an adapter records the version a session was checked against and
-  rechecks a session whose version is stale (SSO-4.6). It is `null` only while a tenant never had a rule stored (no
-  row, or only an unconfigured one).
+- The rule's `version` is a new lower-case ULID on every change, never reused, exposed on `EnforcementSummary` and on
+  `EnforcementChanged`. `Enforcement\EnforcementPolicy::$version` is what an adapter records against a session and
+  rechecks it by (SSO-4.6): the lower-case hex SHA-256 of the rule's version and the policy's satisfying connections,
+  in id order, joined by NUL bytes. So it changes with every change to the rule and whenever a satisfying connection is
+  disabled, deleted or enabled again, and comes back to the same value when the same connections satisfy the same
+  rule. Both are `null` only while a tenant never had a rule stored (no row, or only an unconfigured one).
 - Four contracts, each bound by the provider with a default that fails closed and kept when the application or a
   sibling bound it first:
 
@@ -40,9 +42,9 @@ transaction; and the gate an adapter calls before refusing a session it could ex
   with no query and no other contract asked; a malformed switch fails closed (`InvalidArgumentException`). Otherwise it
   asks the inheritance contract, resolved from the container on each call, for the enforcing tenant (an empty or
   overlong answer is a `LogicException`), reads that tenant's row through `Enforcement\EnforcementFinder` on the write
-  connection, and answers `notRequired` with no row (version `null`) or a row that is off (its version), and
-  `required` with a row that is on: satisfied by the stored connections that still exist, belong to the enforcing
-  tenant byte for byte and are enabled, read in one statement. A rule whose every satisfying connection has since been
+  connection, and answers `notRequired` with no row (version `null`) or a row that is off, and `required` with a row
+  that is on: satisfied by the stored connections that still exist, belong to the enforcing tenant byte for byte and
+  are enabled, read in one statement. A rule whose every satisfying connection has since been
   disabled or deleted stays required and is satisfied by none; only an exemption admits a session then. An empty
   application is an `InvalidArgumentException`; a database error propagates (SSO-11.4), never read as not required.
   Its reads take no lock, so asked inside a transaction that has already read, it answers from that transaction's

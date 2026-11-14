@@ -34,7 +34,7 @@ final class EnforcementPolicyTest extends TestCase
         self::assertSame([], $policy->connectionIds);
         self::assertSame('tenant-1', $policy->tenantId);
         self::assertSame('parent-1', $policy->enforcingTenantId);
-        self::assertSame('v1', $policy->version);
+        self::assertSame(hash('sha256', 'v1'), $policy->version);
         self::assertNull(EnforcementPolicy::notRequired('tenant-1', 'tenant-1')->version);
     }
 
@@ -53,6 +53,22 @@ final class EnforcementPolicyTest extends TestCase
         self::assertFalse($policy->isSatisfiedBy('C-1'));
         self::assertFalse($policy->isSatisfiedBy('c-3'));
         self::assertFalse(EnforcementPolicy::required('tenant-1', 'tenant-1', [], 'v3')->isSatisfiedBy('c-1'));
+    }
+
+    /**
+     * The version is the digest of the rule's version and its connections, so
+     * it changes when either does and only then.
+     *
+     * @return void
+     */
+    public function testTheVersionChangesWithTheRuleAndItsConnections(): void
+    {
+        $policy = EnforcementPolicy::required('tenant-1', 'tenant-1', ['c-2', 'c-1'], 'v1');
+
+        self::assertSame(hash('sha256', "v1\0c-1\0c-2"), $policy->version);
+        self::assertSame($policy->version, EnforcementPolicy::required('child-1', 'tenant-1', ['c-1', 'c-2'], 'v1')->version);
+        self::assertNotSame($policy->version, EnforcementPolicy::required('tenant-1', 'tenant-1', ['c-1'], 'v1')->version);
+        self::assertNotSame($policy->version, EnforcementPolicy::required('tenant-1', 'tenant-1', ['c-1', 'c-2'], 'v2')->version);
     }
 
     /**
@@ -89,7 +105,7 @@ final class EnforcementPolicyTest extends TestCase
     public function testEncodesWithSnakeCaseKeys(): void
     {
         self::assertSame(
-            ['tenant_id' => 'tenant-1', 'enforcing_tenant_id' => 'tenant-1', 'required' => true, 'connection_ids' => ['c-1'], 'version' => 'v1'],
+            ['tenant_id' => 'tenant-1', 'enforcing_tenant_id' => 'tenant-1', 'required' => true, 'connection_ids' => ['c-1'], 'version' => hash('sha256', "v1\0c-1")],
             EnforcementPolicy::required('tenant-1', 'tenant-1', ['c-1'], 'v1')->jsonSerialize(),
         );
     }

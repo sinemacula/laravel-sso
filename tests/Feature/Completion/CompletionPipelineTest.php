@@ -459,7 +459,7 @@ final class CompletionPipelineTest extends TestCase
         );
         self::assertSame(2, $this->enforcementStatements());
         self::assertSame(
-            ['tenant_id' => 'tenant-1', 'enforcing_tenant_id' => 'tenant-1', 'required' => true, 'connection_ids' => $ids, 'version' => $rule->version],
+            ['tenant_id' => 'tenant-1', 'enforcing_tenant_id' => 'tenant-1', 'required' => true, 'connection_ids' => $ids, 'version' => self::policyVersion($rule->version, $ids)],
             $this->spied('enforcement')[0]->state->enforcementPolicy?->jsonSerialize(),
         );
         self::assertCount(1, $this->issuer->grants());

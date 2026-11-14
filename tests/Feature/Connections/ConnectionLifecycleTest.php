@@ -282,7 +282,8 @@ final class ConnectionLifecycleTest extends TestCase
 
         self::assertSame($status, $result->status);
         self::assertSame([true, [$this->connection->id], $rule->version], [$stored->enabled, $stored->connection_ids, $stored->version]);
-        self::assertSame([true, [], $rule->version], [$policy->isRequired(), $policy->connectionIds, $policy->version]);
+        self::assertSame([true, [], self::policyVersion($rule->version)], [$policy->isRequired(), $policy->connectionIds, $policy->version]);
+        self::assertNotSame(self::policyVersion($rule->version, [$this->connection->id]), $policy->version);
         self::assertFalse($policy->isSatisfiedBy($this->connection->id));
         self::assertFalse($policy->isSatisfiedBy($this->other->id));
 

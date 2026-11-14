@@ -70,7 +70,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
         Schema::connection(StorageConnection::name())->create(self::REVOKED, static function (Blueprint $table): void {
             $table->id();
             $table->string('tenant_id');
-            $table->char('version', 26);
+            $table->char('version', 64);
         });
 
         Config::set('sso.features.enforcement', true);
@@ -111,7 +111,7 @@ final class EnforcementRevocationTransactionTest extends TestCase
 
         self::assertTrue($stored->enabled);
         self::assertSame($result->enforcement?->version, $stored->version);
-        self::assertSame([[self::TENANT, $stored->version]], $this->revoked());
+        self::assertSame([[self::TENANT, self::policyVersion($stored->version, $stored->connection_ids)]], $this->revoked());
         $this->assertEventSequence([EnforcementChanged::class]);
     }
 
