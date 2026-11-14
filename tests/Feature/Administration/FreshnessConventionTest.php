@@ -148,7 +148,7 @@ final class FreshnessConventionTest extends TestCase
         yield 'disable' => ['disable', [FreshnessOperation::CONNECTION_DISABLE]];
         yield 'delete' => ['delete', [FreshnessOperation::CONNECTION_DELETE]];
         yield 'subject migration' => ['migrate', [FreshnessOperation::CONNECTION_TRUST, FreshnessOperation::LINK_REMOVE]];
-        yield 'add next' => ['add next', [FreshnessOperation::KEYS_ROTATE]];
+        yield 'add next' => ['add next', [FreshnessOperation::KEYS_ROTATE, FreshnessOperation::KEYS_ROTATE]];
         yield 'make current' => ['make current', [FreshnessOperation::KEYS_ROTATE]];
         yield 'retire' => ['retire', [FreshnessOperation::KEYS_ROTATE]];
         yield 'trust certificate' => ['trust certificate', [FreshnessOperation::CONNECTION_TRUST]];

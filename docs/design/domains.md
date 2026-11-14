@@ -51,11 +51,12 @@ the predicates every reader judges a domain by. The scheduled rechecks and lapse
   default. `Testing\FakeDnsResolver` is the public test double.
 - `Domains\DomainService` (`@api`) is the management helper. Every change is scoped to a tenant through
   `Connections\ConnectionFinder` (another tenant's connection is `connection_not_found`) and goes in one order: find
-  the connection, and the claim, on the write connection; validate; ask freshness (`sso.domain.claim`,
-  `sso.domain.verify`, `sso.domain.remove`); for a verification, take one domain check of the connection
-  (`AttemptSubject::domainCheck()`, `rate_limited` with `retryAfter`) and look the record up outside any transaction;
-  then in one transaction on the storage connection, read the connection again locked, read again with locking reads
-  what decides the write, write, and report through `Administration\DomainEvents`.
+  the connection, and the claim, on the write connection; validate; for a verification, ask freshness
+  (`sso.domain.verify`) when no transaction is open, so a stale caller spends no check, then take one domain check of
+  the connection (`AttemptSubject::domainCheck()`, `rate_limited` with `retryAfter`) and look the record up before the
+  helper's transaction; then in one transaction on the storage connection, read the connection again locked, read
+  again with locking reads what decides the write, ask freshness (`sso.domain.claim`, `sso.domain.verify`,
+  `sso.domain.remove`), write, and report through `Administration\DomainEvents`.
 - Lock order: the connection's row, then every claim of the one domain (`DomainFinder::claimsOf($domain, true)`, by the
   `domain` index, in id order), or the connection's own claim by (`connection_id`, `domain`). Nothing takes a locking
   read by `verified_domain`, whose MySQL gap locks would deadlock with a verification's update; the unique index on it

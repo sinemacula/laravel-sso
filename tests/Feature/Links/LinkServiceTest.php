@@ -453,27 +453,41 @@ final class LinkServiceTest extends TestCase
     {
         $gone = $this->makeLink($this->connection, 'subject-1');
 
-        $this->freshness->onCheck = static function () use ($gone): void {
-            Link::query()->whereKey($gone->id)->delete();
-        };
+        $this->beforeTheNextTransaction(static fn (): mixed => Link::query()->whereKey($gone->id)->delete());
 
         self::assertSame(FailureReason::LINK_NOT_FOUND, $this->service()->remove($this->identity, $gone->id, Clients::browser())->reason);
         $this->assertNothingChanged(0);
 
         $moved = $this->makeLink($this->connection, 'subject-2');
 
-        $this->freshness->onCheck = static function () use ($moved): void {
-            Link::query()->whereKey($moved->id)->update(['identity_id' => '2']);
-        };
+        $this->beforeTheNextTransaction(static fn (): mixed => Link::query()->whereKey($moved->id)->update(['identity_id' => '2']));
 
         self::assertSame(FailureReason::LINK_NOT_FOUND, $this->service()->remove($this->identity, $moved->id, Clients::browser())->reason);
         $this->assertNothingChanged(1);
         self::assertSame('2', Link::query()->sole()->identity_id);
+        self::assertSame([], $this->freshness->asked());
     }
 
     /**
-     * The link is read plainly before freshness, then locked inside the
-     * transaction.
+     * Freshness is asked inside the transaction, once the link is locked.
+     *
+     * @return void
+     */
+    public function testFreshnessIsAskedUnderTheLock(): void
+    {
+        $link   = $this->makeLink($this->connection, 'subject-1');
+        $levels = [];
+
+        $this->freshness->onCheck = static function () use (&$levels): void {
+            $levels[] = DB::connection(StorageConnection::name())->transactionLevel();
+        };
+
+        self::assertTrue($this->service()->remove($this->identity, $link->id, Clients::browser())->isRemoved());
+        self::assertSame([1], $levels);
+    }
+
+    /**
+     * The link is read plainly, then locked inside the transaction.
      *
      * @return void
      */
@@ -501,7 +515,7 @@ final class LinkServiceTest extends TestCase
         $result = $this->service()->remove($this->identity, $orphan->id, Clients::browser());
 
         self::assertSame(FailureReason::LINK_NOT_FOUND, $result->reason);
-        self::assertSame([[FreshnessOperation::LINK_REMOVE, 300]], $this->freshness->asked());
+        self::assertSame([], $this->freshness->asked());
         $this->assertNothingChanged(1);
     }
 

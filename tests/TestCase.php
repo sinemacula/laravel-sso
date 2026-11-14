@@ -177,6 +177,26 @@ abstract class TestCase extends OrchestraTestCase
     }
 
     /**
+     * Run the change once, as the next transaction on the storage connection
+     * begins: between a helper's first read and its locks.
+     *
+     * @param  \Closure(): mixed  $change
+     * @return void
+     */
+    protected function beforeTheNextTransaction(\Closure $change): void
+    {
+        $pending = $change;
+
+        DB::connection(StorageConnection::name())->beforeStartingTransaction(static function () use (&$pending): void {
+
+            $run     = $pending;
+            $pending = null;
+
+            $run?->__invoke();
+        });
+    }
+
+    /**
      * The enforcement policy version of a rule's version and the connections
      * that satisfy it.
      *

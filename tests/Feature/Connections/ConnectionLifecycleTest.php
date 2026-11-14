@@ -226,9 +226,7 @@ final class ConnectionLifecycleTest extends TestCase
     {
         $request = $this->makeAuthorizationRequest($this->connection);
 
-        $this->freshness->onCheck = function (): void {
-            Connection::query()->whereKey($this->connection->id)->update(['enabled' => false]);
-        };
+        $this->beforeTheNextTransaction(fn (): mixed => Connection::query()->whereKey($this->connection->id)->update(['enabled' => false]));
 
         $result = $this->lifecycle()->disable(self::TENANT, $this->connection->id, Clients::browser());
 
@@ -249,9 +247,7 @@ final class ConnectionLifecycleTest extends TestCase
 
             $connection = $this->makeConnection(['enabled' => true]);
 
-            $this->freshness->onCheck = static function () use ($connection): void {
-                Connection::query()->whereKey($connection->id)->delete();
-            };
+            $this->beforeTheNextTransaction(static fn (): mixed => Connection::query()->whereKey($connection->id)->delete());
 
             self::assertSame(FailureReason::CONNECTION_NOT_FOUND, $change(self::TENANT, $connection->id)->reason, $name);
         }

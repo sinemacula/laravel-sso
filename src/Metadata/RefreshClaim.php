@@ -29,6 +29,7 @@ final readonly class RefreshClaim
      * @param  string  $token
      * @param  array<string, mixed>  $trusted
      * @param  list<string>  $anchors
+     * @param  bool  $asksFreshness
      */
     public function __construct(
 
@@ -43,7 +44,20 @@ final readonly class RefreshClaim
 
         /** The PEM metadata signing anchors the fetched document is verified with. */
         public array $anchors = [],
+
+        /** Whether the write asks the caller's freshness under its lock. */
+        public bool $asksFreshness = false,
     ) {}
+
+    /**
+     * The same claim, its write asking the caller's freshness.
+     *
+     * @return self
+     */
+    public function askingFreshness(): self
+    {
+        return new self($this->connection, $this->token, $this->trusted, $this->anchors, true);
+    }
 
     /**
      * The snapshot of the certificates and anchors: each use's fingerprints,

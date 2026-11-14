@@ -141,8 +141,8 @@ final readonly class LinkingPolicyService
     }
 
     /**
-     * Change the named settings and keep the rest; freshness is asked before
-     * the lock so nothing slow runs under it.
+     * Change the named settings and keep the rest; freshness is asked under the
+     * connection's lock.
      *
      * @param  string  $tenantId
      * @param  string  $connectionId
@@ -159,10 +159,6 @@ final readonly class LinkingPolicyService
     {
         if ($this->finder->find($tenantId, $connectionId) === null) {
             return ConnectionResult::refused(FailureReason::CONNECTION_NOT_FOUND);
-        }
-
-        if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
-            return ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
         return DB::connection(StorageConnection::name())->transaction(fn (): ConnectionResult => $this->changeLocked($tenantId, $connectionId, $changes, $caller, $client));
@@ -369,6 +365,10 @@ final readonly class LinkingPolicyService
 
         if ($locked === null || !$this->protocols->isAvailable($locked->protocol)) {
             return ConnectionResult::refused($locked === null ? FailureReason::CONNECTION_NOT_FOUND : FailureReason::PROTOCOL_UNAVAILABLE);
+        }
+
+        if (!$this->freshness->check(FreshnessOperation::CONNECTION_TRUST, $caller)->isFresh()) {
+            return ConnectionResult::refused(FailureReason::FRESHNESS_REQUIRED);
         }
 
         $current    = $locked->getLinkingSettings();
