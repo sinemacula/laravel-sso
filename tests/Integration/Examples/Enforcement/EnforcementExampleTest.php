@@ -306,7 +306,7 @@ final class EnforcementExampleTest extends ExampleTestCase
         self::assertSame(self::TENANT, $policy->enforcingTenantId);
         self::assertTrue($policy->isRequired());
         self::assertSame([$this->connectionId], $policy->connectionIds);
-        self::assertSame($version, $policy->version);
+        self::assertSame(self::policyVersion($version, [$this->connectionId]), $policy->version);
         self::assertSame(self::OTHER, app(Enforcement::class)->policy(self::OTHER, self::APPLICATION)->enforcingTenantId);
     }
 
@@ -328,7 +328,7 @@ final class EnforcementExampleTest extends ExampleTestCase
         self::assertTrue($policy->admits($this->recordSession('session-child', 'person-1', self::CHILD, $this->connectionId), Clients::browser()));
         self::assertTrue($policy->admits($this->recordSession('session-other', 'person-4', self::OTHER), Clients::browser()));
         self::assertTrue($policy->admits(UserSession::query()->findOrFail('session-sso'), Clients::browser()));
-        self::assertSame($version, UserSession::query()->findOrFail('session-sso')->enforcement_version);
+        self::assertSame(self::policyVersion($version, [$this->connectionId]), UserSession::query()->findOrFail('session-sso')->enforcement_version);
         self::assertNull(UserSession::query()->findOrFail('session-other')->enforcement_version);
 
         self::assertTrue($policy->admits($this->recordSession('session-break-glass', BreakGlassExemption::ADMINISTRATOR, self::CHILD), Clients::browser()));
@@ -339,7 +339,7 @@ final class EnforcementExampleTest extends ExampleTestCase
         self::assertSame('session-break-glass', $this->exemptions[0]->context->sessionId);
         self::assertSame(BreakGlassExemption::ADMINISTRATOR, $this->exemptions[0]->context->identityId);
         self::assertSame(self::CHILD, $this->exemptions[0]->context->tenantId);
-        self::assertSame($version, $this->exemptions[0]->enforcementVersion);
+        self::assertSame(self::policyVersion($version, [$this->connectionId]), $this->exemptions[0]->enforcementVersion);
     }
 
     /**

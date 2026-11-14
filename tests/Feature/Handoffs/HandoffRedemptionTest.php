@@ -477,7 +477,11 @@ final class HandoffRedemptionTest extends TestCase
 
         self::assertTrue($answer->isRedeemed());
         self::assertNotNull($answer->enforcementVersion);
-        self::assertSame(TenantEnforcement::query()->sole()->version, $answer->enforcementVersion);
+        $ids = [$this->other->id, $this->connection->id];
+
+        sort($ids, SORT_STRING);
+
+        self::assertSame(self::policyVersion(TenantEnforcement::query()->sole()->version, $ids), $answer->enforcementVersion);
     }
 
     /**

@@ -580,7 +580,7 @@ final class LaggingReplicaFlowsTest extends TestCase
 
         $this->staleOnReplica('enforcement.table', $rule->id, ['version' => str_repeat('b', 26)]);
 
-        self::assertSame($version, $this->signedIn($connection)['enforcement_version']);
+        self::assertSame(self::policyVersion($version, [$connection->id]), $this->signedIn($connection)['enforcement_version']);
     }
 
     /**

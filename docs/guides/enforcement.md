@@ -121,9 +121,10 @@ return true;
 
 It reads the stored rule on the write connection on every call and caches nothing, so a change applies from the next
 question. Record `version` against each session and recheck a session whose recorded version is no longer the
-current one. A database error is thrown, never answered as "not required". If every satisfying connection has since
-been disabled, the rule is still required and nobody complies until an administrator names an enabled connection or
-turns it off.
+current one. It changes with the rule and whenever one of its satisfying connections is disabled, deleted or enabled
+again, so it is not the rule's own version that `get()` and `EnforcementChanged` report. A database error is thrown,
+never answered as "not required". If every satisfying connection has since been disabled, the rule is still required
+and nobody complies until an administrator names an enabled connection or turns it off.
 
 Under `laravel-iam` you do not call it yourself: it is folded into `laravel-authentication`'s tenant authentication
 policy, asked at sign-in, at the choice of principal, on every switch and on refresh. Bearer requests do not recheck

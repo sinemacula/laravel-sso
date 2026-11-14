@@ -177,6 +177,19 @@ abstract class TestCase extends OrchestraTestCase
     }
 
     /**
+     * The enforcement policy version of a rule's version and the connections
+     * that satisfy it.
+     *
+     * @param  ?string  $ruleVersion
+     * @param  list<string>  $connectionIds
+     * @return string
+     */
+    protected static function policyVersion(?string $ruleVersion, array $connectionIds = []): string
+    {
+        return hash('sha256', implode("\0", [(string) $ruleVersion, ...$connectionIds]));
+    }
+
+    /**
      * Each shipped migration in order, keyed by its table's `sso.` setting.
      *
      * @return array<string, \Illuminate\Database\Migrations\Migration>

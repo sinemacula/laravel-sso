@@ -114,7 +114,7 @@ final class EnforcementEventsTest extends TestCase
         );
         self::assertInstanceOf(ExemptionUsed::class, $withoutClient);
         self::assertSame(
-            [null, null, null, '01jbversion000000000000003'],
+            [null, null, null, $policy->version],
             [$withoutClient->context->ip, $withoutClient->context->userAgent, $withoutClient->context->sessionId, $withoutClient->enforcementVersion],
         );
     }
