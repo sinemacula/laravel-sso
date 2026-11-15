@@ -216,20 +216,20 @@ Each is in `SineMacula\Laravel\Sso\Events` and carries the context above, the re
 none holds a handoff code, a verifier, protocol state, a subject, a mapped attribute or the verified result, but for
 `ResultUnlinked`, which carries the result and its grant for a [provisioning](provisioning.md) listener.
 
-| Event                            | Fields beyond the context | Dispatched when                                                                                                                               |
-|----------------------------------|---------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
-| `AuthorizationRequestStarted`    | none                      | A start stored its authorisation request and sent the client on                                                                               |
-| `ResultVerified`                 | none                      | A completion's response passed every check, before what the completion did with it                                                            |
-| `HandoffIssued`                  | none                      | A completion issued a handoff code                                                                                                            |
-| `HandoffRedeemed`                | none                      | The package's own redemption redeemed a handoff code                                                                                          |
-| `LinkCreated`                    | `origin`: how it was made | A link was made by a `link` flow, provisioning, a verified domain or a migration                                                              |
-| `LinkRemoved`                    | none                      | A link was removed, and the identity's sessions through the connection revoked                                                                |
-| `LinkActivated`                  | `linkId`                  | A [verified domain](linking-by-domain.md)'s reservation became a link, after `LinkCreated`, for you to notify the person on your own channels |
-| `LinkConfirmed`                  | none                      | A confirming `link` flow cleared a link's verified domain provenance and any suspension                                                       |
-| `LinkSuspended`                  | none                      | A link by a verified domain was suspended, until a confirming `link` flow                                                                     |
-| `ReauthenticationCompleted`      | none                      | A [reauthentication](reauthenticating.md) renewed a session, with its redemption's commit                                                     |
-| `ResultUnlinked`                 | `result`, `grant`         | A `sign_in` resolved to nobody: synchronously, before any handoff                                                                             |
-| `UnsolicitedResponseReinitiated` | none                      | An unsolicited SAML response passed every check and the client was sent to start again                                                        |
+| Event                            | Fields beyond the context           | Dispatched when                                                                                                                               |
+|----------------------------------|-------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------|
+| `AuthorizationRequestStarted`    | none                                | A start stored its authorisation request and sent the client on                                                                               |
+| `ResultVerified`                 | none                                | A completion's response passed every check, before what the completion did with it                                                            |
+| `HandoffIssued`                  | none                                | A completion issued a handoff code                                                                                                            |
+| `HandoffRedeemed`                | none                                | The package's own redemption redeemed a handoff code                                                                                          |
+| `LinkCreated`                    | `linkId`; `origin`: how it was made | A link was made by a `link` flow, provisioning, a verified domain or a migration                                                              |
+| `LinkRemoved`                    | `linkId`                            | A link was removed, and the identity's sessions through the connection revoked                                                                |
+| `LinkActivated`                  | `linkId`                            | A [verified domain](linking-by-domain.md)'s reservation became a link, after `LinkCreated`, for you to notify the person on your own channels |
+| `LinkConfirmed`                  | `linkId`                            | A confirming `link` flow cleared a link's verified domain provenance and any suspension                                                       |
+| `LinkSuspended`                  | `linkId`                            | A link by a verified domain was suspended, until a confirming `link` flow                                                                     |
+| `ReauthenticationCompleted`      | none                                | A [reauthentication](reauthenticating.md) renewed a session, with its redemption's commit                                                     |
+| `ResultUnlinked`                 | `result`, `grant`                   | A `sign_in` resolved to nobody: synchronously, before any handoff                                                                             |
+| `UnsolicitedResponseReinitiated` | none                                | An unsolicited SAML response passed every check and the client was sent to start again                                                        |
 
 `AuthorizationRequestStarted`'s context names the connection, its tenant and protocol, the application, the purpose and
 the request's public reference, with the identity a `link` or `reauthenticate` was started for and the session of a

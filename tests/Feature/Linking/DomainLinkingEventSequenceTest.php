@@ -91,7 +91,7 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
         self::assertInstanceOf(LinkCreated::class, $created);
         self::assertInstanceOf(LinkActivated::class, $activated);
         self::assertSame(LinkOrigin::VERIFIED_DOMAIN, $created->origin);
-        self::assertSame(Link::query()->sole()->id, $activated->linkId);
+        self::assertSame([Link::query()->sole()->id, Link::query()->sole()->id], [$created->linkId, $activated->linkId]);
 
         foreach ([$created, $activated, $redeemed] as $event) {
 
@@ -218,6 +218,11 @@ final class DomainLinkingEventSequenceTest extends LinkingTestCase
         $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser()));
 
         $this->assertEventSequence([LinkSuspended::class]);
+
+        $event = $this->recordedEvents()[0];
+
+        self::assertInstanceOf(LinkSuspended::class, $event);
+        self::assertSame(Link::query()->sole()->id, $event->linkId);
     }
 
     /**

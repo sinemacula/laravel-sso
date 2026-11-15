@@ -78,8 +78,8 @@ final class LinkEventsTest extends TestCase
         $reference  = RequestReference::generate();
         $events     = app(LinkEvents::class);
 
-        $events->created($connection, $identity, LinkOrigin::LINK_PURPOSE, self::client(), null, 'web', Purpose::LINK, $reference);
-        $events->created($connection, $identity, LinkOrigin::MIGRATION, self::client(), new Caller(new IdentityReference('App\Models\Admin', '3')));
+        $events->created($connection, $identity, 'link-1', LinkOrigin::LINK_PURPOSE, self::client(), null, 'web', Purpose::LINK, $reference);
+        $events->created($connection, $identity, 'link-2', LinkOrigin::MIGRATION, self::client(), new Caller(new IdentityReference('App\Models\Admin', '3')));
 
         $this->assertEventSequence([LinkCreated::class, LinkCreated::class]);
 
@@ -93,6 +93,7 @@ final class LinkEventsTest extends TestCase
         );
         self::assertInstanceOf(LinkCreated::class, $byAdministrator);
         self::assertSame([LinkOrigin::MIGRATION, '3', null], [$byAdministrator->origin, $byAdministrator->context->actingIdentityId, $byAdministrator->context->purpose]);
+        self::assertSame(['link-1', 'link-2'], [$byFlow->linkId, $byAdministrator->linkId]);
 
         foreach ([$byFlow, $byAdministrator] as $event) {
             self::assertClientAndConnection($event, $connection->id);
@@ -108,14 +109,17 @@ final class LinkEventsTest extends TestCase
     {
         $connection = $this->makeConnection();
 
-        app(LinkEvents::class)->removed($connection, new IdentityReference('App\Models\User', '7'), self::client(), new Caller(new IdentityReference('App\Models\Admin', '3')));
+        $administrator = new Caller(new IdentityReference('App\Models\Admin', '3'));
+
+        app(LinkEvents::class)->removed($connection, new IdentityReference('App\Models\User', '7'), 'link-1', self::client(), $administrator);
 
         $this->assertEventSequence([LinkRemoved::class]);
 
         $event = $this->recordedEvents()[0];
 
         self::assertClientAndConnection($event, $connection->id);
-        self::assertSame(['7', '3'], [$event->context()->identityId, $event->context()->actingIdentityId]);
+        self::assertInstanceOf(LinkRemoved::class, $event);
+        self::assertSame(['link-1', '7', '3'], [$event->linkId, $event->context->identityId, $event->context->actingIdentityId]);
     }
 
     /**
@@ -139,7 +143,7 @@ final class LinkEventsTest extends TestCase
         self::assertInstanceOf(LinkCreated::class, $created);
         self::assertSame(LinkOrigin::VERIFIED_DOMAIN, $created->origin);
         self::assertInstanceOf(LinkActivated::class, $activated);
-        self::assertSame('link-1', $activated->linkId);
+        self::assertSame(['link-1', 'link-1'], [$created->linkId, $activated->linkId]);
 
         foreach ([$created, $activated] as $event) {
             self::assertClientAndConnection($event, $connection->id);
@@ -163,13 +167,16 @@ final class LinkEventsTest extends TestCase
         $reference  = RequestReference::generate();
         $events     = app(LinkEvents::class);
 
-        $events->confirmed($connection, new IdentityReference('App\Models\User', '7'), self::client(), 'web', $reference);
-        $events->confirmed($connection, new IdentityReference('App\Models\User', '7'), self::client());
+        $events->confirmed($connection, new IdentityReference('App\Models\User', '7'), 'link-1', self::client(), 'web', $reference);
+        $events->confirmed($connection, new IdentityReference('App\Models\User', '7'), 'link-2', self::client());
 
         $this->assertEventSequence([LinkConfirmed::class, LinkConfirmed::class]);
 
         [$withFlow, $withoutFlow] = $this->recordedEvents();
 
+        self::assertInstanceOf(LinkConfirmed::class, $withFlow);
+        self::assertInstanceOf(LinkConfirmed::class, $withoutFlow);
+        self::assertSame(['link-1', 'link-2'], [$withFlow->linkId, $withoutFlow->linkId]);
         self::assertSame(['web', 'link', $reference->value], [$withFlow->context()->application, $withFlow->context()->purpose, $withFlow->context()->requestReference]);
         self::assertSame([null, 'link', null], [$withoutFlow->context()->application, $withoutFlow->context()->purpose, $withoutFlow->context()->requestReference]);
 
@@ -187,13 +194,16 @@ final class LinkEventsTest extends TestCase
     {
         $events = app(LinkEvents::class);
 
-        $events->suspended('01jbexampleconnection00000', 'tenant-1', 'saml2', new IdentityReference('App\Models\User', '7'), self::client());
-        $events->suspended('01jbexampleconnection00000', 'tenant-1', 'saml2', new IdentityReference('App\Models\User', '7'), new ClientContext(null, null));
+        $events->suspended('01jbexampleconnection00000', 'tenant-1', 'saml2', new IdentityReference('App\Models\User', '7'), 'link-1', self::client());
+        $events->suspended('01jbexampleconnection00000', 'tenant-1', 'saml2', new IdentityReference('App\Models\User', '7'), 'link-2', new ClientContext(null, null));
 
         $this->assertEventSequence([LinkSuspended::class, LinkSuspended::class]);
 
         [$withClient, $withoutClient] = $this->recordedEvents();
 
+        self::assertInstanceOf(LinkSuspended::class, $withClient);
+        self::assertInstanceOf(LinkSuspended::class, $withoutClient);
+        self::assertSame(['link-1', 'link-2'], [$withClient->linkId, $withoutClient->linkId]);
         self::assertClientAndConnection($withClient, '01jbexampleconnection00000');
         self::assertSame(['saml2', '7'], [$withClient->context()->protocol, $withClient->context()->identityId]);
         self::assertSame(

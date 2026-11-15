@@ -92,8 +92,8 @@ by a verified domain is in `linking.md`.
      `REPEATABLE READ` transaction whose snapshot predates the creation (a subject migration that waited on the lock,
      say) fails to serialise when it locks the row, rather than go on without the new link, which neither its locking
      read nor its delete would see;
-  7. `LinkCreated` with the origin is reported after commit, with the connection, tenant, protocol, identity, acting
-     identity and, for a flow, its application, purpose and public reference.
+  7. `LinkCreated` with the link's id and origin is reported after commit, with the connection, tenant, protocol,
+     identity, acting identity and, for a flow, its application, purpose and public reference.
 
   An expired reservation of the subject is deleted first, since it holds nothing, under a new reservation identity if it
   is ever reserved again; a live reservation holds the subject, so a creation is `subject_already_linked`, and a `link`
@@ -121,8 +121,8 @@ by a verified domain is in `linking.md`.
        (`sso.link.remove`); `stale` is `freshness_required`;
     5. the link is deleted through the model, the connection's `links_version` is raised,
        `Contracts\SessionRevocation::revoke(RevocationScope::identityInConnection($tenantId, $connectionId,
-       $identity, $linkId))` is called inside the transaction with the removed link's id, and `LinkRemoved` is reported
-       after commit.
+       $identity, $linkId))` is called inside the transaction with the removed link's id, and `LinkRemoved`, with the
+       same id, is reported after commit.
 
     Removing the identity's last link is allowed. A revocation that throws rolls the delete back, reports nothing and
     propagates; an adapter that writes through the same Laravel connection commits or rolls back with the removal.
