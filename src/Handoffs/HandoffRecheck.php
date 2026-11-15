@@ -275,7 +275,13 @@ final readonly class HandoffRecheck
      */
     private function policy(RecheckLock $lock): EnforcementPolicy
     {
-        return $lock->enforcement?->policy() ?? $this->enforcement->policy($lock->tenantId, $lock->application);
+        $locked = $lock->enforcement;
+
+        if ($locked === null) {
+            return $this->enforcement->policy($lock->tenantId, $lock->application);
+        }
+
+        return $locked->policy();
     }
 
     /**

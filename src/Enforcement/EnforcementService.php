@@ -120,7 +120,7 @@ final readonly class EnforcementService
             return;
         }
 
-        $this->lock->acquireEach(array_values(array_unique($tenantIds)));
+        $this->lock->acquireEach($tenantIds);
     }
 
     /**

@@ -28,6 +28,8 @@ use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
+use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
+use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Provisioning\Enums\ProvisioningStatus;
@@ -127,6 +129,43 @@ final class ProvisioningHelperTest extends LinkingTestCase
         self::assertSame([ProvisioningStatus::CREATED], $this->statuses);
         self::assertSame($this->person->id, Link::query()->sole()->identity_id);
         $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class, LinkCreated::class, HandoffIssued::class]);
+    }
+
+    /**
+     * Rows of a change made before the helper is asked that leaves its flow
+     * unavailable.
+     *
+     * @return iterable<string, array{0: \Closure(): mixed}>
+     */
+    public static function provideUnavailableFlows(): iterable
+    {
+        yield 'the connection deleted' => [static fn (): mixed => Connection::query()->delete()];
+        yield 'the connection disabled' => [static fn (): mixed => Connection::query()->update(['enabled' => false])];
+        yield 'the request deleted' => [static fn (): mixed => AuthorizationRequest::query()->delete()];
+        yield 'the request voided' => [static fn (): mixed => AuthorizationRequest::query()->update(['voided_at' => '2026-11-01 09:30:00'])];
+    }
+
+    /**
+     * A flow whose connection or request no longer stands is unavailable to the
+     * helper, which links nothing.
+     *
+     * @param  \Closure(): mixed  $change
+     * @return void
+     */
+    #[DataProvider('provideUnavailableFlows')]
+    public function testAFlowThatNoLongerStandsIsUnavailable(\Closure $change): void
+    {
+        $this->start();
+
+        $this->onOffer(function (ResultUnlinked $event) use ($change): void {
+            $change();
+            $this->provision($event);
+        });
+
+        $this->complete();
+
+        self::assertSame([ProvisioningStatus::REQUEST_UNAVAILABLE], $this->statuses);
+        self::assertSame(0, Link::query()->count());
     }
 
     /**

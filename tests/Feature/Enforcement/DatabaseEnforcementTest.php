@@ -342,6 +342,7 @@ final class DatabaseEnforcementTest extends TestCase
         yield 'a tenant twice' => [[self::TENANT, 'parent-1', self::TENANT]];
         yield 'a tenant that is no string' => [[self::TENANT, 7]];
         yield 'keyed tenants' => [['own' => self::TENANT]];
+        yield 'a gap in its keys' => [[0 => self::TENANT, 2 => 'parent-1']];
         yield 'too many tenants' => [[self::TENANT, ...array_map(static fn (int $n): string => "parent-{$n}", range(1, DatabaseEnforcement::MAX_PATH_LENGTH))]];
     }
 
