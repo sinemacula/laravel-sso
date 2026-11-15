@@ -8,6 +8,8 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Assert;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Enforcement\EnforcementFinder;
+use SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged;
 
 /**
  * What every `Contracts\EnforcementInheritance` must guarantee, as tests: use
@@ -21,24 +23,24 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 trait EnforcementInheritanceContract
 {
     /**
-     * Each tenant answers its enforcing tenant byte for byte, asked in turn,
-     * then again in reverse inside a transaction on the storage connection.
+     * Each tenant answers its path byte for byte, asked in turn, then again in
+     * reverse inside a transaction on the storage connection.
      *
      * @return void
      *
      * @throws \Throwable
      */
-    public function testEnforcementInheritanceAnswersEachTenantsEnforcingTenant(): void
+    public function testEnforcementInheritanceAnswersEachTenantsPath(): void
     {
-        $inheritance = $this->enforcementInheritance();
-        $application = $this->inheritanceApplication();
-        $expected    = $this->enforcingTenants();
-        $asked       = static function (array $tenants) use ($inheritance, $application): array {
+        $expected = $this->inheritancePaths();
+        $tenants  = array_keys($expected);
+        $stored   = static fn (string $tenantId): bool => (new EnforcementFinder)->find($tenantId) !== null;
+        $asked    = function (array $tenants) use ($stored): array {
 
             $answers = [];
 
             foreach ($tenants as $tenant) {
-                $answers[$tenant] = $inheritance->enforcingTenant((string) $tenant, $application);
+                $answers[$tenant] = $this->enforcementInheritance()->enforcementPath((string) $tenant, $this->inheritanceApplication(), $stored);
             }
 
             ksort($answers, SORT_STRING);
@@ -46,14 +48,49 @@ trait EnforcementInheritanceContract
             return $answers;
         };
 
-        $tenants = array_keys($expected);
-
         ksort($expected, SORT_STRING);
 
-        Assert::assertSame($expected, $asked($tenants), 'Each tenant must answer the tenant whose rule applies to it, exactly.');
+        Assert::assertSame($expected, $asked($tenants), 'Each tenant must answer every tenant its answer depends on, from itself to the one whose rule applies.');
         $inside = DB::connection(StorageConnection::name())->transaction(static fn (): array => $asked(array_reverse($tenants)));
 
         Assert::assertSame($expected, $inside, 'Inside the transaction each tenant must answer the same.');
+    }
+
+    /**
+     * Each tenant asks only about tenants on its path, and lets what the
+     * question throws propagate.
+     *
+     * @return void
+     */
+    public function testEnforcementInheritanceAsksOnlyOfItsPath(): void
+    {
+        foreach (array_keys($this->inheritancePaths()) as $tenant) {
+
+            $tenant   = (string) $tenant;
+            $askedFor = [];
+            $path     = $this->enforcementInheritance()->enforcementPath($tenant, $this->inheritanceApplication(), static function (string $tenantId) use (&$askedFor): bool {
+                $askedFor[] = $tenantId;
+
+                return (new EnforcementFinder)->find($tenantId) !== null;
+            });
+
+            Assert::assertSame([], array_values(array_diff($askedFor, $path)), "[{$tenant}] must ask only about tenants on the path it answers.");
+
+            $refusal = EnforcementPathChanged::retryWhole();
+            $called  = false;
+
+            try {
+                $this->enforcementInheritance()->enforcementPath($tenant, $this->inheritanceApplication(), static function () use (&$called, $refusal): bool {
+                    $called = true;
+
+                    throw $refusal;
+                });
+
+                Assert::assertFalse($called, "[{$tenant}] must let what the question throws propagate.");
+            } catch (\Throwable $exception) {
+                Assert::assertSame($refusal, $exception, "[{$tenant}] must let what the question throws propagate.");
+            }
+        }
     }
 
     /**
@@ -71,10 +108,10 @@ trait EnforcementInheritanceContract
     abstract protected function inheritanceApplication(): string;
 
     /**
-     * Tenants set up for the test, each with the tenant whose rule applies to
-     * it: at least one with a rule of its own and one that inherits.
+     * Tenants set up for the test, with their rules stored, each with its path:
+     * at least one with a rule of its own and one that inherits.
      *
-     * @return array<string, string>
+     * @return array<string, non-empty-list<string>>
      */
-    abstract protected function enforcingTenants(): array;
+    abstract protected function inheritancePaths(): array;
 }

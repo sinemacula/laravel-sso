@@ -53,11 +53,12 @@ in `saml-responses.md`, re-initiation in `idp-initiated.md`, the service provide
   3. `validation`: the driver's `complete()` against the consumed request, outside any transaction, with the
      connection's trusted certificates read for it;
   4. `replay_recording` and every later step: one transaction that takes the global lock order (`linking.md`: the
-     identity's guard when linking found one, the enforcing tenant's guard when enforcement applies, the flow's
-     connection and the rule's connections in ascending id order, the relevant domain claim, then the request), refuses
-     a connection no longer usable (its trust read again under the lock), a request a trust change voided since
-     consumption, or one whose stored trust version is no longer the locked connection's, records the assertion's id
-     through the single-use store, then resolves the link, judges enforcement and issues the handoff code.
+     identity's guard when linking found one, the inheritance path's guards, in tenant hash order, when enforcement
+     applies, the flow's connection and the rule's connections in ascending id order, the relevant domain claim, then
+     the request), refuses a connection no longer usable (its trust read again under the lock), a request a trust change
+     voided since consumption, or one whose stored trust version is no longer the locked connection's, records the
+     assertion's id through the single-use store, then resolves the link, judges enforcement and issues the handoff
+     code.
 - The start stores the connection's trust version, as it read it before the driver's `start()`, on the request, and
   refuses (`connection_unavailable`, storing nothing) when the locked connection's is another by the insert: a
   certificate removed between the read and the insert voided only the requests already stored. An additive

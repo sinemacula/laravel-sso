@@ -151,19 +151,20 @@ from what a driver verified and never from client input:
   provider called for a flow a trust change has overtaken.
 - Once a request is consumed with a trusted target, one transaction on the storage connection takes `flows.md`'s lock
   order. For a completion still going on, under `DatabaseEnforcement` with the `enforcement` feature on, it first calls
-  `DatabaseEnforcement::lock()` from `Completion\CompletionLocks::take()`: the enforcing tenant's row (named by the
-  inheritance contract, inserted unconfigured when it has none) and then, in one statement in ascending id order, the
-  connection and the connections the rule names. Otherwise (feature off, another contract bound, or a completion already
-  refused) it locks the connection's row alone, with no enforcement statement and no inheritance call. Then the
-  request's row. Each is a locking read on the write connection, so none answers from an older `REPEATABLE READ`
-  snapshot. A completion still going on is refused with `connection_unavailable` when the connection is gone or no
-  longer usable, when the request is gone, its `voided_at` is set or its `trust_version` is not the locked connection's
-  (unless `Metadata\TransitionReceipts` permits exactly the key rotation its own validation made, `oidc-driver.md`), or
-  when the inheritance contract, asked again, no longer names the tenant whose rule is locked: validation was based on
-  the connection and the request as they were before, and a change since (a disable, a trust change that voids the
-  connection's requests) wins. It is refused with `metadata_expired` when anything fetched for the locked connection has
-  expired by now (`Metadata\MetadataExpiry`): metadata that lapses, by its `validUntil` or the stale limit, while the
-  response is validated is never used. It is refused with `request_expired` when the verified response's deadline
+  `DatabaseEnforcement::lock()` from `Completion\CompletionLocks::take()`: the rows of the inheritance path (each tenant
+  the inheritance contract names, inserted unconfigured when it has none, in tenant hash order) and then, in one
+  statement in ascending id order, the connection and the connections the rule names. A path that changes under those
+  locks throws `Exceptions\EnforcementPathChanged`, a serialisation failure, and the transaction runs again. Otherwise
+  (feature off, another contract bound, or a completion already refused) it locks the connection's row alone, with no
+  enforcement statement and no inheritance call. Then the request's row. Each is a locking read on the write connection,
+  so none answers from an older `REPEATABLE READ` snapshot. A completion still going on is refused with
+  `connection_unavailable` when the connection is gone or no longer usable, or when the request is gone, its `voided_at`
+  is set or its `trust_version` is not the locked connection's (unless `Metadata\TransitionReceipts` permits exactly the
+  key rotation its own validation made, `oidc-driver.md`): validation was based on the connection and the request as
+  they were before, and a change since (a disable, a trust change that voids the connection's requests) wins. It is
+  refused with `metadata_expired` when anything fetched for the locked connection has expired by now
+  (`Metadata\MetadataExpiry`): metadata that lapses, by its `validUntil` or the stale limit, while the response is
+  validated is never used. It is refused with `request_expired` when the verified response's deadline
   (`Completion\VerifiedDeadlines`: `sso.linking.verified_result_max_age_seconds` from its validation, capped by the
   request's expiry) has passed. Otherwise every locked step runs in that transaction, on the rows as locked, with the
   policy the locked rule gives.
@@ -172,16 +173,17 @@ from what a driver verified and never from client input:
   request whose application is no longer registered is marked completed by its consumption instead, in the same write
   as `consumed_at`, since that completion is rejected with no trusted target and never reaches the transaction.
 - The lock order is `flows.md`'s: the identity's guard (a `sign_in` a reservation may be made for, found by plain reads
-  before the transaction opens, `linking.md`), the tenant's enforcement row (when it applies), then the connection with
-  the rule's connections in ascending id order, the relevant domain claim, then its request's, then (in the stages)
-  links and codes. A change that voids a connection's requests locks the connection first, so it waits for a completion
-  that holds it, and finds its request finished; a completion that consumed a request before the change refuses it under
-  the lock afterwards.
-- An enforcement change waits for a completion that holds the rule's lock, and a completion that waited sees the rule
-  as changed. The code carries the version checked; the redemption locks the rule again and rechecks it, and the
-  session is written there. On PostgreSQL under `REPEATABLE READ`, a completion that waited may get a serialisation
-  failure instead (SQLSTATE `40001`): it propagates as a server error, the locked transaction rolled back and its
-  request left consumed but not completed.
+  before the transaction opens, `linking.md`), the inheritance path's enforcement rows in tenant hash order (when it
+  applies), then the connection with the rule's connections in ascending id order, the relevant domain claim, then its
+  request's, then (in the stages) links and codes. A change that voids a connection's requests locks the connection
+  first, so it waits for a completion that holds it, and finds its request finished; a completion that consumed a
+  request before the change refuses it under the lock afterwards.
+- An enforcement change waits for a completion that holds the rule's lock, and a completion that waited sees the rule as
+  changed. The code carries the version checked; the redemption locks the rule again and rechecks it, and the session is
+  written there. On PostgreSQL under `REPEATABLE READ`, a completion that waited may get a serialisation failure instead
+  (SQLSTATE `40001`). The preparation and the continuation each run their locked transaction at most three times in all
+  on a deadlock or serialisation failure; the last propagates as a server error, the locked transaction rolled back and
+  its request left consumed but not completed.
 
 ### Outcomes
 
@@ -219,9 +221,9 @@ no target is dispatched at once.
 2. The attempt is counted, the method and the connection checked, and the driver correlates the response.
 3. The request is consumed under the connection's lock, then the driver validates the response, and the result is
    built.
-4. Under the tenant's enforcement lock (when it applies), the connections' and the request's: the link is resolved,
-   enforcement is satisfied, the unlinked decision passes, the policy is asked again and the code issued; the request
-   is marked completed.
+4. Under the enforcement locks of the tenant's inheritance path (when it applies), the connections' and the request's:
+   the link is resolved, enforcement is satisfied, the unlinked decision passes, the policy is asked again and the code
+   issued; the request is marked completed.
 5. Once that commits, `ResultVerified` and `HandoffIssued` are reported, and the helper answers `completed`, which the
    controller turns into a redirect with `Responses\CompletionResponses`.
 
@@ -272,7 +274,7 @@ no target is dispatched at once.
   rows as locked, a refusal ending the pipeline, `completed_at`, a request voided and a connection disabled or gone
   under the lock, the lock order (enforcement, then connections in id order, then the request) and the locked policy
   carried to the enforcement step, no enforcement statement with the feature off or for a completion already refused,
-  an enforcing tenant that moved, misconfigurations that propagate.
+  a path that moves under the lock, tried again, misconfigurations that propagate.
 - `tests/Feature/Completion/Stages/StagesTest.php`: each stage alone.
 - `tests/Integration/Completion/ConcurrentCompletionTest.php`: completions of one response, and a completion racing a
   change that voids its request while it validates, the change plain and inside its own transaction, on MySQL and

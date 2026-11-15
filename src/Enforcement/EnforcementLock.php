@@ -12,7 +12,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 
 /**
- * Locks a tenant's enforcement row, the first lock in the package's lock order.
+ * Locks tenants' enforcement rows, the first locks in the package's lock order.
  *
  * Call inside the caller's transaction on the storage connection.
  *
@@ -56,6 +56,36 @@ final readonly class EnforcementLock
         $this->insertUnlessExists($tenantId);
 
         return $this->finder->row($tenantId, true) ?? self::unreadable();
+    }
+
+    /**
+     * Each tenant's row locked for update, in tenant hash order, keyed by the
+     * tenant.
+     *
+     * @param  list<string>  $tenantIds
+     * @return array<string, \SineMacula\Laravel\Sso\Models\TenantEnforcement>
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
+     */
+    public function acquireEach(array $tenantIds): array
+    {
+        $byHash = [];
+
+        foreach ($tenantIds as $tenantId) {
+            $byHash[TenantHash::of($tenantId)] = $tenantId;
+        }
+
+        ksort($byHash, SORT_STRING);
+
+        $rows = [];
+
+        foreach ($byHash as $tenantId) {
+            $rows[$tenantId] = $this->acquire($tenantId);
+        }
+
+        return $rows;
     }
 
     /**

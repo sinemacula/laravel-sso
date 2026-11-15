@@ -19,23 +19,23 @@ final readonly class TenantTreeInheritance implements EnforcementInheritance
 {
     // @snippet-start enforcement-inheritance-tenant
     /**
-     * The tenant whose rule applies to sessions active in the tenant: the root
-     * of its branch, on every application.
+     * Every tenant the answer depends on: the tenant, then the root of its
+     * branch, on every application.
      *
      * @param  string  $tenantId
      * @param  string  $application
-     * @return string
+     * @param  \Closure(string): bool  $isConfigured
+     * @return non-empty-list<string>
      */
     #[\Override]
-    public function enforcingTenant(string $tenantId, string $application): string
+    public function enforcementPath(string $tenantId, string $application, \Closure $isConfigured): array
     {
-        unset($application);
+        unset($application, $isConfigured);
 
-        // A tenant's place in the tree rarely changes, so a plain read is safe
-        // inside the caller's transaction
+        // Asked at READ COMMITTED, where each read sees what has committed
         $tenant = Tenant::query()->findOrFail($tenantId);
 
-        return $tenant->enforcement_root_id ?? $tenant->id;
+        return $tenant->enforcement_root_id === null ? [$tenant->id] : [$tenant->id, $tenant->enforcement_root_id];
     }
     // @snippet-end enforcement-inheritance-tenant
 }

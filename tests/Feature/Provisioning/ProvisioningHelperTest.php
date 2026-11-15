@@ -28,6 +28,7 @@ use SineMacula\Laravel\Sso\Linking\LinkEmailMatch;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
+use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Provisioning\Enums\ProvisioningStatus;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
@@ -125,6 +126,52 @@ final class ProvisioningHelperTest extends LinkingTestCase
         self::assertSame(1, $this->databaseFailuresFired());
         self::assertSame([ProvisioningStatus::CREATED], $this->statuses);
         self::assertSame($this->person->id, Link::query()->sole()->identity_id);
+        $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class, LinkCreated::class, HandoffIssued::class]);
+    }
+
+    /**
+     * A deadlock in the completion's preparation runs it again, reporting its
+     * events once.
+     *
+     * @return void
+     */
+    public function testADeadlockInThePreparationRunsItAgain(): void
+    {
+        $this->start();
+        $this->deadlockStatement('/^\s*update\b.*verified_at/s');
+
+        $this->onOffer(function (ResultUnlinked $event): void {
+            $this->provision($event);
+        });
+
+        $this->startRecordingEvents();
+
+        self::assertTrue($this->complete()->isCompleted());
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertSame([ProvisioningStatus::CREATED], $this->statuses);
+        $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class, LinkCreated::class, HandoffIssued::class]);
+    }
+
+    /**
+     * A deadlock in the completion's continuation runs it again, issuing one
+     * code.
+     *
+     * @return void
+     */
+    public function testADeadlockInTheContinuationRunsItAgain(): void
+    {
+        $this->start();
+        $this->deadlockStatement(self::onTable('insert', 'sso_handoff_codes'));
+
+        $this->onOffer(function (ResultUnlinked $event): void {
+            $this->provision($event);
+        });
+
+        $this->startRecordingEvents();
+
+        self::assertTrue($this->complete()->isCompleted());
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertSame(1, HandoffCode::query()->count());
         $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class, LinkCreated::class, HandoffIssued::class]);
     }
 

@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Completion\Stages\ResolveLink;
 use SineMacula\Laravel\Sso\Completion\Stages\ValidateResponse;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\CompletionStage;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
@@ -38,6 +39,9 @@ use SineMacula\Laravel\Sso\Links\LinkStorageBinding;
  */
 final readonly class CompletionPipeline
 {
+    /** @var int The most times each locked transaction is tried. */
+    private const int ATTEMPTS = 3;
+
     /** @var array<string, class-string<\SineMacula\Laravel\Sso\Contracts\CompletionStage>> The stage for each step, by value. */
     private const array STAGES = [
         'correlation'        => CorrelateResponse::class,
@@ -138,7 +142,8 @@ final readonly class CompletionPipeline
         }
 
         $discovery = $outcome->isProceeding() ? $this->locks->discover($outcome->state) : null;
-        $finished  = DB::connection(StorageConnection::name())->transaction(fn (): CompletionResult|StageOutcome => $this->prepared($flow, $outcome, $discovery));
+        $prepared  = fn (): CompletionResult|StageOutcome => $this->prepared($flow, $outcome, $discovery);
+        $finished  = RetriedTransaction::run(DB::connection(StorageConnection::name()), $prepared, self::ATTEMPTS);
 
         return $finished instanceof CompletionResult ? $finished : $this->continued($flow, $finished);
     }
@@ -267,13 +272,13 @@ final readonly class CompletionPipeline
     {
         $this->offer->dispatch($boundary->state);
 
-        return DB::connection(StorageConnection::name())->transaction(function () use ($flow, $boundary): CompletionResult {
+        return RetriedTransaction::run(DB::connection(StorageConnection::name()), function () use ($flow, $boundary): CompletionResult {
 
             $lock = $this->locks->take($boundary->state, true, false);
             $ran  = $this->locked($boundary->state, $lock, static fn (CompletionStep $step): bool => $step->isInContinuation());
 
             return $this->finished($flow, $ran, $lock, true);
-        });
+        }, self::ATTEMPTS);
     }
 
     /**

@@ -47,6 +47,7 @@ use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\UnsolicitedResponseReinitiated;
+use SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\LinkResolution;
@@ -548,25 +549,68 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
-     * An enforcing tenant that moved since the lock is refused.
+     * A path that moves under the lock runs the locked transaction again, which
+     * completes on the path as it stands.
      *
      * @return void
      */
-    public function testAnEnforcingTenantThatMovedSinceTheLockIsRefused(): void
+    public function testAPathThatMovesUnderTheLockIsTriedAgain(): void
     {
         config()->set('sso.features.enforcement', true);
 
         $inheritance = new ScriptedInheritance(['tenant-1', 'parent-1']);
-        $request     = $this->request();
 
         $this->app?->instance(EnforcementInheritance::class, $inheritance);
-        $this->spyOnEveryStep();
+        $this->request();
 
-        self::assertSame(['failed', 'connection_unavailable', 'https://app.example.com/sso', self::REFERENCE], self::summary($this->completeAtCallback()));
-        self::assertSame(['correlation', 'consumption', 'validation'], $this->stepsRan());
-        self::assertSame([['tenant-1', 'web'], ['tenant-1', 'web']], $inheritance->asked());
-        self::assertSame([], $this->issuer->grants());
-        self::assertNotNull($this->reread($request)->completed_at);
+        self::assertTrue($this->completeAtCallback()->isCompleted());
+        self::assertCount(4, $inheritance->asked());
+        self::assertCount(1, $this->issuer->grants());
+    }
+
+    /**
+     * A path that moves on every attempt fails the completion once the attempts
+     * run out, completing nothing.
+     *
+     * @return void
+     */
+    public function testAPathThatNeverSettlesFailsOnceTheAttemptsRunOut(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $inheritance = new class implements EnforcementInheritance {
+            /** @var int How many times it has been asked. */
+            public int $asked = 0;
+
+            /**
+             * The tenant, then a parent that changes with every question.
+             *
+             * @param  string  $tenantId
+             * @param  string  $application
+             * @param  \Closure(string): bool  $isConfigured
+             * @return non-empty-list<string>
+             */
+            #[\Override]
+            public function enforcementPath(string $tenantId, string $application, \Closure $isConfigured): array
+            {
+                return [$tenantId, 'parent-' . ++$this->asked];
+            }
+        };
+
+        $this->app?->instance(EnforcementInheritance::class, $inheritance);
+
+        $request = $this->request();
+
+        try {
+            $this->completeAtCallback();
+
+            self::fail('A path that never settled completed.');
+        } catch (\Throwable $exception) {
+            self::assertInstanceOf(EnforcementPathChanged::class, $exception);
+            self::assertSame(6, $inheritance->asked);
+            self::assertNull($this->reread($request)->completed_at);
+            self::assertSame([], $this->issuer->grants());
+        }
     }
 
     /**

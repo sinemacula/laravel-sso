@@ -244,7 +244,8 @@ Two outcomes spend or keep the code, and they are not the same:
   and any activation together, reports nothing, and leaves the code to be tried again. So does your own rollback, for
   whatever reason.
 
-Retry only your whole transaction, from the start, and never a part of it.
+Retry only your whole transaction, from the start, and never a part of it. Retry a serialisation failure that way,
+`Exceptions\EnforcementPathChanged` included, which reaches you from the savepoint as Laravel's `DeadlockException`.
 
 > [!IMPORTANT]
 > On PostgreSQL under `REPEATABLE READ`, a redemption that waited on another change to its connection can fail with a
@@ -348,8 +349,9 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
 ```
 
 - `lock()` takes the locks a redemption holds until your transaction ends: with the `enforcement` feature on and the
-  default enforcement contract bound, the tenant's enforcement row (named by the inheritance contract, and inserted
-  empty when the tenant has none) and then, in one statement in id order, the connection, the connections the rule
+  default enforcement contract bound, the rows of the inheritance path in a fixed order (each tenant the inheritance
+  contract names, inserted empty when it has none; a path that changes under them throws
+  `Exceptions\EnforcementPathChanged`) and then, in one statement in id order, the connection, the connections the rule
   names and, for a `link`, the connections holding the identity's verified domain links; otherwise the connection and
   those domain links' connections; then the domain claim of the reservation you name. Read your code plainly to learn
   the result before it, if you need to, but lock your code only after it.
@@ -361,9 +363,9 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
 - `recheck()` alone judges, and writes nothing but a suspension it finds, which is latched whatever the redemption comes
   to. It takes the lock, and refuses one taken for another tenant, connection or application than the result's with a
   `LogicException`, so it cannot be reached without the locks. It answers `passed` or the first that refuses:
-  `connection_unavailable` (also when the binding's trust version is not the connection's, or names none, and when the
-  inheritance contract no longer names the tenant whose rule is locked), `enforcement_unsatisfied`, then the purpose's
-  own. Under the default contract it judges enforcement from the locked rows.
+  `connection_unavailable` (also when the binding's trust version is not the connection's, or names none),
+  `enforcement_unsatisfied`, then the purpose's own. Under the default contract it judges enforcement from the locked
+  rows.
 - `discardReservation()` removes a refused code's reservation, by its identity and handoff reference and never merely by
   the subject, in your transaction; a binding with no reservation does nothing. Call it for every refusal after you
   consumed your code.
@@ -374,15 +376,17 @@ return DB::connection(StorageConnection::name())->transaction(function () use ($
 - A binding that does not say what the issuer was given fails closed. In particular, a `link`'s binding naming a linked
   identity but no link id cannot show the link is the same one, and is `link_changed`; one naming no identity is
   `identity_mismatch`.
-- A serialisation failure on PostgreSQL propagates from `lock()`; retry your whole transaction, never a part of it. A
-  refusal you commit spends your code, and a rollback does not, just as for the package's own.
+- A serialisation failure, on PostgreSQL or as `Exceptions\EnforcementPathChanged`, propagates from `lock()`; retry your
+  whole transaction, never a part of it. A refusal you commit spends your code, and a rollback does not, just as for the
+  package's own.
 
 If you bind your own `Contracts\Enforcement`, the recheck asks it, under the connection's lock alone. A current read in
 your contract is not enough to keep a session from escaping a rule change: your contract must itself serialise the
 admission against changes to its rule until the session's transaction commits (for example by locking the row your rule
 lives in, in the same transaction), and your revocation must find sessions with current reads. If you bind your own
-`Contracts\EnforcementInheritance`, it is asked inside the redeemer's transaction, before and after the locks: answer
-from state that does not change under the transaction, or read it with a current read.
+`Contracts\EnforcementInheritance`, it is asked inside the redeemer's transaction, before and after the locks: read your
+tree with a current read, or fail with a retryable concurrency error (see
+[Inherited rules](enforcement.md#inherited-rules)).
 
 ## Events
 

@@ -37,8 +37,10 @@ final class EnforcementDefaultsTest extends TestCase
     {
         $inheritance = new OwnTenantInheritance;
 
-        self::assertSame('tenant-1', $inheritance->enforcingTenant('tenant-1', 'web'));
-        self::assertSame('Tenant-1', $inheritance->enforcingTenant('Tenant-1', 'mobile'));
+        $isConfigured = static fn (): bool => throw new \LogicException('The tenant alone needs no question.');
+
+        self::assertSame(['tenant-1'], $inheritance->enforcementPath('tenant-1', 'web', $isConfigured));
+        self::assertSame(['Tenant-1'], $inheritance->enforcementPath('Tenant-1', 'mobile', $isConfigured));
     }
 
     /**

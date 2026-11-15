@@ -40,8 +40,10 @@ calls before refusing a session it could exempt.
 - `DatabaseEnforcement::policy($tenantId, $application)` answers from current state on every call, never from a cache.
   While `sso.features.enforcement` is off it answers `notRequired($tenantId, $tenantId, null)` with no query and no
   other contract asked; a malformed switch fails closed (`InvalidArgumentException`). Otherwise it asks the inheritance
-  contract, resolved from the container on each call, for the enforcing tenant (an empty or overlong answer is a
-  `LogicException`), reads that tenant's row through `Enforcement\EnforcementFinder` on the write connection, and
+  contract, resolved from the container on each call, for the tenant's inheritance path, answering `$isConfigured` with
+  plain reads. A path that is not a list, is empty, does not start with the tenant, names a tenant twice, has an entry
+  that is not a string of 1 to 255 bytes, or has more than `DatabaseEnforcement::MAX_PATH_LENGTH` (64) entries is a
+  `LogicException`. It reads the last tenant's row through `Enforcement\EnforcementFinder` on the write connection, and
   answers `notRequired` with no row (version `null`) or a row that is off, and `required` with a row that is on:
   satisfied by the stored connections that still exist, belong to the enforcing tenant byte for byte and are enabled,
   read in one statement. A rule whose every satisfying connection has since been disabled or deleted stays required and
@@ -53,24 +55,31 @@ calls before refusing a session it could exempt.
 - `DatabaseEnforcement::lock($tenantId, $application, $connectionIds)` is what an admission takes first, inside its
   transaction on the storage connection: the package's redemption (`HandoffRecheck::lock()`, before the code) and the
   locked steps of a completion (`Completion\CompletionLocks::take()`). While the feature is off it answers `null` with
-  no statement, no row and no inheritance call. Otherwise the inheritance contract names the enforcing tenant,
-  `EnforcementLock::acquire()` upserts that tenant's row unconfigured unless it has one (never changing an existing
-  row's values) and reads it locked, and `EnforcementFinder::lockConnections()` locks the connections given and, for a
-  rule that is on, those it names, in one statement in ascending id order. The `Enforcement\LockedEnforcement` answers
-  `policy()` from the locked rows (the same answer `policy()` gives for the same state) and `isCurrent()`, which asks
-  the inheritance contract again; an admission whose enforcing tenant moved refuses (`connection_unavailable`) rather
-  than lock another tenant's row out of order. Held until the admission's transaction ends, the lock makes a change to
-  the rule, or a disable of a satisfying connection, wait for the admission, whose session its revocation then sees, or
-  makes the admission wait for the change and see it.
+  no statement, no row and no inheritance call. Otherwise it asks the inheritance contract for the path with plain
+  reads, `EnforcementLock::acquireEach()` upserts and locks each path tenant's row, one at a time in `tenant_hash`
+  order, and the contract is asked again with `$isConfigured` answered from the locked rows alone. A different path, or
+  a question about a tenant outside the locked rows, throws `Exceptions\EnforcementPathChanged`, a `PDOException` with
+  code `40001` (a serialisation failure), so the admission's transaction is retried whole rather than judge a rule it
+  did not lock. Otherwise `EnforcementFinder::lockConnections()` locks the connections given and, when the last tenant's
+  rule is on, those it names, in one statement in ascending id order. The `Enforcement\LockedEnforcement` answers
+  `policy()` from the locked rows (the same answer `policy()` gives for the same state). Held until the admission's
+  transaction ends, the lock makes a change to a rule on the path, or a disable of a satisfying connection, wait for the
+  admission, whose session its revocation then sees, or makes the admission wait for the change and see it.
 - An application that binds its own `Contracts\Enforcement` is asked as it is bound, under the connection's lock alone;
   the package locks nothing of its own enforcement then. Such a contract must itself serialise an admission against
   changes to its rule through the session's commit (a current read alone is not enough), and its revocation must find
   sessions with current reads. A custom `Contracts\EnforcementInheritance` is asked inside the admission's transaction,
-  before the locks and again under them, so it must answer in a transaction-safe way: from state that does not change
-  under the transaction, or with a current read.
+  before the locks and again under them. It learns whether a tenant has a stored rule only through `$isConfigured`,
+  letting what it throws propagate, and reads its tree with a current read (a locking read, or `READ COMMITTED`) or
+  fails with a retryable concurrency error. A change to what it answers, such as a tree move, first calls
+  `EnforcementService::lockTenants()` with every tenant it moves, before its own tree locks, then revokes or judges
+  again the moved tenants' sessions itself.
 - `Enforcement\EnforcementService` (`@api`, resolved per request) is the one helper that changes a rule. `get()` answers
-  an `EnforcementSummary` from the write connection. `update($tenantId, $enabled, $connectionIds, $client, $caller)`
-  goes in a fixed order, and every refusal writes, revokes and reports nothing:
+  an `EnforcementSummary` from the write connection. `lockTenants($tenantIds)` takes an admission's row locks on the
+  tenants given, in `tenant_hash` order inside the caller's transaction on the storage connection, and holds them until
+  it ends; it revokes nothing, and locks nothing while the feature is off.
+  `update($tenantId, $enabled, $connectionIds, $client, $caller)` goes in a fixed order, and every refusal writes,
+  revokes and reports nothing:
   1. the feature switch: off is `refused` with `feature_disabled`;
   2. the ids, validated as a whole: each a string of 1 to 26 bytes (`connection_ids.<n>` `invalid_type` or
      `invalid_format`, `<n>` its position in the list given), de-duplicated silently, at most
@@ -91,12 +100,13 @@ calls before refusing a session it could exempt.
      when it is the outermost): lock the tenant's row, then the connections given, steps 2 to 4 judged again on the
      locked rows, step 5, the write through the model (`enabled`, `connection_ids` sorted and unique, a new `version`,
      `changed_at` from the clock), the revocation when the rule is now on, and the report.
-- Lock order: a tenant's enforcement row, then connection rows in id order (one locking statement by id, ordered by
-  id, with the tenant compared byte for byte in PHP), then (for an admission) its request or code. Every read under the
-  lock that decides the write is a locking read, since a plain read answers from the snapshot of a transaction the
-  caller opened (MySQL's `REPEATABLE READ`). A connection's disable and delete (`Connections\ConnectionLifecycle`) take
-  the same order: they lock no enforcement row, then the connection, and call `SessionRevocation` with
-  `RevocationScope::connection()` inside their transaction.
+- Lock order: the enforcement rows of the inheritance path in tenant hash order (the writer locks its tenant's row
+  alone), then connection rows in id order (one locking statement by id, ordered by id, with the tenant compared byte
+  for byte in PHP), then (for an admission) its request or code. Every read under the lock that decides the write is a
+  locking read, since a plain read answers from the snapshot of a transaction the caller opened (MySQL's
+  `REPEATABLE READ`). A connection's disable and delete (`Connections\ConnectionLifecycle`) take the same order: they
+  lock no enforcement row, then the connection, and call `SessionRevocation` with `RevocationScope::connection()` inside
+  their transaction.
 - A tenant's row is locked through `EnforcementLock::acquire()`, the one insert-unless-exists the writer and every
   admission share: an upsert keyed by `tenant_hash` that inserts the row unconfigured (off, no connection, no version,
   no time), or leaves an existing row exactly as it is, then a locking read of the row. A locking read of a row that
@@ -166,7 +176,7 @@ calls before refusing a session it could exempt.
 - `src/Enforcement/DatabaseEnforcement.php`, `EnforcementFinder.php`, `EnforcementLock.php`, `LockedEnforcement.php`,
   `EnforcementService.php`, `EnforcementResult.php`, `EnforcementSummary.php`, `ExemptionGate.php`,
   `Enums/EnforcementStatus.php`; `EnforcementPolicy.php`, `TenantHash.php`, `OwnTenantInheritance.php`,
-  `NoExemptions.php`, `Enums/ExemptionOutcome.php`.
+  `NoExemptions.php`, `Enums/ExemptionOutcome.php`; `src/Exceptions/EnforcementPathChanged.php`.
 - `src/Contracts/Enforcement.php`, `EnforcementInheritance.php`, `EnforcementExemption.php`, `SessionRevocation.php`;
   `src/Revocation/RevocationScope.php`, `NoSessionRevocation.php`, `Enums/`.
 - `src/Models/TenantEnforcement.php`, `database/migrations/2026_11_02_000001_create_sso_enforcement_table.php`.
@@ -174,14 +184,16 @@ calls before refusing a session it could exempt.
 
 ## Authoritative Tests
 
-- `tests/Feature/Enforcement/DatabaseEnforcementTest.php`, `EnforcementServiceTest.php`, `ExemptionGateTest.php`,
-  `EnforcementLockTest.php` (the unconfigured row and its answers, an existing row never changed, `lock()`'s order and
-  policy, nothing with the feature off).
+- `tests/Feature/Enforcement/DatabaseEnforcementTest.php` (malformed paths, a path that changes under the locks),
+  `EnforcementServiceTest.php`, `ExemptionGateTest.php`, `EnforcementLockTest.php` (the unconfigured row and its
+  answers, an existing row never changed, each row in tenant hash order, `lock()`'s order and policy, nothing with the
+  feature off).
 - `tests/Unit/Enforcement/EnforcementResultTest.php`, `EnforcementSummaryTest.php`, `EnforcementPolicyTest.php`,
   `EnforcementDefaultsTest.php`; `tests/Unit/Revocation/RevocationScopeTest.php`.
 - `tests/Integration/Enforcement/EnforcementRevocationTransactionTest.php`, `ConcurrentEnforcementChangesTest.php`
   (MySQL and PostgreSQL, plainly and inside a caller's transaction), `EnforcementAdmissionRaceTest.php` (a redemption
-  writing a session racing a change, both orders, a stored rule and none), `EnforcementMigrationTest.php`.
+  writing a session racing a change, both orders, a stored rule and none), `InheritedEnforcementRaceTest.php` (an
+  admission racing a rule on its path or a tree move, both orders), `EnforcementMigrationTest.php`.
 - `tests/Performance/EnforcementQueryBudgetTest.php`.
 
 ## Change Triggers

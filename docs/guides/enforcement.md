@@ -135,14 +135,14 @@ that policy's version, so a change reaches existing sessions only through the sy
 
 `policy()` takes no lock: it answers the rule as it is, but the rule can change before the session it admitted is
 written, and that session would then escape the change's revocation. The package's own admissions close that gap. A
-handoff redemption and a completion take the guard of an identity being linked by a verified domain first, when there
-is one, then the tenant's rule (the enforcing tenant's row, inserted empty when the tenant has none), then the
-connections in id order, then their own row, and judge the rule from what they locked. A change to the rule waits for
-them, and its revocation then sees the session your redemption wrote in its transaction; or they wait for the change,
-and see it. Write the session inside the redemption's transaction (see
-[Redeeming a handoff](redeeming-a-handoff.md#transactions)) for this to hold. On PostgreSQL under `REPEATABLE READ`,
-a redemption or completion that waited can get a serialisation failure instead: it is thrown, and the whole
-transaction is retried or the person starts again.
+handoff redemption and a completion take the guard of an identity being linked by a verified domain first, when there is
+one, then the rule of every tenant on the inheritance path in a fixed order (each tenant's row, inserted empty when it
+has none), then the connections in id order, then their own row, and judge the rule from what they locked. A change to
+the rule waits for them, and its revocation then sees the session your redemption wrote in its transaction; or they wait
+for the change, and see it. Write the session inside the redemption's transaction (see
+[Redeeming a handoff](redeeming-a-handoff.md#transactions)) for this to hold. On PostgreSQL under `REPEATABLE READ`, a
+redemption or completion that waited can get a serialisation failure instead: it is thrown, and the whole transaction is
+retried or the person starts again.
 
 If you bind your own `Contracts\Enforcement`, the package asks it as you bound it and locks nothing of its own
 enforcement. A current read in your contract does not close the gap above: your contract must itself serialise an
@@ -153,14 +153,22 @@ current reads or writes, never from a snapshot.
 ### Inherited rules
 
 By default each tenant's own rule applies to it alone. If your tenants form a tree and a child should follow an
-ancestor's rule, bind `Contracts\EnforcementInheritance`: it answers, for a tenant and an application, the tenant whose
-rule applies. The policy then names it as `enforcingTenantId`, and only that tenant's connections satisfy it.
+ancestor's rule, bind `Contracts\EnforcementInheritance`. For a tenant and an application, `enforcementPath()` answers
+every tenant the answer depends on, from the tenant itself to the one whose rule applies, last. The policy names that
+last tenant as `enforcingTenantId`, and only its connections satisfy it. When the answer depends on which tenants have a
+stored rule (the nearest ancestor with one, say), ask the `$isConfigured` it is given rather than reading the rules
+yourself, and let what it throws propagate; with no rule anywhere, the path runs to the root.
 
-The package asks it inside a redemption's or a completion's transaction, before it takes the enforcing tenant's lock
-and again once it holds it; an answer that changed in between refuses the admission (`connection_unavailable`) rather
-than lock another tenant's rule out of order. Answer it in a way that is safe inside the caller's transaction: from
-state that does not change under it (a tenant's place in the tree rarely does), or read it with a current read rather
-than from the transaction's snapshot.
+The package asks inside a redemption's or a completion's transaction, locks every tenant's rule on the path in a fixed
+order, then asks again, answering `$isConfigured` from the rows it holds. A different answer throws
+`Exceptions\EnforcementPathChanged`, a serialisation failure (SQLSTATE 40001): the package's own transactions run again,
+and the transaction you wrap `admit()` in must retry it whole. Read the tree current: at `READ COMMITTED` a plain read
+is, as below. Under `REPEATABLE READ` a plain read answers from the snapshot, so use a locking read, which can deadlock
+against a concurrent move; the retry absorbs it.
+
+A change to the tree locks first: call `EnforcementService::lockTenants()` with every tenant it moves, in the same
+transaction and before your own tree locks, then revoke or judge again the moved tenants' sessions. The lock orders the
+move against admissions; it revokes nothing.
 
 Here your `Tenant` model names, in `enforcement_root_id`, the root whose rule a tenant follows (none for a root, whose
 own rule applies). `TenantTreeInheritance`, a `final readonly` class that implements `Contracts\EnforcementInheritance`,
@@ -169,23 +177,23 @@ answers from it:
 <!-- snippet: tests/Integration/Examples/Enforcement/TenantTreeInheritance.php#enforcement-inheritance-tenant -->
 ```php
 /**
- * The tenant whose rule applies to sessions active in the tenant: the root
- * of its branch, on every application.
+ * Every tenant the answer depends on: the tenant, then the root of its
+ * branch, on every application.
  *
  * @param  string  $tenantId
  * @param  string  $application
- * @return string
+ * @param  \Closure(string): bool  $isConfigured
+ * @return non-empty-list<string>
  */
 #[\Override]
-public function enforcingTenant(string $tenantId, string $application): string
+public function enforcementPath(string $tenantId, string $application, \Closure $isConfigured): array
 {
-    unset($application);
+    unset($application, $isConfigured);
 
-    // A tenant's place in the tree rarely changes, so a plain read is safe
-    // inside the caller's transaction
+    // Asked at READ COMMITTED, where each read sees what has committed
     $tenant = Tenant::query()->findOrFail($tenantId);
 
-    return $tenant->enforcement_root_id ?? $tenant->id;
+    return $tenant->enforcement_root_id === null ? [$tenant->id] : [$tenant->id, $tenant->enforcement_root_id];
 }
 ```
 

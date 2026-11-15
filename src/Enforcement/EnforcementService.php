@@ -99,6 +99,31 @@ final readonly class EnforcementService
     }
 
     /**
+     * Lock the tenants' rows inside the caller's transaction on the storage
+     * connection, before changing what the inheritance contract answers for
+     * them, as a tree move does.
+     *
+     * @param  list<string>  $tenantIds
+     * @return void
+     *
+     * @throws \InvalidArgumentException
+     * @throws \LogicException
+     * @throws \UnexpectedValueException
+     */
+    public function lockTenants(array $tenantIds): void
+    {
+        foreach ($tenantIds as $tenantId) {
+            EnforcementFinder::assertTenant($tenantId);
+        }
+
+        if (!Features::enabled(Feature::ENFORCEMENT)) {
+            return;
+        }
+
+        $this->lock->acquireEach(array_values(array_unique($tenantIds)));
+    }
+
+    /**
      * Turn the tenant's enforcement on or off, satisfied by the tenant's
      * connections with the ids given.
      *

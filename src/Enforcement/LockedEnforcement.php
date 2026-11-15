@@ -26,7 +26,6 @@ final readonly class LockedEnforcement
      * @param  string  $enforcingTenantId
      * @param  ?\SineMacula\Laravel\Sso\Models\TenantEnforcement  $rule
      * @param  list<\SineMacula\Laravel\Sso\Models\Connection>  $connections
-     * @param  \Closure(): string  $enforcingNow
      */
     public function __construct(
 
@@ -44,9 +43,6 @@ final readonly class LockedEnforcement
 
         /** Every connection locked with the rule, in id order. */
         public array $connections,
-
-        /** Asks the inheritance contract for the enforcing tenant again. */
-        private \Closure $enforcingNow,
     ) {}
 
     /**
@@ -78,15 +74,5 @@ final readonly class LockedEnforcement
         }
 
         return null;
-    }
-
-    /**
-     * Whether the inheritance contract still names the locked enforcing tenant.
-     *
-     * @return bool
-     */
-    public function isCurrent(): bool
-    {
-        return ($this->enforcingNow)() === $this->enforcingTenantId;
     }
 }

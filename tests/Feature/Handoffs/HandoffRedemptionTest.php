@@ -6,6 +6,7 @@ namespace Tests\Feature\Handoffs;
 
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Encryption\DecryptException;
+use Illuminate\Database\DeadlockException;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
@@ -26,6 +27,7 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
+use SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Flows\S256Challenge;
@@ -628,13 +630,14 @@ final class HandoffRedemptionTest extends TestCase
     }
 
     /**
-     * An enforcing tenant that moved since the lock is unavailable.
+     * A path that moves under the lock rolls the caller's transaction back for
+     * it to try again, leaving the code to redeem.
      *
      * @return void
      *
-     * @throws \Random\RandomException
+     * @throws \Throwable
      */
-    public function testAnEnforcingTenantThatMovedSinceTheLockIsUnavailable(): void
+    public function testAPathThatMovesUnderTheLockLeavesTheCodeToRetry(): void
     {
         config()->set('sso.features.enforcement', true);
 
@@ -643,11 +646,18 @@ final class HandoffRedemptionTest extends TestCase
 
         $this->app?->instance(EnforcementInheritance::class, $inheritance);
 
-        self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $this->redeem($code)->reason);
-        self::assertSame([['tenant-1', 'web'], ['tenant-1', 'web']], $inheritance->asked());
-        self::assertNotNull($this->stored($code)->redeemed_at);
-        self::assertFalse($this->reloaded($this->connection)->has_completed_sign_in);
-        self::assertSame([], $this->linkerAsked);
+        try {
+            $this->redeem($code);
+
+            self::fail('A path that moved under the lock was judged.');
+        } catch (DeadlockException $exception) {
+            self::assertInstanceOf(EnforcementPathChanged::class, $exception->getPrevious());
+            self::assertNull($this->stored($code)->redeemed_at);
+            self::assertSame([], $this->linkerAsked);
+        }
+
+        self::assertTrue($this->redeem($code)->isRedeemed());
+        self::assertCount(4, $inheritance->asked());
     }
 
     /**
