@@ -71,9 +71,10 @@ calls before refusing a session it could exempt.
   sessions with current reads. A custom `Contracts\EnforcementInheritance` is asked inside the admission's transaction,
   before the locks and again under them. It learns whether a tenant has a stored rule only through `$isConfigured`,
   letting what it throws propagate, and reads its tree with a current read (a locking read, or `READ COMMITTED`) or
-  fails with a retryable concurrency error. A change to what it answers, such as a tree move, first calls
-  `EnforcementService::lockTenants()` with every tenant it moves, before its own tree locks, then revokes or judges
-  again the moved tenants' sessions itself.
+  fails with a retryable concurrency error. A change to what it answers, such as a tree move, calls
+  `EnforcementService::lockTenants()` with every tenant it moves in the same transaction, before it commits, then
+  revokes or judges again the moved tenants' sessions itself. Taken after the tree write, the lock still orders the
+  move against admissions, but the transaction can deadlock against one and must retry whole.
 - `Enforcement\EnforcementService` (`@api`, resolved per request) is the one helper that changes a rule. `get()` answers
   an `EnforcementSummary` from the write connection. `lockTenants($tenantIds)` takes an admission's row locks on the
   tenants given, in `tenant_hash` order inside the caller's transaction on the storage connection, and holds them until

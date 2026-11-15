@@ -166,9 +166,10 @@ and the transaction you wrap `admit()` in must retry it whole. Read the tree cur
 is, as below. Under `REPEATABLE READ` a plain read answers from the snapshot, so use a locking read, which can deadlock
 against a concurrent move; the retry absorbs it.
 
-A change to the tree locks first: call `EnforcementService::lockTenants()` with every tenant it moves, in the same
-transaction and before your own tree locks, then revoke or judge again the moved tenants' sessions. The lock orders the
-move against admissions; it revokes nothing.
+A change to the tree calls `EnforcementService::lockTenants()` with every tenant it moves, in the same transaction and
+before it commits, then revokes or judges again the moved tenants' sessions. The lock orders the move against
+admissions; it revokes nothing. Called before your own tree locks it keeps the package's lock order; called after the
+tree write, the transaction can deadlock against an admission and must retry whole.
 
 Here your `Tenant` model names, in `enforcement_root_id`, the root whose rule a tenant follows (none for a root, whose
 own rule applies). `TenantTreeInheritance`, a `final readonly` class that implements `Contracts\EnforcementInheritance`,
