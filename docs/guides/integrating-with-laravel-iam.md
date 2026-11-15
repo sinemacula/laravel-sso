@@ -312,7 +312,8 @@ session can wait for the re-authentication's transaction to commit; the adapter 
 `reauthenticateExternally()`, so that wait ends at its commit.
 
 A writer of the application's that takes one of these locks takes them in the same relative order, after the package's,
-or it deadlocks against an admission. `Contracts\SessionRevocation` is called with the connection's lock held (and the
+or it deadlocks against an admission. A tree move that writes the tree before `lockTenants()` is such a writer: its
+transaction retries the deadlock whole. `Contracts\SessionRevocation` is called with the connection's lock held (and the
 rule's, or the identity's guard, as the change requires), so revocation locks session rows after them. A logout that
 locks only a session's row is safe; anything that locks a session's row and then calls into the package inverts the
 order.
@@ -372,8 +373,8 @@ back), and never reports a revocation it did not make. The count each helper ret
   ([Enforcement](enforcement.md#turning-a-rule-off-revokes-nothing)).
 - The tenant scope names only the enforcing tenant (`$scope->tenantId`, with `$scope->policy` the rule now in force).
   The tenants that inherit its rule are the application's tree's, through `Contracts\EnforcementInheritance`; leaving
-  one out leaves its sessions in place. A tree move calls `EnforcementService::lockTenants()` with the tenants it moves
-  first, in its own transaction, then revokes the moved tenants' sessions.
+  one out leaves its sessions in place. A tree move calls `EnforcementService::lockTenants()` with the tenants it moves,
+  in the transaction that writes the tree and before it commits, then revokes the moved tenants' sessions.
 - A link-scope revocation is idempotent: the package calls it from the principal change and again from a resolution that
   finds the widening first.
 - `identity_connection` names the identity, the connection and the removed link: `$scope->linkId` is the id of the link
