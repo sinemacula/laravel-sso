@@ -43,12 +43,13 @@ commit with the package follows.
 - Security state (authorisation requests, single-use keys, handoff codes, links, domains, enforcement) is read from the
   write connection by the query that reads it; the model does not decide it.
 - Locks are taken in one order, so two changes never wait on each other: an identity's guard (only what changes its
-  verified domain links, `linking.md`), a tenant's enforcement row, then connection rows (in id order when several),
-  then domain rows (one connection's claim by `connection_id` and `domain`, or every claim of one domain by the `domain`
-  index in id order), then key rows. Under a lock, every read that decides a write is itself a locking read, since a
-  plain read answers from the snapshot of a transaction the caller opened (MySQL's `REPEATABLE READ`). No locking read
-  goes by a column whose only purpose is a unique guard (`verified_domain`): its MySQL gap locks would deadlock with the
-  update that sets it, and the unique index guards it instead.
+  verified domain links, `linking.md`), the enforcement rows of an inheritance path in tenant hash order (a rule change
+  locks its own tenant's row alone), then connection rows (in id order when several), then domain rows (one connection's
+  claim by `connection_id` and `domain`, or every claim of one domain by the `domain` index in id order), then key rows.
+  Under a lock, every read that decides a write is itself a locking read, since a plain read answers from the snapshot
+  of a transaction the caller opened (MySQL's `REPEATABLE READ`). No locking read goes by a column whose only purpose is
+  a unique guard (`verified_domain`): its MySQL gap locks would deadlock with the update that sets it, and the unique
+  index guards it instead.
 - A row of the application's opaque tenant id that must be unique per tenant (`sso_enforcement`) is keyed by the
   lower-case hex SHA-256 of the id (`Enforcement\TenantHash`), so a collation that counts `acme`, `Acme` and `acme`
   with a trailing space as equal cannot merge two tenants; a read by the hash still compares the id byte for byte. An

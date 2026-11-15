@@ -151,8 +151,7 @@ final readonly class CompletionLocks
     }
 
     /**
-     * Whether the connection is usable, the request is live, and the rule
-     * locked is still the enforcing tenant's.
+     * Whether the connection is usable and the request is live.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionLock  $lock
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionState  $state
@@ -167,9 +166,7 @@ final readonly class CompletionLocks
             return false;
         }
 
-        $live = $request->trust_version === $connection->trust_version || TransitionReceipts::permits($state->transitionReceipt, $connection, $request);
-
-        return $live && ($lock->enforcement?->isCurrent() ?? true);
+        return $request->trust_version === $connection->trust_version || TransitionReceipts::permits($state->transitionReceipt, $connection, $request);
     }
 
     /**

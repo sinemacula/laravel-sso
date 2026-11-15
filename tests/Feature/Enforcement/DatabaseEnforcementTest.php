@@ -19,10 +19,15 @@ use SineMacula\Laravel\Sso\Enforcement\DatabaseEnforcement;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementFinder;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementService;
+use SineMacula\Laravel\Sso\Enforcement\LockedEnforcement;
+use SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesEnforcement;
 use Tests\Fixtures\Clients;
+use Tests\Fixtures\Enforcement\FixedPath;
+use Tests\Fixtures\Enforcement\NearestRuleInheritance;
 use Tests\Fixtures\Enforcement\ParentInheritance;
 use Tests\Fixtures\FixedClock;
 use Tests\Fixtures\Freshness\RecordingFreshness;
@@ -323,17 +328,155 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
-     * An inheritance contract that names no tenant is a logic error.
+     * Rows of a path the inheritance contract answers for `tenant-1` that is
+     * not a path from it.
+     *
+     * @return iterable<string, array{0: mixed}>
+     */
+    public static function provideMalformedPaths(): iterable
+    {
+        yield 'none' => [[]];
+        yield 'another tenant first' => [['tenant-2']];
+        yield 'an empty tenant' => [[self::TENANT, '']];
+        yield 'a tenant too long' => [[self::TENANT, str_repeat('t', 256)]];
+        yield 'a tenant twice' => [[self::TENANT, 'parent-1', self::TENANT]];
+        yield 'a tenant that is no string' => [[self::TENANT, 7]];
+        yield 'keyed tenants' => [['own' => self::TENANT]];
+        yield 'a gap in its keys' => [[0 => self::TENANT, 2 => 'parent-1']];
+        yield 'too many tenants' => [[self::TENANT, ...array_map(static fn (int $n): string => "parent-{$n}", range(1, DatabaseEnforcement::MAX_PATH_LENGTH))]];
+    }
+
+    /**
+     * A path that is not a path from the tenant is a logic error, asked for a
+     * policy or a lock, and locks nothing.
+     *
+     * @param  mixed  $path
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    #[DataProvider('provideMalformedPaths')]
+    public function testAMalformedPathIsALogicError(mixed $path): void
+    {
+        $this->app?->instance(EnforcementInheritance::class, new FixedPath($path));
+
+        $message = 'The enforcement inheritance contract names a path of 1 to 64 distinct tenants of 1 to 255 bytes, from the tenant asked about.';
+
+        foreach ([fn () => $this->enforcement()->policy(self::TENANT, self::APPLICATION), fn () => $this->locked(self::TENANT)] as $ask) {
+            try {
+                $ask();
+
+                self::fail('A malformed path was accepted.');
+            } catch (\LogicException $exception) {
+                self::assertSame($message, $exception->getMessage());
+            }
+        }
+
+        self::assertSame(0, TenantEnforcement::query()->count());
+    }
+
+    /**
+     * A lock takes every row of the path, made unconfigured where missing, and
+     * judges by the last; the second question reads none.
      *
      * @return void
+     *
+     * @throws \Throwable
      */
-    public function testAnInheritanceThatNamesNoTenantIsALogicError(): void
+    public function testALockTakesEveryRowOfThePathAndJudgesTheLast(): void
     {
-        $this->app?->instance(EnforcementInheritance::class, new ParentInheritance([self::TENANT => '']));
+        $connection  = $this->enabledConnection('root-1');
+        $rule        = $this->makeEnforcement(['tenant_id' => 'root-1', 'enabled' => true, 'connection_ids' => [$connection->id]]);
+        $inheritance = new NearestRuleInheritance([self::TENANT => 'middle-1', 'middle-1' => 'root-1']);
 
-        $this->expectException(\LogicException::class);
+        $this->app?->instance(EnforcementInheritance::class, $inheritance);
 
-        $this->enforcement()->policy(self::TENANT, self::APPLICATION);
+        $locked = $this->locked(self::TENANT);
+
+        self::assertSame('root-1', $locked->enforcingTenantId);
+        self::assertSame($rule->id, $locked->rule?->id);
+        self::assertSame([$connection->id], $locked->policy()->connectionIds);
+        self::assertSame([2, 0], $inheritance->queries);
+        self::assertEqualsCanonicalizing([self::TENANT, 'middle-1', 'root-1'], TenantEnforcement::query()->pluck('tenant_id')->all());
+        self::assertSame(1, TenantEnforcement::query()->whereNotNull('version')->count());
+    }
+
+    /**
+     * A path of the most tenants, the last of the longest id, is a path.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAPathAtItsLimitsIsAPath(): void
+    {
+        $last = str_repeat('r', EnforcementFinder::MAX_TENANT_ID_LENGTH);
+        $path = [self::TENANT, ...array_map(static fn (int $n): string => "middle-{$n}", range(1, DatabaseEnforcement::MAX_PATH_LENGTH - 2)), $last];
+
+        $this->app?->instance(EnforcementInheritance::class, new FixedPath($path));
+
+        self::assertSame($last, $this->locked(self::TENANT)->enforcingTenantId);
+        self::assertSame(DatabaseEnforcement::MAX_PATH_LENGTH, TenantEnforcement::query()->count());
+    }
+
+    /**
+     * A path that changes once its rows are locked, by a rule written on a
+     * tenant on it, asks for the whole transaction again.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAPathThatChangesUnderTheLocksIsRetriedWhole(): void
+    {
+        $this->makeEnforcement(['tenant_id' => 'root-1']);
+        $this->app?->instance(EnforcementInheritance::class, new NearestRuleInheritance(
+            [self::TENANT => 'middle-1', 'middle-1' => 'root-1'],
+            function (int $call): void {
+                if ($call !== 1) {
+                    return;
+                }
+
+                $this->makeEnforcement(['tenant_id' => 'middle-1']);
+            },
+        ));
+
+        $this->expectException(EnforcementPathChanged::class);
+
+        $this->locked(self::TENANT);
+    }
+
+    /**
+     * A question of the locked rows about a tenant off the path asks for the
+     * whole transaction again.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAQuestionOffTheLockedPathIsRetriedWhole(): void
+    {
+        $this->app?->instance(EnforcementInheritance::class, new readonly class implements EnforcementInheritance {
+            /**
+             * The tenant alone, once it has asked about another.
+             *
+             * @param  string  $tenantId
+             * @param  string  $application
+             * @param  \Closure(string): bool  $isConfigured
+             * @return non-empty-list<string>
+             */
+            #[\Override]
+            public function enforcementPath(string $tenantId, string $application, \Closure $isConfigured): array
+            {
+                $isConfigured('elsewhere');
+
+                return [$tenantId];
+            }
+        });
+
+        $this->expectException(EnforcementPathChanged::class);
+
+        $this->locked(self::TENANT);
     }
 
     /**
@@ -439,6 +582,24 @@ final class DatabaseEnforcementTest extends TestCase
         self::assertInstanceOf(DatabaseEnforcement::class, $enforcement);
 
         return $enforcement;
+    }
+
+    /**
+     * Lock the tenant's enforcement for `web` in a transaction, asserting
+     * something was locked.
+     *
+     * @param  string  $tenantId
+     * @return \SineMacula\Laravel\Sso\Enforcement\LockedEnforcement
+     *
+     * @throws \Throwable
+     */
+    private function locked(string $tenantId): LockedEnforcement
+    {
+        $locked = DB::connection(StorageConnection::name())->transaction(fn (): ?LockedEnforcement => $this->enforcement()->lock($tenantId, self::APPLICATION, []));
+
+        self::assertNotNull($locked, 'Nothing was locked.');
+
+        return $locked;
     }
 
     /**

@@ -88,6 +88,7 @@ final readonly class HandoffRecheck
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \UnexpectedValueException
+     * @throws \SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
     public function lock(string $tenantId, string $connectionId, string $application, ?string $reservationId = null, ?IdentityReference $confirming = null): RecheckLock
@@ -265,15 +266,14 @@ final readonly class HandoffRecheck
     }
 
     /**
-     * The locked policy, or the bound contract's when none was locked; `null`
-     * when the enforcing tenant moved.
+     * The locked policy, or the bound contract's when none was locked.
      *
      * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
-     * @return ?\SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy
+     * @return \SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy
      *
      * @throws \InvalidArgumentException
      */
-    private function policy(RecheckLock $lock): ?EnforcementPolicy
+    private function policy(RecheckLock $lock): EnforcementPolicy
     {
         $locked = $lock->enforcement;
 
@@ -281,7 +281,7 @@ final readonly class HandoffRecheck
             return $this->enforcement->policy($lock->tenantId, $lock->application);
         }
 
-        return $locked->isCurrent() ? $locked->policy() : null;
+        return $locked->policy();
     }
 
     /**

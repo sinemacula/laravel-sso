@@ -34,18 +34,19 @@ final class ParentInheritance implements EnforcementInheritance
     ) {}
 
     /**
-     * The tenant's parent when it has one listed, else the tenant itself.
+     * The tenant, then its parent when it has one listed.
      *
      * @param  string  $tenantId
      * @param  string  $application
-     * @return string
+     * @param  \Closure(string): bool  $isConfigured
+     * @return non-empty-list<string>
      */
     #[\Override]
-    public function enforcingTenant(string $tenantId, string $application): string
+    public function enforcementPath(string $tenantId, string $application, \Closure $isConfigured): array
     {
         $this->asked[] = [$tenantId, $application];
 
-        return $this->parents[$tenantId] ?? $tenantId;
+        return isset($this->parents[$tenantId]) ? [$tenantId, $this->parents[$tenantId]] : [$tenantId];
     }
 
     /**

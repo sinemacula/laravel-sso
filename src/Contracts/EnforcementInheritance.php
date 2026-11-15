@@ -14,11 +14,17 @@ namespace SineMacula\Laravel\Sso\Contracts;
 interface EnforcementInheritance
 {
     /**
-     * Answer the tenant itself or the ancestor whose rule applies.
+     * Answer every tenant the answer depends on, from the tenant itself to the
+     * one whose rule applies, last.
+     *
+     * Ask `$isConfigured` whether a tenant has a stored rule, never anything
+     * else, and let what it throws propagate; read the tree current or fail
+     * with a retryable concurrency error.
      *
      * @param  string  $tenantId
      * @param  string  $application
-     * @return string
+     * @param  \Closure(string): bool  $isConfigured
+     * @return non-empty-list<string>
      */
-    public function enforcingTenant(string $tenantId, string $application): string;
+    public function enforcementPath(string $tenantId, string $application, \Closure $isConfigured): array;
 }

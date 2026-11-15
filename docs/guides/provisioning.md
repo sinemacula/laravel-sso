@@ -242,5 +242,8 @@ reading it. Everything else follows its transaction's commit, so `LinkCreated` w
 and never comes on its rollback. `ResultVerified` is reported once per verified response.
 
 On PostgreSQL under `REPEATABLE READ`, a listener's transaction whose snapshot predates a change it then waits on fails
-to serialise (SQLSTATE `40001`) rather than refusing. Unless the listener retries its whole transaction, the error
-propagates as a server error, and the person starts again.
+to serialise (SQLSTATE `40001`) rather than refusing. On any engine the helper fails the same way when the tenant's
+enforcement inheritance changes under its locks (`Exceptions\EnforcementPathChanged`, which Laravel wraps in a
+`DeadlockException` from the helper's nested transaction). Give the listener's transaction attempts, as
+`DB::transaction($work, 3)` does, so it runs again whole; otherwise the error propagates as a server error, and the
+person starts again.

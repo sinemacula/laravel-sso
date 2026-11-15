@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementPolicy;
+use SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Flows\RequestReference;
 use SineMacula\Laravel\Sso\Handoffs\Enums\RecheckOutcome;
@@ -446,11 +447,12 @@ final class HandoffRecheckTest extends TestCase
     }
 
     /**
-     * An enforcing tenant that moved since the lock is unavailable.
+     * A path that moves under the lock asks for the whole transaction again,
+     * before any connection is locked.
      *
      * @return void
      */
-    public function testAnEnforcingTenantThatMovedSinceTheLockIsConnectionUnavailable(): void
+    public function testAPathThatMovesUnderTheLockIsRetriedWhole(): void
     {
         config()->set('sso.features.enforcement', true);
 
@@ -459,10 +461,16 @@ final class HandoffRecheckTest extends TestCase
         $this->app?->instance(EnforcementInheritance::class, $inheritance);
         $this->recordLockOrder();
 
-        self::assertSame(RecheckOutcome::CONNECTION_UNAVAILABLE, $this->recheck($this->verifiedResult(), null));
-        self::assertSame([['tenant-1', 'web'], ['tenant-1', 'web']], $inheritance->asked());
-        self::assertSame(['enforcement upsert', 'enforcement', 'connections ' . $this->connection->id], $this->lockOrder());
-        self::assertSame(0, $this->linkerAsked);
+        try {
+            $this->recheck($this->verifiedResult(), null);
+
+            self::fail('A path that moved under the lock was judged.');
+        } catch (\Throwable $exception) {
+            self::assertInstanceOf(EnforcementPathChanged::class, $exception);
+            self::assertSame([['tenant-1', 'web'], ['tenant-1', 'web']], $inheritance->asked());
+            self::assertSame(['enforcement upsert', 'enforcement'], $this->lockOrder());
+            self::assertSame(0, $this->linkerAsked);
+        }
     }
 
     /**
@@ -482,11 +490,11 @@ final class HandoffRecheckTest extends TestCase
 
         self::assertSame(RecheckOutcome::ENFORCEMENT_UNSATISFIED, $this->recheck($this->verifiedResult(), null));
 
-        TenantEnforcement::query()->sole()->forceFill(['connection_ids' => [$this->connection->id]])->save();
+        TenantEnforcement::query()->where('tenant_id', 'parent-1')->sole()->forceFill(['connection_ids' => [$this->connection->id]])->save();
 
         self::assertSame(RecheckOutcome::ENFORCEMENT_UNSATISFIED, $this->recheck($this->verifiedResult(), null));
 
-        TenantEnforcement::query()->sole()->forceFill(['enabled' => false])->save();
+        TenantEnforcement::query()->where('tenant_id', 'parent-1')->sole()->forceFill(['enabled' => false])->save();
 
         self::assertSame(RecheckOutcome::PASSED, $this->recheck($this->verifiedResult(), new IdentityReference('App\Models\User', '42')));
     }
@@ -675,6 +683,7 @@ final class HandoffRecheckTest extends TestCase
      * @return \SineMacula\Laravel\Sso\Handoffs\RecheckLock
      *
      * @throws \LogicException
+     * @throws \SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged
      */
     private function lockFor(VerifiedResult $result): RecheckLock
     {

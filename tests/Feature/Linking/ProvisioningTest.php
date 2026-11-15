@@ -1690,32 +1690,33 @@ final class ProvisioningTest extends LinkingTestCase
     }
 
     /**
-     * An enforcing tenant that moved between the helper's lock and its check is
-     * `request_unavailable`; the rule locked is no longer the one that applies.
+     * An inheritance path that moves under the helper's locks is retried by the
+     * listener, which provisions on the second attempt.
      *
      * @return void
      */
-    public function testAnEnforcingTenantThatMovedRefusesTheHelper(): void
+    public function testAPathThatMovesIsRetriedByTheListener(): void
     {
         config()->set('sso.features.enforcement', true);
 
         $inheritance = new class implements EnforcementInheritance {
-            /** @var list<string> What it answers next, before its own tenant. */
+            /** @var list<non-empty-list<string>> What it answers next, before its own tenant. */
             public array $answers = [];
 
             /**
-             * The next answer, or the tenant asked about.
+             * The next answer, or the tenant alone.
              *
              * @param  string  $tenantId
              * @param  string  $application
-             * @return string
+             * @param  \Closure(string): bool  $isConfigured
+             * @return non-empty-list<string>
              */
             #[\Override]
-            public function enforcingTenant(string $tenantId, string $application): string
+            public function enforcementPath(string $tenantId, string $application, \Closure $isConfigured): array
             {
                 unset($application);
 
-                return array_shift($this->answers) ?? $tenantId;
+                return array_shift($this->answers) ?? [$tenantId];
             }
         };
 
@@ -1725,14 +1726,16 @@ final class ProvisioningTest extends LinkingTestCase
 
         $this->onOffer(function (ResultUnlinked $event) use ($inheritance): void {
 
-            $inheritance->answers = ['tenant-1', 'another-tenant'];
+            $inheritance->answers = [['tenant-1'], ['tenant-1', 'another-tenant']];
 
-            $this->provision($event);
+            DB::connection(StorageConnection::name())->transaction(fn (): ProvisioningResult => $this->provision($event), 3);
         });
 
-        self::assertSame(FailureReason::UNLINKED, $this->complete()->reason);
-        self::assertSame([ProvisioningStatus::REQUEST_UNAVAILABLE], $this->statuses());
-        self::assertSame(0, Link::query()->count());
+        $this->complete();
+
+        self::assertSame([], $inheritance->answers);
+        self::assertSame([ProvisioningStatus::CREATED], $this->statuses());
+        self::assertSame(1, Link::query()->count());
     }
 
     /**
@@ -1791,6 +1794,8 @@ final class ProvisioningTest extends LinkingTestCase
      * @param  \SineMacula\Laravel\Sso\Events\ResultUnlinked  $event
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @return \SineMacula\Laravel\Sso\Provisioning\ProvisioningResult
+     *
+     * @throws \SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged
      */
     private function provision(ResultUnlinked $event, ?IdentityReference $identity = null): ProvisioningResult
     {

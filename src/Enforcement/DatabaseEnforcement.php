@@ -9,6 +9,7 @@ use SineMacula\Laravel\Sso\Config\Enums\Feature;
 use SineMacula\Laravel\Sso\Config\Features;
 use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
+use SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged;
 
 /**
  * Default enforcement contract, read uncached from the enforcement table.
@@ -21,6 +22,12 @@ use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
  */
 final readonly class DatabaseEnforcement implements Enforcement
 {
+    /** @var int The most tenants an inheritance path may name. */
+    public const int MAX_PATH_LENGTH = 64;
+
+    /** @var string The refusal of a path that is not one, given its limits. */
+    private const string MALFORMED_PATH = 'The enforcement inheritance contract names a path of 1 to %d distinct tenants of 1 to %d bytes, from the tenant asked about.';
+
     /**
      * Constructor.
      *
@@ -36,7 +43,7 @@ final readonly class DatabaseEnforcement implements Enforcement
         /** Reads the rule and its connections, on the write connection. */
         private EnforcementFinder $finder,
 
-        /** Locks the enforcing tenant's row. */
+        /** Locks the rows of the inheritance path. */
         private EnforcementLock $lock,
     ) {}
 
@@ -61,12 +68,15 @@ final readonly class DatabaseEnforcement implements Enforcement
             return EnforcementPolicy::notRequired($tenantId, $tenantId, null);
         }
 
-        return $this->stored($tenantId, $this->enforcingTenant($tenantId, $application));
+        $path = $this->path($tenantId, $application, $this->isStored(...));
+
+        return $this->stored($tenantId, $path[array_key_last($path)]);
     }
 
     /**
-     * Lock the enforcing tenant's row, then the given and named connections in
-     * id order; `null`, locking nothing, while the feature is off.
+     * Lock every row of the inheritance path, then the given and named
+     * connections in id order; `null`, locking nothing, while the feature is
+     * off.
      *
      * @param  string  $tenantId
      * @param  string  $application
@@ -76,6 +86,7 @@ final readonly class DatabaseEnforcement implements Enforcement
      * @throws \InvalidArgumentException
      * @throws \LogicException
      * @throws \UnexpectedValueException
+     * @throws \SineMacula\Laravel\Sso\Exceptions\EnforcementPathChanged
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
     public function lock(string $tenantId, string $application, array $connectionIds): ?LockedEnforcement
@@ -87,13 +98,23 @@ final readonly class DatabaseEnforcement implements Enforcement
             return null;
         }
 
-        $enforcing = $this->enforcingTenant($tenantId, $application);
-        $row       = $this->lock->acquire($enforcing);
-        $rule      = EnforcementLock::isConfigured($row) ? $row : null;
+        $path = $this->path($tenantId, $application, $this->isStored(...));
+        $rows = $this->lock->acquireEach($path);
+
+        // Asked again of the locked rows alone, so a change committed before
+        // the locks is seen; a tenant outside them means the path moved
+        $isConfigured = static fn (string $id): bool => EnforcementLock::isConfigured($rows[$id] ?? throw EnforcementPathChanged::retryWhole());
+
+        if ($this->path($tenantId, $application, $isConfigured) !== $path) {
+            throw EnforcementPathChanged::retryWhole();
+        }
+
+        $enforcing = $path[array_key_last($path)];
+        $rule      = EnforcementLock::isConfigured($rows[$enforcing]) ? $rows[$enforcing] : null;
         $named     = $rule?->enabled === true ? $rule->connection_ids : [];
         $locked    = $this->finder->lockConnections(EnforcementSummary::sorted([...$connectionIds, ...$named]));
 
-        return new LockedEnforcement($tenantId, $application, $enforcing, $rule, $locked, fn (): string => $this->enforcingTenant($tenantId, $application));
+        return new LockedEnforcement($tenantId, $application, $enforcing, $rule, $locked);
     }
 
     /**
@@ -114,22 +135,58 @@ final readonly class DatabaseEnforcement implements Enforcement
     }
 
     /**
-     * The tenant whose rule applies, as the inheritance contract names it.
+     * The inheritance path the contract names, held to its shape.
      *
      * @param  string  $tenantId
      * @param  string  $application
-     * @return string
+     * @param  \Closure(string): bool  $isConfigured
+     * @return non-empty-list<string>
      *
      * @throws \LogicException
      * @throws \Illuminate\Contracts\Container\BindingResolutionException
      */
-    private function enforcingTenant(string $tenantId, string $application): string
+    private function path(string $tenantId, string $application, \Closure $isConfigured): array
     {
-        $enforcing = $this->container->make(EnforcementInheritance::class)->enforcingTenant($tenantId, $application);
+        $path = $this->container->make(EnforcementInheritance::class)->enforcementPath($tenantId, $application, $isConfigured);
 
-        self::assertEnforcing($enforcing);
+        if (!self::isPath($path, $tenantId)) {
+            throw new \LogicException(sprintf(self::MALFORMED_PATH, self::MAX_PATH_LENGTH, EnforcementFinder::MAX_TENANT_ID_LENGTH));
+        }
 
-        return $enforcing;
+        return $path;
+    }
+
+    /**
+     * Whether the tenant has a stored rule, read without a lock.
+     *
+     * @param  string  $tenantId
+     * @return bool
+     *
+     * @throws \InvalidArgumentException
+     */
+    private function isStored(string $tenantId): bool
+    {
+        return $this->finder->find($tenantId) !== null;
+    }
+
+    /**
+     * Whether the value is a path from the tenant.
+     *
+     * @param  mixed  $path
+     * @param  string  $tenantId
+     * @return bool
+     *
+     * @phpstan-assert-if-true non-empty-list<string> $path
+     */
+    private static function isPath(mixed $path, string $tenantId): bool
+    {
+        if (!is_array($path) || !array_is_list($path) || ($path[0] ?? null) !== $tenantId) {
+            return false;
+        }
+
+        $tenants = array_filter($path, static fn (mixed $id): bool => is_string($id) && $id !== '' && strlen($id) <= EnforcementFinder::MAX_TENANT_ID_LENGTH);
+
+        return count($path) <= self::MAX_PATH_LENGTH && count($tenants) === count($path) && count(array_unique($path)) === count($path);
     }
 
     /**
@@ -144,21 +201,6 @@ final readonly class DatabaseEnforcement implements Enforcement
     {
         if ($application === '') {
             throw new \InvalidArgumentException('An enforcement policy is asked for an application.');
-        }
-    }
-
-    /**
-     * Assert the inheritance contract named a tenant of 1 to 255 bytes.
-     *
-     * @param  string  $enforcing
-     * @return void
-     *
-     * @throws \LogicException
-     */
-    private static function assertEnforcing(string $enforcing): void
-    {
-        if ($enforcing === '' || strlen($enforcing) > EnforcementFinder::MAX_TENANT_ID_LENGTH) {
-            throw new \LogicException(sprintf('The enforcement inheritance contract names a tenant of 1 to %d bytes.', EnforcementFinder::MAX_TENANT_ID_LENGTH));
         }
     }
 }

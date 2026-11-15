@@ -21,6 +21,7 @@ use SineMacula\Laravel\Sso\Enforcement\EnforcementResult;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementService;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementSummary;
 use SineMacula\Laravel\Sso\Enforcement\Enums\EnforcementStatus;
+use SineMacula\Laravel\Sso\Enforcement\TenantHash;
 use SineMacula\Laravel\Sso\Events\EnforcementChanged;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
@@ -781,6 +782,72 @@ final class EnforcementServiceTest extends TestCase
         self::assertEquals($lower, $this->service()->get(self::TENANT));
         self::assertEquals($upper, $this->service()->get('Tenant-1'));
         self::assertNull($this->changedEvent(1)->previousVersion);
+    }
+
+    /**
+     * The tenants' rows are locked once each in tenant hash order, made
+     * unconfigured where missing, and a stored rule is kept.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testLockTenantsLocksEachRowOnceInTenantHashOrder(): void
+    {
+        $rule   = $this->makeEnforcement(['tenant_id' => 'tenant-a']);
+        $hashes = [];
+
+        DB::connection(StorageConnection::name())->listen(static function (QueryExecuted $query) use (&$hashes): void {
+            if (!str_starts_with($query->sql, 'select') || !str_contains($query->sql, 'tenant_hash')) {
+                return;
+            }
+
+            $hashes[] = $query->bindings[0];
+        });
+
+        DB::connection(StorageConnection::name())->transaction(fn () => $this->service()->lockTenants(['tenant-b', 'tenant-a', 'tenant-b']));
+
+        $locked = $hashes;
+        $sorted = [TenantHash::of('tenant-a'), TenantHash::of('tenant-b')];
+
+        sort($sorted, SORT_STRING);
+
+        self::assertSame($sorted, $locked);
+        self::assertSame(2, TenantEnforcement::query()->count());
+        self::assertSame($rule->version, TenantEnforcement::query()->where('tenant_id', 'tenant-a')->value('version'));
+    }
+
+    /**
+     * While the feature is off nothing is locked or made, but a malformed
+     * tenant is still refused.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testLockTenantsLocksNothingWhileTheFeatureIsOff(): void
+    {
+        Config::set('sso.features.enforcement', false);
+
+        DB::connection(StorageConnection::name())->transaction(fn () => $this->service()->lockTenants(['tenant-a']));
+
+        self::assertSame(0, TenantEnforcement::query()->count());
+
+        $this->expectException(\InvalidArgumentException::class);
+
+        $this->service()->lockTenants([str_repeat('t', 256)]);
+    }
+
+    /**
+     * Locking tenants outside a transaction is a logic error.
+     *
+     * @return void
+     */
+    public function testLockTenantsNeedsATransaction(): void
+    {
+        $this->expectException(\LogicException::class);
+
+        $this->service()->lockTenants(['tenant-a']);
     }
 
     /**

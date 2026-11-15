@@ -12,7 +12,6 @@ use SineMacula\Laravel\Sso\Completion\VerifiedDeadlines;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
-use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
@@ -192,7 +191,7 @@ final readonly class ProvisioningHelper
         $connection = $lock->connection;
         $request    = AuthorizationRequest::query()->useWritePdo()->lockForUpdate()->whereKey($requestId)->first();
 
-        if ($connection === null || $request === null || !$this->stands($lock, $connection, $request, $grant)) {
+        if ($connection === null || $request === null || !$this->stands($connection, $request, $grant)) {
             return ProvisioningResult::requestUnavailable();
         }
 
@@ -206,7 +205,6 @@ final readonly class ProvisioningHelper
     /**
      * Whether the connection and the request still stand under the locks.
      *
-     * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Models\AuthorizationRequest  $request
      * @param  \SineMacula\Laravel\Sso\Provisioning\ProvisioningGrant  $grant
@@ -214,28 +212,12 @@ final readonly class ProvisioningHelper
      *
      * @throws \InvalidArgumentException
      */
-    private function stands(RecheckLock $lock, Connection $connection, AuthorizationRequest $request, ProvisioningGrant $grant): bool
-    {
-        return $this->isConnectionUsable($lock, $connection)
-            && self::isUnfinished($request)
-            && self::isOfCurrentTrust($request, $connection, $grant);
-    }
-
-    /**
-     * Whether the connection is usable, unexpired, and still under the locked
-     * enforcing tenant.
-     *
-     * @param  \SineMacula\Laravel\Sso\Handoffs\RecheckLock  $lock
-     * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @return bool
-     *
-     * @throws \InvalidArgumentException
-     */
-    private function isConnectionUsable(RecheckLock $lock, Connection $connection): bool
+    private function stands(Connection $connection, AuthorizationRequest $request, ProvisioningGrant $grant): bool
     {
         return $this->protocols->isUsable($connection)
             && !$this->metadata->isExpired($connection)
-            && ($lock->enforcement?->isCurrent() ?? true);
+            && self::isUnfinished($request)
+            && self::isOfCurrentTrust($request, $connection, $grant);
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Enforcement;
 
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -15,6 +16,7 @@ use SineMacula\Laravel\Sso\Enforcement\EnforcementFinder;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementLock;
 use SineMacula\Laravel\Sso\Enforcement\EnforcementSummary;
 use SineMacula\Laravel\Sso\Enforcement\LockedEnforcement;
+use SineMacula\Laravel\Sso\Enforcement\TenantHash;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\TenantEnforcement;
 use Tests\Concerns\RecordsLockOrder;
@@ -315,52 +317,43 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
-     * An inherited rule locks the enforcing tenant's row and rechecks
-     * inheritance.
+     * Each tenant's row is made unconfigured where missing and locked, one at a
+     * time in tenant hash order, keeping a stored rule as it is.
      *
      * @return void
-     */
-    public function testTheDefaultContractLocksTheEnforcingTenantsRule(): void
-    {
-        $inheritance = new ScriptedInheritance(['parent-1', 'parent-1', 'parent-2']);
-        $parents     = $this->enabledConnection('parent-1');
-        $rule        = $this->makeEnforcement(['tenant_id' => 'parent-1', 'enabled' => true, 'connection_ids' => [$parents->id]]);
-        $connection  = $this->enabledConnection();
-
-        $this->app?->instance(EnforcementInheritance::class, $inheritance);
-
-        $locked = $this->locked(self::TENANT, [$connection->id]);
-
-        self::assertSame('parent-1', $locked->enforcingTenantId);
-        self::assertSame($rule->id, $locked->rule?->id);
-        self::assertSame(self::TENANT, $locked->tenantId);
-        self::assertSame(self::APPLICATION, $locked->application);
-        self::assertSame([$parents->id], $locked->policy()->connectionIds);
-        self::assertFalse($locked->policy()->isSatisfiedBy($connection->id));
-        self::assertTrue($locked->isCurrent());
-        self::assertFalse($locked->isCurrent());
-        self::assertSame(array_fill(0, 3, [self::TENANT, self::APPLICATION]), $inheritance->asked());
-        self::assertSame(1, TenantEnforcement::query()->count());
-    }
-
-    /**
-     * An inheritance contract that names no tenant fails before any lock.
      *
-     * @return void
+     * @throws \Throwable
      */
-    public function testAnInheritanceThatNamesNoTenantLocksNothing(): void
+    public function testEachRowIsLockedInTenantHashOrder(): void
     {
-        $this->app?->instance(EnforcementInheritance::class, new ScriptedInheritance(['']));
+        $tenants = ['tenant-b', 'tenant-a', 'tenant-c'];
+        $rule    = $this->makeEnforcement(['tenant_id' => 'tenant-a', 'enabled' => true]);
+        $hashes  = [];
 
-        try {
-            $this->lock(self::TENANT, []);
+        $this->recordLockOrder();
 
-            self::fail('An inheritance that names no tenant was accepted.');
-        } catch (\LogicException $exception) {
-            self::assertSame('The enforcement inheritance contract names a tenant of 1 to 255 bytes.', $exception->getMessage());
-        }
+        DB::connection(StorageConnection::name())->listen(static function (QueryExecuted $query) use (&$hashes): void {
+            if (!str_contains($query->sql, 'for update')) {
+                return;
+            }
 
-        self::assertSame(0, TenantEnforcement::query()->count());
+            $hashes[] = $query->bindings[0];
+        });
+
+        /** @var \Illuminate\Foundation\Application $app */
+        $app  = $this->app;
+        $rows = DB::connection(StorageConnection::name())->transaction(static fn (): array => $app->make(EnforcementLock::class)->acquireEach($tenants));
+
+        $sorted = array_map(TenantHash::of(...), $tenants);
+
+        sort($sorted, SORT_STRING);
+
+        self::assertSame($sorted, $hashes);
+        self::assertSame(array_fill(0, 3, ['enforcement upsert', 'enforcement']), array_chunk($this->lockOrder(), 2));
+        self::assertEqualsCanonicalizing($tenants, array_keys($rows));
+        self::assertSame($rule->version, $rows['tenant-a']->version);
+        self::assertNull($rows['tenant-b']->version);
+        self::assertSame(3, TenantEnforcement::query()->count());
     }
 
     /**

@@ -68,7 +68,7 @@ Every contract under `src/Contracts`, with its default and what `laravel-iam` bi
 | `EndpointResolver`         | `Endpoints\ConfiguredEndpointResolver`        | the default, or the application's                                                                                                                                           |
 | `Enforcement`              | `Enforcement\DatabaseEnforcement`             | the default; folded into the tenant authentication policy ([Enforcement](#enforcement-in-the-tenant-authentication-policy))                                                 |
 | `EnforcementExemption`     | `Enforcement\NoExemptions`                    | the application's break-glass rule, asked through `Enforcement\ExemptionGate`                                                                                               |
-| `EnforcementInheritance`   | `Enforcement\OwnTenantInheritance`            | the application's tenant tree                                                                                                                                               |
+| `EnforcementInheritance`   | `Enforcement\OwnTenantInheritance`            | each tenant's inheritance path in the application's tenant tree, read with a current read                                                                                   |
 | `EvidencePolicy`           | `Evidence\InsufficientEvidence`               | the application's choice; the first of the two gates ([Evidence](#evidence-and-laravel-mfa))                                                                                |
 | `Fetcher`                  | `Fetching\GuzzleFetcher`                      | the default, or an egress proxy that keeps its rules                                                                                                                        |
 | `Freshness`                | `Freshness\RefusingFreshness`                 | authentication's freshness check, with the package's maximum age as the caller's requirement ([Freshness](#freshness))                                                      |
@@ -292,7 +292,7 @@ always last.
 | # | Lock                                                   | Taken when                                                                                                                         | By                                 |
 |---|--------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------|------------------------------------|
 | 1 | The identity's guard (`Linking\IdentityLock`)          | The code holds a reservation (a sign-in by a verified domain), a `link`, or a principal change                                     | `admit()`, `redeem()`, `widened()` |
-| 2 | The enforcing tenant's rule                            | The `enforcement` feature is on and `Enforcement\DatabaseEnforcement` is bound                                                     | `admit()`, `redeem()`              |
+| 2 | The inheritance path's rules, in tenant hash order     | The `enforcement` feature is on and `Enforcement\DatabaseEnforcement` is bound                                                     | `admit()`, `redeem()`, a tree move |
 | 3 | The connection, with the rule's connections, ascending | Always (the connection alone when 2 is not taken); for a `link`, also the connections holding the identity's verified domain links | the package                        |
 | 4 | The reservation's domain claim                         | The code holds a reservation                                                                                                       | `admit()`                          |
 | 5 | The handoff code                                       | Every redemption                                                                                                                   | `admit()`, `redeem()`              |
@@ -372,7 +372,8 @@ back), and never reports a revocation it did not make. The count each helper ret
   ([Enforcement](enforcement.md#turning-a-rule-off-revokes-nothing)).
 - The tenant scope names only the enforcing tenant (`$scope->tenantId`, with `$scope->policy` the rule now in force).
   The tenants that inherit its rule are the application's tree's, through `Contracts\EnforcementInheritance`; leaving
-  one out leaves its sessions in place.
+  one out leaves its sessions in place. A tree move calls `EnforcementService::lockTenants()` with the tenants it moves
+  first, in its own transaction, then revokes the moved tenants' sessions.
 - A link-scope revocation is idempotent: the package calls it from the principal change and again from a resolution that
   finds the widening first.
 - `identity_connection` names the identity, the connection and the removed link: `$scope->linkId` is the id of the link

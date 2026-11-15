@@ -16,15 +16,16 @@ use SineMacula\Laravel\Sso\Contracts\EnforcementInheritance;
 final readonly class OwnTenantInheritance implements EnforcementInheritance
 {
     /**
-     * The tenant itself, whatever the application.
+     * The tenant alone, whatever the application.
      *
      * @param  string  $tenantId
      * @param  string  $application
-     * @return string
+     * @param  \Closure(string): bool  $isConfigured
+     * @return non-empty-list<string>
      */
     #[\Override]
-    public function enforcingTenant(string $tenantId, string $application): string
+    public function enforcementPath(string $tenantId, string $application, \Closure $isConfigured): array
     {
-        return $tenantId;
+        return [$tenantId];
     }
 }

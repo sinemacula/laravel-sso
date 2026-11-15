@@ -34,18 +34,22 @@ final class ScriptedInheritance implements EnforcementInheritance
     ) {}
 
     /**
-     * The next answer of the script.
+     * The tenant, then the script's next enforcing tenant unless it is the
+     * tenant itself.
      *
      * @param  string  $tenantId
      * @param  string  $application
-     * @return string
+     * @param  \Closure(string): bool  $isConfigured
+     * @return non-empty-list<string>
      */
     #[\Override]
-    public function enforcingTenant(string $tenantId, string $application): string
+    public function enforcementPath(string $tenantId, string $application, \Closure $isConfigured): array
     {
         $this->asked[] = [$tenantId, $application];
 
-        return $this->answers[min(count($this->asked), count($this->answers)) - 1];
+        $enforcing = $this->answers[min(count($this->asked), count($this->answers)) - 1];
+
+        return $enforcing === $tenantId ? [$tenantId] : [$tenantId, $enforcing];
     }
 
     /**

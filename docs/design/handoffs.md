@@ -58,11 +58,12 @@ refuses ends the redemption:
    `connection_unavailable`, and `HandoffRecheck::lock()` takes the locks of `flows.md`'s order for that tenant, the
    connection and the code's application: for a code bound to a reservation or a `link` code, the identity's guard first
    (the first statement of a standalone redemption's transaction); under `DatabaseEnforcement` with the `enforcement`
-   feature on, the enforcing tenant's row (the tenant `Contracts\EnforcementInheritance` names, inserted unconfigured
-   when it has none) and then, in one locking statement in ascending id order, the connection and the connections the
-   rule names; otherwise the connection alone (gone meanwhile: `connection_unavailable`). Only then is the code row read
-   again, locked: gone, or no longer naming the connection and the application its plain read did, it is
-   `handoff_unknown`, and no other lock is taken out of order.
+   feature on, the rows of the inheritance path (each tenant `Contracts\EnforcementInheritance` names, inserted
+   unconfigured when it has none, in tenant hash order; a path that changes under them throws
+   `Exceptions\EnforcementPathChanged`) and then, in one locking statement in ascending id order, the connection and the
+   connections the rule names; otherwise the connection alone (gone meanwhile: `connection_unavailable`). Only then is
+   the code row read again, locked: gone, or no longer naming the connection and the application its plain read did, it
+   is `handoff_unknown`, and no other lock is taken out of order.
 5. On the standalone path, asking for any purpose but a `link` is a `LogicException`, before the single-use store
    records the code or it is consumed; a code of another purpose asked for as a `link` goes on, and step 9 refuses it.
    A code whose `voided_at` is set is `handoff_unknown`.
@@ -110,14 +111,15 @@ refuses ends the redemption:
   either. The purpose asked for decides, not the code's: a `sign_in` or `reauthenticate` code posted to a `link`
   endpoint is the client's error, consumed and refused as `purpose_mismatch`, never a server error.
 - The lock order is `flows.md`'s: for a code bound to a reservation and a `link` code, the identity's guard, then the
-  tenant's enforcement row, then connection rows in id order, then the code's. A change that voids a connection's codes
-  locks the connection first and raises its trust version under that lock, so it waits for a redemption that holds it,
-  or the redemption finds the code voided and the version raised. Voiding the package's own codes is defence in depth:
-  the raised version alone refuses a code of any store, an application's included, which the package never voids. A
-  change that only adds a key or a certificate raises no version and refuses nothing. A change to enforcement locks the
-  rule's row first, so it waits for a redemption that holds it, and its revocation, inside its own transaction, then
-  sees the session the redeemer wrote in its transaction; or the redemption waits for the change and refuses under the
-  new rule. No session written in the redeemer's transaction survives a rule that does not allow it.
+  enforcement rows of the inheritance path in tenant hash order, then connection rows in id order, then the code's. A
+  change that voids a connection's codes locks the connection first and raises its trust version under that lock, so it
+  waits for a redemption that holds it, or the redemption finds the code voided and the version raised. Voiding the
+  package's own codes is defence in depth: the raised version alone refuses a code of any store, an application's
+  included, which the package never voids. A change that only adds a key or a certificate raises no version and refuses
+  nothing. A change to enforcement locks the rule's row first, so it waits for a redemption that holds it, and its
+  revocation, inside its own transaction, then sees the session the redeemer wrote in its transaction; or the redemption
+  waits for the change and refuses under the new rule. No session written in the redeemer's transaction survives a rule
+  that does not allow it.
 - On PostgreSQL under `REPEATABLE READ`, a redemption that waited on a change of the rule may get a serialisation
   failure (SQLSTATE `40001`) instead of the new rule. Inside a caller's transaction it propagates, as a server error;
   the package never retries a part of a caller's transaction, and a caller that redeems inside its own transaction
@@ -153,23 +155,23 @@ package issues, stores and redeems every handoff code, and the adapter redeems t
 (`docs/guides/integrating-with-laravel-iam.md`):
 
 - `lock(string $tenantId, string $connectionId, string $application, ?string $reservationId = null, ?IdentityReference
-  $confirming = null): Handoffs\RecheckLock` comes first, before the redeemer locks its own code. Given a reservation or
-  a confirming identity, it takes that identity's guard first (`linking.md`). Under `DatabaseEnforcement` with the
-  `enforcement` feature on it calls `DatabaseEnforcement::lock()`: the inheritance contract names the enforcing tenant,
-  `Enforcement\EnforcementLock` upserts and locks that tenant's row, and the connection and the rule's connections are
-  locked in one statement in ascending id order. Otherwise (feature off, or another contract bound) it locks the
-  connection alone with `ConnectionFinder::findForUpdate()`, with no enforcement statement and no inheritance call. The
-  `RecheckLock` (`@api`, made only by `lock()`) holds the tenant, connection and application it was taken for, the
-  connection's locked row (`null` when gone or of another tenant) and the locked enforcement; it is good only for the
-  transaction it was taken in.
+  $confirming = null): Handoffs\RecheckLock` comes first, before the redeemer locks its own code. Given a reservation
+  or a confirming identity, it takes that identity's guard first (`linking.md`). Under `DatabaseEnforcement` with the
+  `enforcement` feature on it calls `DatabaseEnforcement::lock()`: the inheritance contract names the path,
+  `Enforcement\EnforcementLock` upserts and locks each path tenant's row in tenant hash order, the contract is asked
+  again under those locks (a different path throws `Exceptions\EnforcementPathChanged`, a serialisation failure), and
+  the connection and the rule's connections are locked in one statement in ascending id order. Otherwise (feature off,
+  or another contract bound) it locks the connection alone with `ConnectionFinder::findForUpdate()`, with no enforcement
+  statement and no inheritance call. The `RecheckLock` (`@api`, made only by `lock()`) holds the tenant, connection and
+  application it was taken for, the connection's locked row (`null` when gone or of another tenant) and the locked
+  enforcement; it is good only for the transaction it was taken in.
 - `recheck(VerifiedResult $result, HandoffBinding $binding, RecheckLock $lock, ClientContext $client, ?Caller $caller =
   null): Handoffs\Enums\RecheckOutcome` takes the lock (one taken for another tenant, connection or application than the
   result's is a `LogicException`), so the check is never reached without the locks, and answers, in order, the first
   that refuses:
   1. `connection_unavailable`: the connection's locked row is gone, of another tenant, or not usable
-     (`ProtocolManager::isUsable()`); its `trust_version` is not the binding's `trustVersion`, or the binding names
-     none; or the inheritance contract, asked again, no longer names the enforcing tenant whose rule is locked
-     (another tenant's rule is never locked out of order);
+     (`ProtocolManager::isUsable()`); or its `trust_version` is not the binding's `trustVersion`, or the binding names
+     none;
   2. `enforcement_unsatisfied`: the enforcement of the connection's tenant on the result's application is not satisfied
      by the connection: judged from the locked rows under `DatabaseEnforcement`, asked of the bound contract now
      otherwise;
@@ -190,8 +192,8 @@ package issues, stores and redeems every handoff code, and the adapter redeems t
   alone. A current read alone does not keep a session from escaping a change: such a contract must itself serialise
   the admission against changes to its rule until the session's transaction commits, and its revocation must find
   sessions with current reads. A bound `Contracts\EnforcementInheritance` is asked inside the redeemer's transaction,
-  before the locks and again at the recheck, and must answer in a way that is safe there: from state that does not
-  change under the transaction, or with a current read.
+  before the locks and again under them, and must read its tree with a current read (a locking read, or
+  `READ COMMITTED`) or fail with a retryable concurrency error.
 
 ### Events
 
@@ -233,8 +235,9 @@ events wait for its commit, and inside a caller's transaction for the caller's; 
 - Enforcement turned on since completion by other connections is `enforcement_unsatisfied`. Turned on while the
   redemption runs, it either waits for the redemption's transaction, whose session its revocation then removes, or
   is seen by it, and the redemption is `enforcement_unsatisfied`; a serialisation failure on PostgreSQL propagates.
-- An inheritance contract that names another enforcing tenant at the recheck than at the lock is
-  `connection_unavailable`.
+- An inheritance path that changes between the lock's two asks throws `Exceptions\EnforcementPathChanged`, a
+  serialisation failure: the standalone redemption runs again, and inside the caller's transaction it propagates for the
+  caller to retry whole.
 - A link removed, reassigned or added since completion is `link_changed`.
 - A redemption inside the caller's transaction that rolls back leaves the code unredeemed and reports nothing.
 - A linker that throws, a corrupt stored result and a database error propagate as server errors.
@@ -267,7 +270,7 @@ events wait for its commit, and inside a caller's transaction for the caller's; 
   `sign_in` or `reauthenticate` asked for, and its `purpose_mismatch` for such a code asked for as a `link`.
 - `tests/Feature/Handoffs/HandoffRecheckTest.php`: each outcome and its order, no transaction, another result's lock,
   the lock order (enforcement, then connections in id order) with the feature on and nothing of enforcement with it
-  off or another contract bound, an enforcing tenant that moved, the acknowledgement.
+  off or another contract bound, a path that moves under the lock, the acknowledgement.
 - `tests/Integration/Enforcement/EnforcementAdmissionRaceTest.php`: a redemption that writes a session racing an
   enforcement change, in both orders, with a stored rule and none, plain and inside a transaction that read first.
 - `tests/Feature/Handoffs/RedemptionEventSequenceTest.php`, `tests/Feature/Handoffs/FullFlowTest.php`.

@@ -130,19 +130,19 @@ binding is kept and nothing outlives a request.
   outside any transaction the pipeline opens (validation may fetch); `consumption` runs in a transaction of its own on
   the storage connection, which locks the connection's row before the request's, as every transaction here does, so the
   request is consumed whether the response then passes or fails; every step from `replay_recording` on runs in one
-  transaction on the storage connection that first locks the tenant's enforcement (when it applies, see the lock order),
-  then the connection's row (with the rule's connections) and then the request's row, and refuses if the connection is
-  no longer usable, the request was voided since consumption or its stored trust version is no longer the connection's,
-  or the enforcing tenant moved since its rule was locked, and refuses with `metadata_expired` or `request_expired` when
-  fetched metadata or the verified response's deadline lapsed meanwhile. The trust version is stored on every request at
-  start (compared under the connection's lock before the insert), checked at consumption against the locked connection
-  before validation or any provider call, and checked again under the completion's lock. One exception, and only one,
-  crosses a trust version: the sign-in whose own token triggered an unknown-`kid` refetch that removed a key may finish
-  across exactly that transition, on a `Protocols\TransitionReceipt` judged at those locks (`oidc-driver.md`); it never
-  restores a voided request and never adopts a later trust version. A genuinely unlinked `sign_in` stops that
-  transaction at the provisioning boundary and finishes in a final continuation, with the unlinked-result event
-  dispatched between them (`linking.md`). Events are dispatched after their transaction commits (or after the
-  consumption's, for a refusal before it), never on a rollback, except that one.
+  transaction on the storage connection, tried at most three times in all on a deadlock or serialisation failure, that
+  first locks the inheritance path's enforcement rows (when it applies, see the lock order), then the connection's row
+  (with the rule's connections) and then the request's row, and refuses if the connection is no longer usable, or the
+  request was voided since consumption or its stored trust version is no longer the connection's, and refuses with
+  `metadata_expired` or `request_expired` when fetched metadata or the verified response's deadline lapsed meanwhile.
+  The trust version is stored on every request at start (compared under the connection's lock before the insert),
+  checked at consumption against the locked connection before validation or any provider call, and checked again under
+  the completion's lock. One exception, and only one, crosses a trust version: the sign-in whose own token triggered an
+  unknown-`kid` refetch that removed a key may finish across exactly that transition, on a `Protocols\TransitionReceipt`
+  judged at those locks (`oidc-driver.md`); it never restores a voided request and never adopts a later trust version. A
+  genuinely unlinked `sign_in` stops that transaction at the provisioning boundary and finishes in a final continuation,
+  tried the same way, with the unlinked-result event dispatched between them (`linking.md`). Events are dispatched after
+  their transaction commits (or after the consumption's, for a refusal before it), never on a rollback, except that one.
 - `Completion\CompletionResult` is how a completion ended: `completed` (redirect URI, delivery, reference, issued
   handoff), `failed` (reason, redirect URI, delivery, reference), `rejected` (reason, no trusted target: a 400),
   `rate_limited` (`retryAfter`: a 429) or `reinitiated` (the connection's start URL). It may hold the code, so it shows
@@ -154,8 +154,9 @@ binding is kept and nothing outlives a request.
 
 ### Lock order
 
-An identity's guard, for what changes its verified domain links; a tenant's enforcement row; connection rows in
-ascending id order; then their rows in the other tables: domains, requests, codes, links; then the application's guards.
+An identity's guard, for what changes its verified domain links; the enforcement rows of an inheritance path, in tenant
+hash order; connection rows in ascending id order; then their rows in the other tables: domains, requests, codes, links;
+then the application's guards.
 
 - The identity's guard (`Linking\IdentityLock`, `sso_identity_guards`) comes first in a principal widening, a
   reservation, the redemption of a code bound to a reservation (its activation), and every `link` redemption, whether it
@@ -166,19 +167,21 @@ ascending id order; then their rows in the other tables: domains, requests, code
   principal-change transaction calls `Linking\ScopeWidening::widened()` first, then its own guard and its write, so a
   racing reservation or activation cannot slip past it. See `linking.md` for each flow's discovery and what it does when
   the candidates changed.
-- The enforcement row comes first wherever a rule is changed or an admission is judged against one: the enforcement
-  change, a redemption (`HandoffRecheck::lock()`, before the code), and the locked steps of a completion
-  (`CompletionLocks::take()`, before the request). An admission takes it only under the default `DatabaseEnforcement`
-  with the `enforcement` feature on, and locks the row of the enforcing tenant the inheritance contract names. A tenant
-  with no row has one inserted unconfigured (`Enforcement\EnforcementLock`: an upsert that never changes an existing
-  row, then a locking read), which reads everywhere as no row, so racing first lockers queue on the row rather than
-  deadlock on MySQL's gap locks.
+- The enforcement rows come first wherever a rule is changed, a tree that inheritance reads is changed, or an admission
+  is judged against a rule: the enforcement change, a binder's tree move (`EnforcementService::lockTenants()`, before
+  its own tree locks), a redemption (`HandoffRecheck::lock()`, before the code), and the locked steps of a completion
+  (`CompletionLocks::take()`, before the request). An admission takes them only under the default `DatabaseEnforcement`
+  with the `enforcement` feature on, and locks the row of every tenant on the inheritance path the contract names, one
+  at a time in tenant hash order. A tenant with no row has one inserted unconfigured (`Enforcement\EnforcementLock`: an
+  upsert that never changes an existing row, then a locking read), which reads everywhere as no row, so racing first
+  lockers queue on the row rather than deadlock on MySQL's gap locks.
 - The connections come next in one locking statement ordered by id: the admission's own connection with every
   connection the rule names (the union), so a disable of a satisfying connection is ordered too.
-- Anything learnt before the locks to choose them (the code's connection and application, the connection's tenant,
-  the enforcing tenant) is confirmed once they are held: a code that names another connection or application is
-  `handoff_unknown`, a connection gone or of another tenant `connection_unavailable`, and an inheritance contract that
-  names another tenant now is `connection_unavailable`; a different enforcement row is never locked out of order.
+- Anything learnt before the locks to choose them (the code's connection and application, the connection's tenant, the
+  inheritance path) is confirmed once they are held: a code that names another connection or application is
+  `handoff_unknown`, a connection gone or of another tenant `connection_unavailable`, and an inheritance path that
+  differs when asked again under the locks throws `Exceptions\EnforcementPathChanged`, a serialisation failure that
+  retries the whole transaction; no enforcement row is locked out of order.
 - With the feature off, or another enforcement contract bound, no enforcement row is locked, read or inserted, and the
   inheritance contract is not asked.
 
