@@ -20,9 +20,13 @@ final readonly class LinkConfirmed implements SsoEvent
     /**
      * Constructor.
      *
+     * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Events\EventContext  $context
      */
     public function __construct(
+
+        /** The link confirmed. */
+        public string $linkId,
 
         /** Who and what the event concerns. */
         public EventContext $context,

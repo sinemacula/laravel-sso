@@ -50,8 +50,8 @@ final class FlowEventClassesTest extends TestCase
         yield 'result verified' => [new ResultVerified($context), ['context']];
         yield 'handoff issued' => [new HandoffIssued($context), ['context']];
         yield 'handoff redeemed' => [new HandoffRedeemed($context), ['context']];
-        yield 'link created' => [new LinkCreated($context, LinkOrigin::VERIFIED_DOMAIN), ['context', 'origin']];
-        yield 'link removed' => [new LinkRemoved($context), ['context']];
+        yield 'link created' => [new LinkCreated('link-1', $context, LinkOrigin::VERIFIED_DOMAIN), ['linkId', 'context', 'origin']];
+        yield 'link removed' => [new LinkRemoved('link-1', $context), ['linkId', 'context']];
     }
 
     /**
@@ -102,7 +102,7 @@ final class FlowEventClassesTest extends TestCase
      */
     public function testALinkCreatedCarriesItsOrigin(): void
     {
-        self::assertSame(LinkOrigin::PROVISIONING, (new LinkCreated(self::context(), LinkOrigin::PROVISIONING))->origin);
+        self::assertSame(LinkOrigin::PROVISIONING, (new LinkCreated('link-1', self::context(), LinkOrigin::PROVISIONING))->origin);
     }
 
     /**

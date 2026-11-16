@@ -19,9 +19,13 @@ final readonly class LinkRemoved implements SsoEvent
     /**
      * Constructor.
      *
+     * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Events\EventContext  $context
      */
     public function __construct(
+
+        /** The link removed. */
+        public string $linkId,
 
         /** Who removed the link, and whose it was. */
         public EventContext $context,

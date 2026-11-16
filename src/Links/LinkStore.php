@@ -136,7 +136,7 @@ final readonly class LinkStore implements LinkStorage
 
         self::raiseLinksVersion($locked->getConnectionId());
 
-        $this->events->confirmed($locked, self::identityOf($link), $client, $application, $reference);
+        $this->events->confirmed($locked, self::identityOf($link), $link->id, $client, $application, $reference);
     }
 
     /**
@@ -162,7 +162,7 @@ final readonly class LinkStore implements LinkStorage
 
         self::raiseLinksVersion($connectionId);
 
-        $this->events->suspended($connectionId, $tenantId, $protocol, $identity, $client);
+        $this->events->suspended($connectionId, $tenantId, $protocol, $identity, $linkId, $client);
     }
 
     /**
@@ -230,8 +230,8 @@ final readonly class LinkStore implements LinkStorage
         ?Purpose $purpose = null,
         ?RequestReference $reference = null,
     ): LinkCreation {
-        $report = function (Connection $locked) use ($identity, $origin, $client, $caller, $application, $purpose, $reference): void {
-            $this->events->created($locked, $identity, $origin, $client, $caller, $application, $purpose, $reference);
+        $report = function (Connection $locked, string $linkId) use ($identity, $origin, $client, $caller, $application, $purpose, $reference): void {
+            $this->events->created($locked, $identity, $linkId, $origin, $client, $caller, $application, $purpose, $reference);
         };
 
         return DB::connection(StorageConnection::name())->transaction(function () use ($connection, $subject, $identity, $origin, $report): LinkCreation {
@@ -252,7 +252,7 @@ final readonly class LinkStore implements LinkStorage
 
             self::raiseLinksVersion($locked->id);
 
-            $report($locked);
+            $report($locked, $link->id);
 
             return LinkCreation::created(LinkSummary::of($link, $locked));
         });

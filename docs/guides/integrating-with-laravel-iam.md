@@ -60,7 +60,7 @@ Every contract under `src/Contracts`, with its default and what `laravel-iam` bi
 | Contract                   | Default                                       | Under `laravel-iam`                                                                                                                                                         |
 |----------------------------|-----------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `ApplicationPolicy`        | `Applications\ConfiguredApplicationPolicy`    | `allowed` exactly when the application's sign-in methods allow `external_provider` (authentication's `Contracts\ApplicationPolicy`, `SignInMethodManager::EXTERNAL_METHOD`) |
-| `AttemptLimiter`           | `RateLimiting\DatabaseAttemptLimiter`         | the default: the package's own limits, apart from authentication's                                                                                                          |
+| `AttemptLimiter`           | `RateLimiting\DatabaseAttemptLimiter`         | the default, apart from authentication's limits, on its own `rate_limits.connection`: each admission runs in one storage transaction a refusal rolls back                   |
 | `Clock`                    | `Clock\SystemClock`, reading Laravel's `Date` | the default, so both packages read one clock                                                                                                                                |
 | `CompletionStage`          | the package's stages                          | nothing: a package extension point                                                                                                                                          |
 | `ConfigurationCheck`       | the package's checks                          | nothing                                                                                                                                                                     |
@@ -106,7 +106,6 @@ Every contract under `src/Contracts`, with its default and what `laravel-iam` bi
 | `Provisioning\ProvisioningHelper::link()`      | Linking a just-created identity from the one provisioning listener                                                                        |
 | `Links\LinkService`                            | Listing an identity's links (accepting `me`) and removing one                                                                             |
 | `Sessions\AuthenticationContext::fromStored()` | Projecting a session's stored `Sessions\Provenance` into the `sso` namespace ([The `sso` contributor](#the-sso-contributor))              |
-| `Config\ConfigurationChecks::add()`            | Adding `laravel-iam`'s checks across the packages it composes to SSO's boot check and `sso:check`, each applying only while SSO is in use |
 
 Every helper above that counts an attempt or reports an event takes the client it acts for as an `Http\ClientContext`:
 the IP address and the user agent, made safe to keep under the rules `laravel-authentication`'s own `ClientContext`
@@ -398,7 +397,7 @@ choice of principal, on every switch and on refresh:
 1. Ask `Contracts\Enforcement::policy($activeTenantId, $application)`. It reads the stored rule on the write connection
    on every call; never cache it.
 2. When `isRequired()`, the requirement names the policy's satisfying connections, checked against the session's
-   recorded provenance connection, and carries `$policy->version` as its version.
+   recorded provenance connection, and carries a version that changes whenever `$policy->version` does.
 3. A session the rule would refuse is passed to
    `Enforcement\ExemptionGate::admit($policy, $application, $identity, $client, $sessionId)`, with the client of the
    request being judged, which asks the exemption contract and reports `ExemptionUsed` for an exemption it grants. This
