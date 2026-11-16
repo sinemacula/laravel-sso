@@ -321,8 +321,9 @@ order.
 ## Scope widening
 
 A change that gives a person a principal calls `Linking\ScopeWidening::widened()` first, in its own transaction on the
-storage connection, with the list of identities it changes and the new principal's tenant (`null` for a platform
-principal); then it takes the application's principal guard, writes the principal, and commits:
+storage connection, with the list of identities it changes and the tenants whose connections it spares (the new
+principal's tenant, or none for a platform principal); then it takes the application's principal guard, writes the
+principal, and commits:
 
 <!-- snippet: tests/Integration/Examples/IntegratingWithLaravelIam/principals/scope-widening.php#iam-scope-widening -->
 ```php
@@ -331,7 +332,9 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Linking\ScopeWidening;
 
 DB::connection(StorageConnection::name())->transaction(static function () use ($identity, $tenantId, $client): void {
-    app(ScopeWidening::class)->widened([$identity], $tenantId, $client); // 1. the guard, suspensions, revocation
+    $spared = $tenantId === null ? [] : [$tenantId]; // none for a platform principal
+
+    app(ScopeWidening::class)->widened([$identity], $spared, $client); // 1. the guard, suspensions, revocation
 
     $principals = app(Principals::class);
 
@@ -345,12 +348,12 @@ the person's row of a guard table until the commit, inserting it when missing: l
 would not hold back one being added.
 
 `widened()` takes each identity's guard and holds it to the commit, suspends the identities' verified domain links in
-every connection of another tenant, deletes their reservations there, and revokes the sessions established through each
-such link with `RevocationScope::identityLink()` and the reason `scope_widened`. Calling it after the principal is
+every connection of a tenant not spared, deletes their reservations there, and revokes the sessions established through
+each such link with `RevocationScope::identityLink()` and the reason `scope_widened`. Calling it after the principal is
 written, or outside a transaction (a `LogicException`), leaves a window in which a reservation or an activation sees the
 old principals. A change to several people, such as moving a subtree of tenants, passes them all in one call: it takes
 their guards in ascending order of `IdentityLock::digest()` before any connection, where one call per person would not.
-Every person in the call gains a principal in the one tenant it is given.
+The spared tenants apply to every person in the call: for a moved subtree, the subtree and its new ancestors.
 
 ## Revocation
 
