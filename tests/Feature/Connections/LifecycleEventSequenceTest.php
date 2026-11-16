@@ -276,6 +276,12 @@ final class LifecycleEventSequenceTest extends TestCase
         $identities = array_map(static fn (SsoEvent $event): ?string => $event->context()->identityId, $this->recordedEvents());
 
         self::assertSame([null, '1', '2', '3', '3', '1'], $identities);
+
+        $linkOf   = static fn (SsoEvent $event): ?string => $event instanceof LinkRemoved || $event instanceof LinkCreated ? $event->linkId : null;
+        $links    = array_map($linkOf, $this->recordedEvents());
+        $relinked = array_map(static fn (string $identity): string => Link::query()->where('identity_id', $identity)->sole()->id, ['3', '1']);
+
+        self::assertSame([null, ...array_map(static fn (Link $link): string => $link->id, $this->links), ...$relinked], $links);
     }
 
     /**

@@ -135,7 +135,7 @@ final readonly class LinkService
 
         $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($connection->tenant_id, $connection->id, $identity, $locked->id));
 
-        $this->events->removed($connection, $identity, $client, $caller);
+        $this->events->removed($connection, $identity, $locked->id, $client, $caller);
 
         return LinkResult::removed(LinkSummary::of($locked, $connection));
     }

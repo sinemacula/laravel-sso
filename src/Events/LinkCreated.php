@@ -21,10 +21,14 @@ final readonly class LinkCreated implements SsoEvent
     /**
      * Constructor.
      *
+     * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Events\EventContext  $context
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      */
     public function __construct(
+
+        /** The link created. */
+        public string $linkId,
 
         /** Who and what the link concerns. */
         public EventContext $context,

@@ -170,6 +170,12 @@ final class LinkPurposeEventSequenceTest extends LinkingTestCase
         $context = $this->context($start);
 
         $this->assertContexts([$context, $this->suspensionContext($this->person), $context, $context, $context, $context]);
+
+        [, $suspended, , , $confirmed] = $this->recordedEvents();
+
+        self::assertInstanceOf(LinkSuspended::class, $suspended);
+        self::assertInstanceOf(LinkConfirmed::class, $confirmed);
+        self::assertSame([Link::query()->sole()->id, Link::query()->sole()->id], [$suspended->linkId, $confirmed->linkId]);
     }
 
     /**

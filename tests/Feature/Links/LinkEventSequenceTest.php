@@ -80,9 +80,15 @@ final class LinkEventSequenceTest extends TestCase
      */
     public function testACreationReportsLinkCreated(): void
     {
-        self::assertTrue($this->createLink('subject-1')->isCreated());
+        $creation = $this->createLink('subject-1');
 
+        self::assertTrue($creation->isCreated());
         $this->assertEventSequence([LinkCreated::class]);
+
+        $event = $this->recordedEvents()[0];
+
+        self::assertInstanceOf(LinkCreated::class, $event);
+        self::assertSame($creation->link?->id, $event->linkId);
         $this->assertNoFailure();
     }
 
@@ -100,6 +106,11 @@ final class LinkEventSequenceTest extends TestCase
         self::assertTrue($this->service()->remove($this->identity, $id, Clients::browser())->isRemoved());
 
         $this->assertEventSequence([LinkRemoved::class]);
+
+        $event = $this->recordedEvents()[0];
+
+        self::assertInstanceOf(LinkRemoved::class, $event);
+        self::assertSame($id, $event->linkId);
         $this->assertNoFailure();
     }
 

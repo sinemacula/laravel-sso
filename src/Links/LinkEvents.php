@@ -52,6 +52,7 @@ final readonly class LinkEvents
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Links\Enums\LinkOrigin  $origin
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
@@ -67,6 +68,7 @@ final readonly class LinkEvents
     public function created(
         SsoConnection $connection,
         IdentityReference $identity,
+        string $linkId,
         LinkOrigin $origin,
         ClientContext $client,
         ?Caller $caller = null,
@@ -88,7 +90,7 @@ final readonly class LinkEvents
             actingIdentityId: $caller?->identity->id,
         );
 
-        $this->dispatcher->dispatch(new LinkCreated($context, $origin));
+        $this->dispatcher->dispatch(new LinkCreated($linkId, $context, $origin));
     }
 
     /**
@@ -96,13 +98,14 @@ final readonly class LinkEvents
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function removed(Connection $connection, IdentityReference $identity, ClientContext $client, ?Caller $caller = null): void
+    public function removed(Connection $connection, IdentityReference $identity, string $linkId, ClientContext $client, ?Caller $caller = null): void
     {
         $context = $this->contexts->make(
             $client,
@@ -115,7 +118,7 @@ final readonly class LinkEvents
             actingIdentityId: $caller?->identity->id,
         );
 
-        $this->dispatcher->dispatch(new LinkRemoved($context));
+        $this->dispatcher->dispatch(new LinkRemoved($linkId, $context));
     }
 
     /**
@@ -133,7 +136,7 @@ final readonly class LinkEvents
      */
     public function activated(Connection $connection, IdentityReference $identity, string $linkId, string $application, RequestReference $reference, ClientContext $client): void
     {
-        $this->created($connection, $identity, LinkOrigin::VERIFIED_DOMAIN, $client, null, $application, Purpose::SIGN_IN, $reference);
+        $this->created($connection, $identity, $linkId, LinkOrigin::VERIFIED_DOMAIN, $client, null, $application, Purpose::SIGN_IN, $reference);
 
         $context = $this->contexts->make(
             $client,
@@ -155,6 +158,7 @@ final readonly class LinkEvents
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\SsoConnection  $connection
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @param  ?string  $application
      * @param  ?\SineMacula\Laravel\Sso\Flows\RequestReference  $reference
@@ -162,8 +166,14 @@ final readonly class LinkEvents
      *
      * @throws \InvalidArgumentException
      */
-    public function confirmed(SsoConnection $connection, IdentityReference $identity, ClientContext $client, ?string $application = null, ?RequestReference $reference = null): void
-    {
+    public function confirmed(
+        SsoConnection $connection,
+        IdentityReference $identity,
+        string $linkId,
+        ClientContext $client,
+        ?string $application = null,
+        ?RequestReference $reference = null,
+    ): void {
         $context = $this->contexts->make(
             $client,
             connectionId: $connection->getConnectionId(),
@@ -176,7 +186,7 @@ final readonly class LinkEvents
             identityId: $identity->id,
         );
 
-        $this->dispatcher->dispatch(new LinkConfirmed($context));
+        $this->dispatcher->dispatch(new LinkConfirmed($linkId, $context));
     }
 
     /**
@@ -186,12 +196,13 @@ final readonly class LinkEvents
      * @param  string  $tenantId
      * @param  string  $protocol
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  string  $linkId
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return void
      *
      * @throws \InvalidArgumentException
      */
-    public function suspended(string $connectionId, string $tenantId, string $protocol, IdentityReference $identity, ClientContext $client): void
+    public function suspended(string $connectionId, string $tenantId, string $protocol, IdentityReference $identity, string $linkId, ClientContext $client): void
     {
         $context = $this->contexts->make(
             $client,
@@ -202,6 +213,6 @@ final readonly class LinkEvents
             identityId: $identity->id,
         );
 
-        $this->dispatcher->dispatch(new LinkSuspended($context));
+        $this->dispatcher->dispatch(new LinkSuspended($linkId, $context));
     }
 }
