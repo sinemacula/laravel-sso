@@ -201,7 +201,7 @@ final readonly class SubjectMigration
                 $this->container->make(SessionRevocation::class)->revoke(RevocationScope::identityInConnection($locked->tenant_id, $locked->id, $identity, $link->id));
             }
 
-            $this->events->removed($locked, $identity, $client, $caller);
+            $this->events->removed($locked, $identity, $link->id, $client, $caller);
         }
 
         return $result;
