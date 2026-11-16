@@ -48,18 +48,19 @@ final readonly class ScopeWidening
     ) {}
 
     /**
-     * Guard the identities, then suspend, withdraw and revoke in other tenants'
-     * connections; answer how many links were suspended.
+     * Guard the identities, then suspend, withdraw and revoke in the
+     * connections of every tenant not spared for all of them; answer how many
+     * links were suspended.
      *
      * @param  list<\SineMacula\Laravel\Sso\Identities\IdentityReference>  $identities
-     * @param  ?string  $tenantId
+     * @param  list<string>  $sparedTenantIds
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return int
      *
      * @throws \LogicException
      * @throws \SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged
      */
-    public function widened(array $identities, ?string $tenantId, ClientContext $client): int
+    public function widened(array $identities, array $sparedTenantIds, ClientContext $client): int
     {
         if ($identities === []) {
             return 0;
@@ -77,7 +78,7 @@ final readonly class ScopeWidening
 
         $storage = $this->storage->find();
 
-        return $storage === null ? 0 : $this->suspended($storage, $guarded, $tenantId, $client);
+        return $storage === null ? 0 : $this->suspended($storage, $guarded, $sparedTenantIds, $client);
     }
 
     /**
@@ -174,17 +175,17 @@ final readonly class ScopeWidening
 
     /**
      * Find connections by a plain read, lock them then the rows, and change
-     * those of other tenants.
+     * those of tenants not spared.
      *
      * @param  \SineMacula\Laravel\Sso\Contracts\LinkStorage  $storage
      * @param  array<string, \SineMacula\Laravel\Sso\Identities\IdentityReference>  $identities
-     * @param  ?string  $tenantId
+     * @param  list<string>  $sparedTenantIds
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
      * @return int
      *
      * @throws \SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged
      */
-    private function suspended(LinkStorage $storage, array $identities, ?string $tenantId, ClientContext $client): int
+    private function suspended(LinkStorage $storage, array $identities, array $sparedTenantIds, ClientContext $client): int
     {
         $locked = self::lockedConnections(self::owned(self::rowsOf($identities)->get()->all(), $identities));
         $rows   = self::owned(self::rowsOf($identities)->orderBy('id')->lockForUpdate()->get()->all(), $identities);
@@ -195,7 +196,7 @@ final readonly class ScopeWidening
 
         foreach ($locked as $connection) {
 
-            if ($connection->tenant_id === $tenantId) {
+            if (in_array($connection->tenant_id, $sparedTenantIds, true)) {
                 continue;
             }
 

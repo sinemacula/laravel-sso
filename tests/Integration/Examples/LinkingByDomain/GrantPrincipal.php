@@ -38,9 +38,9 @@ final readonly class GrantPrincipal
         DB::connection(StorageConnection::name())->transaction(function () use ($identity, $tenantId, $client): void {
             $widening = app(ScopeWidening::class);
 
-            // First the identity's guard, held until this commits; the tenant
-            // is `null` for a platform principal
-            $widening->widened([$identity], $tenantId, $client);
+            // First the identity's guard, held until this commits; a platform
+            // principal spares no tenant
+            $widening->widened([$identity], $tenantId === null ? [] : [$tenantId], $client);
 
             // Then your principal guard, then the write
             $this->lockPrincipals($identity);
