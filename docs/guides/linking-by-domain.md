@@ -180,9 +180,9 @@ first, then take your own guard and write the principal:
 DB::connection(StorageConnection::name())->transaction(function () use ($identity, $tenantId, $client): void {
     $widening = app(ScopeWidening::class);
 
-    // First the identity's guard, held until this commits; the tenant
-    // is `null` for a platform principal
-    $widening->widened([$identity], $tenantId, $client);
+    // First the identity's guard, held until this commits; a platform
+    // principal spares no tenant
+    $widening->widened([$identity], $tenantId === null ? [] : [$tenantId], $client);
 
     // Then your principal guard, then the write
     $this->lockPrincipals($identity);
@@ -192,11 +192,11 @@ DB::connection(StorageConnection::name())->transaction(function () use ($identit
 
 `widened()` takes the identity's guard, which every reservation, activation and confirmation of that identity takes
 first, so none of them can slip past your change: each runs wholly before it and is found, or wholly after it and sees
-your principal. It suspends the identity's domain links in every connection of another tenant, deletes its reservations
-in them, and revokes the sessions established through those links through your `SessionRevocation`, with
-`RevocationScope::identityLink()` and the reason `scope_widened`. It all commits or rolls back with the principal. Bind
-`SessionRevocation` with an implementation writing through the same connection; the default revokes nothing. An adapter
-whose sessions do not record their link revokes the identity's sessions through the connection instead.
+your principal. It suspends the identity's domain links in every connection of a tenant it is not told to spare, deletes
+its reservations in them, and revokes the sessions established through those links through your `SessionRevocation`,
+with `RevocationScope::identityLink()` and the reason `scope_widened`. It all commits or rolls back with the principal.
+Bind `SessionRevocation` with an implementation writing through the same connection; the default revokes nothing. An
+adapter whose sessions do not record their link revokes the identity's sessions through the connection instead.
 
 `Exceptions\LinkCandidatesChanged` means your transaction's snapshot was older than a link or a reservation it found
 under the lock, which on MySQL's `REPEATABLE READ` happens when your transaction read before it called `widened()` or
@@ -209,9 +209,9 @@ serialisation failure. A change to
 several identities' principals in one transaction, such as moving a subtree of tenants, passes them all to one
 `widened()` call, which takes their guards in ascending order of `Linking\IdentityLock::digest()`, then locks the
 connections holding any of their links together. Calling it once per identity would lock one identity's connections
-before the next identity's guard, which can deadlock against a reservation or a confirmation. The call takes one tenant
-and spares its connections for every identity given, so pass together only identities that gain a principal in that same
-tenant.
+before the next identity's guard, which can deadlock against a reservation or a confirmation. The spared tenants apply
+to every identity given, so spare only tenants whose links stay safe for all of them: for a moved subtree, the subtree
+and its new ancestors.
 
 This principal-change transaction is the primary place sessions are revoked. A resolution that finds a definite outside
 scope repairs what it missed, revoking through the link in the completion's or the redemption's transaction; asking

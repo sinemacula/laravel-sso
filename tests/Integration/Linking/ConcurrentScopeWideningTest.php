@@ -337,7 +337,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
 
                 $this->signalBeforeTheGuard('widening', $this->person);
 
-                DB::connection(StorageConnection::name())->transaction(fn (): int => app(ScopeWidening::class)->widened([$other, $this->person], 'tenant-2', Clients::browser()));
+                DB::connection(StorageConnection::name())->transaction(fn (): int => app(ScopeWidening::class)->widened([$other, $this->person], ['tenant-2'], Clients::browser()));
 
                 return self::WIDENED;
             }, false],
@@ -367,7 +367,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
 
         self::assertSame($unchanged, Link::query()->sole()->state);
 
-        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser()));
+        $this->connection->getConnection()->transaction(fn (): int => app(ScopeWidening::class)->widened([$this->person], ['tenant-2'], Clients::browser()));
     }
 
     /**
@@ -529,7 +529,7 @@ final class ConcurrentScopeWideningTest extends LinkingTestCase
     private function widen(\Closure $underTheGuard): string
     {
         DB::connection(StorageConnection::name())->transaction(function () use ($underTheGuard): void {
-            app(ScopeWidening::class)->widened([$this->person], 'tenant-2', Clients::browser());
+            app(ScopeWidening::class)->widened([$this->person], ['tenant-2'], Clients::browser());
             $underTheGuard();
         });
 
