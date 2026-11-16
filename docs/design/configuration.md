@@ -82,8 +82,8 @@ registers its settings and its check without editing another's.
 - A part of the package that adds settings adds its section to `config/sso.php`, its check class implementing
   `ConfigurationCheck` under its own namespace, and its entry in `CONFIGURATION_CHECKS`; it reads its settings through
   the shared readers, so the check and the code that uses a setting judge it the same way.
-- A composing package (`laravel-iam`'s checks across the packages it composes) adds its check with
-  `ConfigurationChecks::add()`, and its problems are reported under its own subject beside the package's.
+- Another package adds its check with `ConfigurationChecks::add()`, and its problems are reported under its own subject
+  beside the package's.
 
 ## Failure / Edge Cases
 

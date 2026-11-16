@@ -47,7 +47,8 @@ interface ReauthenticationSessions
 
     /**
      * Renew the authentication time as `max(current, provider_time)` and store
-     * any evidence given, on the row `lockedStanding()` locked.
+     * any evidence given, on the row `lockedStanding()` locked, or record the
+     * renewal for the caller to complete later in the same transaction.
      *
      * @param  \SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
      * @param  string  $sessionId
