@@ -316,7 +316,7 @@ final readonly class EvidenceRules
 
         foreach ($value as $index => $entry) {
 
-            $code = SettingRules::text($entry, AuthenticationContext::MAX_VALUE_LENGTH) ?? (in_array($entry, $seen, true) ? ViolationCode::DUPLICATE : null);
+            $code = SettingRules::text($entry, AuthenticationContext::MAX_VALUE_LENGTH, false) ?? (in_array($entry, $seen, true) ? ViolationCode::DUPLICATE : null);
 
             $seen[] = $entry;
 

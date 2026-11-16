@@ -70,7 +70,7 @@ reservation is touched, and a code already issued is judged at its redemption by
 | Name                      | Protocol     | Holds                                                                        |
 |---------------------------|--------------|------------------------------------------------------------------------------|
 | `amr`                     | all but SAML | Accepted methods: at most 32, each once, each a value registered by RFC 8176 |
-| `acr`                     | all but SAML | Accepted classes: at most 32, each once, 1 to 1024 bytes                     |
+| `acr`                     | all but SAML | Accepted classes: at most 32, each once, 1 to 1024 bytes, no whitespace      |
 | `authn_context_class_ref` | SAML         | Accepted classes, as `acr`                                                   |
 | `combinations`            | all          | What counts: 1 to 32 maps, any one of which is enough                        |
 | `max_age_seconds`         | all          | Optional: how long after the authentication this connection accepts it       |

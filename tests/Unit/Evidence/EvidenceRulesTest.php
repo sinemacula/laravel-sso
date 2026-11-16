@@ -69,6 +69,7 @@ final class EvidenceRulesTest extends TestCase
         $saml        = ['authn_context_class_ref' => [self::LOA2], 'combinations' => [['authn_context_class_ref' => self::LOA2]]];
         $misplaced   = [['authn_context_class_ref', 'unsupported'], ['combinations.0.authn_context_class_ref', 'unsupported']];
         $first       = ['combinations' => [['authn_context_class_ref' => 'urn:example:1']]];
+        $spaced      = ['authn_context_class_ref' => ['urn:a b'], 'combinations' => [['authn_context_class_ref' => 'urn:a b']]];
 
         yield 'nothing' => [self::OIDC, [], []];
         yield 'nothing over SAML' => [self::SAML, [], []];
@@ -117,7 +118,11 @@ final class EvidenceRulesTest extends TestCase
         yield 'a class that is no string' => [self::OIDC, ['acr' => [1]] + $counted, [['acr.0', 'invalid_type']]];
         yield 'an empty class' => [self::OIDC, ['acr' => ['']] + $counted, [['acr.0', 'required']]];
         yield 'a class with a control character' => [self::OIDC, ['acr' => ["urn\x01"]] + $counted, [['acr.0', 'invalid_format']]];
-        yield 'a class with a space' => [self::OIDC, ['acr' => ['a class']] + $counted, []];
+        yield 'a class with a space' => [self::OIDC, ['acr' => ['a class']] + $counted, [['acr.0', 'invalid_format']]];
+        yield 'a class of only a space' => [self::OIDC, ['acr' => [' ']] + $counted, [['acr.0', 'invalid_format']]];
+        yield 'a SAML class with a space' => [self::SAML, $spaced, [['authn_context_class_ref.0', 'invalid_format']]];
+        yield 'a class with a no-break space' => [self::OIDC, ['acr' => ["urn:a\u{00A0}b"]] + $counted, [['acr.0', 'invalid_format']]];
+        yield 'a class with a line separator' => [self::OIDC, ['acr' => ["urn:a\u{2028}b"]] + $counted, [['acr.0', 'invalid_format']]];
         yield 'a class of one byte' => [self::OIDC, ['acr' => ['c']] + $counted, []];
         yield 'the longest class' => [self::OIDC, ['acr' => [str_repeat('c', 1024)]] + $counted, []];
         yield 'one byte over the longest class' => [self::OIDC, ['acr' => [str_repeat('c', 1025)]] + $counted, [['acr.0', 'too_long']]];
