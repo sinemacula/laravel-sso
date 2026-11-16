@@ -59,6 +59,22 @@ final class AcceptedEvidenceTest extends TestCase
     }
 
     /**
+     * A raw context blank after trimming is none; any other is kept verbatim.
+     *
+     * @return void
+     */
+    public function testABlankContextIsNone(): void
+    {
+        $at = CarbonImmutable::parse('2026-11-01T09:29:00Z');
+
+        foreach (['', ' ', " \t\n"] as $blank) {
+            self::assertNull((new AcceptedEvidence('connection-1', $at, [], $blank))->rawContext());
+        }
+
+        self::assertSame(' x ', (new AcceptedEvidence('connection-1', $at, [], ' x '))->rawContext());
+    }
+
+    /**
      * JSON shows only the safe fields, in UTC, with counts in place of values.
      *
      * @return void

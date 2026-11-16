@@ -149,6 +149,19 @@ final class EvidencePolicyTest extends TestCase
     }
 
     /**
+     * A raw class blank after trimming is accepted as none.
+     *
+     * @return void
+     */
+    public function testABlankRawClassIsNoneCarried(): void
+    {
+        $evidence = self::policy()->evaluate(self::resultWith(new AuthenticationContext(self::at(), ['pwd'], ' ')), self::connection(self::PASSWORD), self::at());
+
+        self::assertNull($evidence?->rawContext());
+        self::assertSame(['pwd'], $evidence?->methods());
+    }
+
+    /**
      * Rows of `[microseconds from the instant asked, whether it is accepted]`,
      * under a maximum age of 600 seconds and a skew of 30.
      *
