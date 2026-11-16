@@ -18,7 +18,8 @@
         configDir: ".",
         customPath: "vendor/bin/phpunit"
     },
-    initialTestsPhpOptions: "-d memory_limit=1G",
+    // The initial run is the whole suite with coverage in one process
+    initialTestsPhpOptions: "-d memory_limit=-1",
     timeout: 30,
     mutators: {
         "@default": true
