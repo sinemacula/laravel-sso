@@ -102,7 +102,7 @@ application's.
   standard methods; a result with no accepted combination is insufficient. Accepted lists alone authorise nothing: a
   combination must name what counts.
 - The raw `acr` or `AuthnContextClassRef` stays data, through `rawContext()`, so downstream policy cannot mistake it for
-  an accepted class.
+  an accepted class. One blank after trimming is held as none.
 - `reauthenticate` with insufficient evidence still renews the authentication time, which is the purpose's whole
   meaning, and offers nothing.
 - An error from the policy, or from a contract it reads, rolls the redeemer's transaction back with the code unconsumed.

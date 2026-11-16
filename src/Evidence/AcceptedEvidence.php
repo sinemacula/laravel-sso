@@ -49,8 +49,10 @@ final readonly class AcceptedEvidence implements \JsonSerializable
         #[\SensitiveParameter]
         ?string $rawContext = null,
     ) {
-        $this->methods    = new \SensitiveParameterValue($methods);
-        $this->rawContext = new \SensitiveParameterValue($rawContext);
+        $this->methods = new \SensitiveParameterValue($methods);
+
+        // A context blank after trimming says nothing, so it is held as none
+        $this->rawContext = new \SensitiveParameterValue($rawContext !== null && trim($rawContext) === '' ? null : $rawContext);
     }
 
     /**
