@@ -35,13 +35,13 @@ which of its provider's assertions count, how a result is judged, and what a red
 
 `connections.evidence_policy`, a JSON map, judged by `Evidence\EvidenceRules`:
 
-| Name                      | Protocol     | What it holds                                                   |
-|---------------------------|--------------|-----------------------------------------------------------------|
-| `amr`                     | all but SAML | Accepted methods, at most 32, each once, each an RFC 8176 value |
-| `acr`                     | all but SAML | Accepted classes, at most 32, each once, each 1 to 1024 bytes   |
-| `authn_context_class_ref` | SAML         | Accepted classes, by the same rules as `acr`                    |
-| `combinations`            | all          | What counts: 1 to 32 maps, any one of which is enough           |
-| `max_age_seconds`         | all          | Optional: a whole number from 1, up to the ceiling              |
+| Name                      | Protocol     | What it holds                                                                |
+|---------------------------|--------------|------------------------------------------------------------------------------|
+| `amr`                     | all but SAML | Accepted methods, at most 32, each once, each an RFC 8176 value              |
+| `acr`                     | all but SAML | Accepted classes, at most 32, each once, each 1 to 1024 bytes, no whitespace |
+| `authn_context_class_ref` | SAML         | Accepted classes, by the same rules as `acr`                                 |
+| `combinations`            | all          | What counts: 1 to 32 maps, any one of which is enough                        |
+| `max_age_seconds`         | all          | Optional: a whole number from 1, up to the ceiling                           |
 
 A combination names `amr`, a non-empty list every one of which the assertion must state, `acr`, the class it must state,
 or both; on SAML, `authn_context_class_ref`. Each value must be one the policy lists. A combination naming nothing is
