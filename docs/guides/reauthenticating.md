@@ -80,7 +80,7 @@ Three methods, each with its own obligation:
 |-------------------------|---------------------------------------------|---------------------------------------------------------------------------------------------------------|
 | `standing()`            | The start, in no transaction of the package | The current answer for the identity, the session, the application and the connection. It locks nothing. |
 | `lockedStanding()`      | Redemption, inside the caller's transaction | Every value matches, and the session's row is locked until that transaction ends.                       |
-| `renewAuthentication()` | Redemption, after `lockedStanding()`        | Writes the authentication time, and the evidence when there is any, on the locked row.                  |
+| `renewAuthentication()` | Redemption, after `lockedStanding()`        | Writes the authentication time and any evidence on the locked row, or records them to write later.      |
 
 Answer `signed_in` only when you know it. If you cannot tell, answer `not_signed_in`. An exception propagates and rolls
 the redemption back with the code unconsumed, so use one for a failure, not for a refusal.
