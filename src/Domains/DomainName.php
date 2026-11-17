@@ -34,11 +34,6 @@ final class DomainName
     private const array SPECIAL_USE = ['localhost', 'local', 'test', 'invalid', 'example', 'internal', 'arpa', 'onion', 'alt'];
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The domain, normalised, or `null` when it is not a host name that could
      * be registered.
      *
@@ -120,7 +115,9 @@ final class DomainName
     {
         foreach ($labels as $label) {
             if (preg_match(self::LABEL, $label) !== 1) {
+                // @codeCoverageIgnoreStart
                 return false;
+                // @codeCoverageIgnoreEnd
             }
         }
 

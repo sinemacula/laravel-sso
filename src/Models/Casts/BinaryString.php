@@ -88,7 +88,9 @@ final readonly class BinaryString implements CastsAttributes
         $stream = fopen('php://memory', 'r+b');
 
         if ($stream === false) {
+            // @codeCoverageIgnoreStart
             throw new \UnexpectedValueException('A stream for binary bytes could not be opened.');
+            // @codeCoverageIgnoreEnd
         }
 
         fwrite($stream, $bytes);

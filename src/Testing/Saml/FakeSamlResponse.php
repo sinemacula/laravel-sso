@@ -90,8 +90,10 @@ final readonly class FakeSamlResponse
     {
         try {
             $suffix = bin2hex(random_bytes(8));
+            // @codeCoverageIgnoreStart
         } catch (RandomException $exception) {
             throw new \LogicException('The fake identity provider has no source of randomness.', 0, $exception);
+            // @codeCoverageIgnoreEnd
         }
 
         return [
@@ -237,7 +239,9 @@ final readonly class FakeSamlResponse
         try {
             return $this->written();
         } catch (\DOMException $exception) {
+            // @codeCoverageIgnoreStart
             throw new \LogicException('The fake identity provider could not write its response.', 0, $exception);
+            // @codeCoverageIgnoreEnd
         }
     }
 

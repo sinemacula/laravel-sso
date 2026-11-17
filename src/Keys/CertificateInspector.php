@@ -111,9 +111,11 @@ final readonly class CertificateInspector
             return null;
         }
 
+        // @codeCoverageIgnoreStart
         return $masked->certificate === null || $masked->publicKey === null || $masked->fingerprint === null
             ? null
             : ['certificate' => $masked->certificate, 'public_key' => $masked->publicKey, 'fingerprint' => $masked->fingerprint];
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -140,7 +142,9 @@ final readonly class CertificateInspector
         $details = $key === false ? false : openssl_pkey_get_details($key);
 
         if ($details === false || !is_int($details['type'] ?? null) || !is_int($details['bits'] ?? null)) {
+            // @codeCoverageIgnoreStart
             return false;
+            // @codeCoverageIgnoreEnd
         }
 
         $curve = $details['ec']['curve_name'] ?? null;

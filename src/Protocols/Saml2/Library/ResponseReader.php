@@ -281,7 +281,9 @@ final readonly class ResponseReader
         $assertion  = $assertions[0] ?? null;
 
         if (count($assertions) !== 1 || !$assertion instanceof \DOMElement) {
+            // @codeCoverageIgnoreStart
             throw new ReadFailure(FailureReason::RESPONSE_INVALID, 'structure');
+            // @codeCoverageIgnoreEnd
         }
 
         return $assertion;

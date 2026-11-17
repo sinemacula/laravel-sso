@@ -147,6 +147,8 @@ final readonly class TokenExchange
      * The failure of a client assertion the system had no randomness for.
      *
      * @return \RuntimeException
+     *
+     * @codeCoverageIgnore
      */
     private static function noRandomness(): \RuntimeException
     {
@@ -202,8 +204,10 @@ final readonly class TokenExchange
 
         try {
             $assertion = $this->jose->signClientAssertion($clientId, $options->tokenEndpoint(), $pem, $this->clock->now(), $options->clientAssertionAlgorithm());
+            // @codeCoverageIgnoreStart
         } catch (RandomException) {
             throw self::noRandomness();
+            // @codeCoverageIgnoreEnd
         }
 
         return FetchCredentials::privateKeyJwt($clientId, $assertion->reveal());

@@ -89,7 +89,9 @@ final readonly class AssertionEncryptor
             : openssl_encrypt($plaintext, $cipher, $key, OPENSSL_RAW_DATA, $iv);
 
         if ($ciphertext === false) {
+            // @codeCoverageIgnoreStart
             throw new \LogicException('The fake identity provider could not encrypt the assertion.');
+            // @codeCoverageIgnoreEnd
         }
 
         return $iv . $ciphertext . $tag;
@@ -107,8 +109,10 @@ final readonly class AssertionEncryptor
     {
         try {
             return random_bytes($length);
+            // @codeCoverageIgnoreStart
         } catch (RandomException) {
             throw new \LogicException('The fake identity provider has no source of randomness.');
         }
+        // @codeCoverageIgnoreEnd
     }
 }
