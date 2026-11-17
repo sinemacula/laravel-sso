@@ -30,6 +30,7 @@ use SineMacula\Laravel\Sso\Metadata\ImportResult;
 use SineMacula\Laravel\Sso\Metadata\MetadataExpiry;
 use SineMacula\Laravel\Sso\Metadata\MetadataImporter;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
+use SineMacula\Laravel\Sso\Metadata\RefreshClaim;
 use SineMacula\Laravel\Sso\Metadata\RefreshClaims;
 use SineMacula\Laravel\Sso\Metadata\RefreshResult;
 use SineMacula\Laravel\Sso\Metadata\RefreshWriter;
@@ -65,6 +66,7 @@ use Tests\TestCase;
  */
 #[CoversClass(MetadataRefresher::class)]
 #[CoversClass(RefreshClaims::class)]
+#[CoversClass(RefreshClaim::class)]
 #[CoversClass(SamlMetadataSource::class)]
 #[CoversClass(RefreshWriter::class)]
 final class MetadataRefresherTest extends TestCase

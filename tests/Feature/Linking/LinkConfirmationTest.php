@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Exceptions\LinkCandidatesChanged;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRecheck;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Handoffs\RecheckLock;
 use SineMacula\Laravel\Sso\Handoffs\Redemption\LinkBranch;
 use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Identities\Caller;
@@ -61,6 +62,8 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 #[CoversClass(LinkBranch::class)]
 #[CoversClass(IdentityLock::class)]
 #[CoversClass(HandoffRedemption::class)]
+#[CoversClass(HandoffRecheck::class)]
+#[CoversClass(RecheckLock::class)]
 final class LinkConfirmationTest extends LinkingTestCase
 {
     use ComparesIdentitiesWithoutCase, RecordsLockOrder;
@@ -153,6 +156,24 @@ final class LinkConfirmationTest extends LinkingTestCase
         self::assertSame([$this->connection->id], LinkConfirmationGate::connectionsHolding($person));
         self::assertTrue(app(LinkConfirmationGate::class)->allows(new Caller($person, self::REDEEMER_SESSION), $this->connection, $held, false));
         self::assertSame([[$person->id, $this->connection->id, [$own->id]]], $this->confirmation->asked);
+    }
+
+    /**
+     * Domain links are locked only under a lock taken for their identity.
+     *
+     * @return void
+     */
+    public function testLockingLinksUnderALockForNoIdentityIsALogicException(): void
+    {
+        $this->linkByDomain();
+
+        $this->expectExceptionObject(new \LogicException('A [link] redemption locks with the identity it was started for: pass it to HandoffRecheck::lock().'));
+
+        $this->connection->getConnection()->transaction(function (): array {
+            $lock = app(HandoffRecheck::class)->lock('tenant-1', $this->connection->id, 'web');
+
+            return app(LinkConfirmationGate::class)->lockedDomainLinks($this->person, $lock);
+        });
     }
 
     /**

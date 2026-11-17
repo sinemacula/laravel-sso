@@ -139,4 +139,104 @@ final class LibraryInternalsTest extends TestCase
         self::assertSame('<x/>', $parser->decode(base64_encode('<x/>'), 8));
         self::assertSame('x', $parser->load('<x/>', 4)->documentElement?->localName);
     }
+
+    /**
+     * Loading for later validation checks no schema but still refuses an `ID`
+     * repeated, with the reason given.
+     *
+     * @return void
+     *
+     * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
+     */
+    public function testLoadingUniqueSkipsTheSchemaButRefusesARepeatedId(): void
+    {
+        $parser = new HardenedParser;
+
+        self::assertSame('x', $parser->loadUnique('<x ID="a"><y ID="b"/></x>', 100)->documentElement?->localName);
+
+        try {
+            $parser->loadUnique('<x ID="a"><y ID="a"/></x>', 100, FailureReason::METADATA_INVALID);
+            self::fail('A repeated ID was loaded.');
+        } catch (ReadFailure $failure) {
+            self::assertSame([FailureReason::METADATA_INVALID, 'duplicate_id'], [$failure->reason, $failure->detail]);
+        }
+    }
+
+    /**
+     * An element is validated with the namespaces in scope where it sits, so a
+     * prefix only an attribute value names still resolves.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
+     */
+    public function testAnElementIsValidatedWithItsInScopeNamespaces(): void
+    {
+        $parser = new HardenedParser;
+        $entity = self::entity($parser, 'xs:string');
+        $copy   = new \DOMDocument;
+
+        $copy->appendChild($copy->importNode($entity, true));
+
+        $parser->validateElement($entity, MessageKind::METADATA);
+
+        $this->expectExceptionObject(new ReadFailure(FailureReason::METADATA_INVALID, 'schema'));
+
+        $parser->parse((string) $copy->saveXML(), MessageKind::METADATA, 10000, FailureReason::METADATA_INVALID);
+    }
+
+    /**
+     * An element is refused when a prefix it names is bound nowhere, or when it
+     * belongs to no document.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    public function testAnElementIsRefusedWhenItsNamespacesCannotBeResolved(): void
+    {
+        $parser = new HardenedParser;
+
+        $elements = [
+            'schema'    => self::entity($parser, 'zz:string'),
+            'structure' => new \DOMElement('EntityDescriptor'),
+        ];
+
+        foreach ($elements as $detail => $element) {
+            try {
+                $parser->validateElement($element, MessageKind::METADATA, FailureReason::METADATA_INVALID);
+                self::fail('An element that cannot be resolved was validated.');
+            } catch (ReadFailure $failure) {
+                self::assertSame([FailureReason::METADATA_INVALID, $detail], [$failure->reason, $failure->detail]);
+            }
+        }
+    }
+
+    /**
+     * The entity of an aggregate that binds `xs` only on itself, its attribute
+     * value typed as given.
+     *
+     * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Library\HardenedParser  $parser
+     * @param  string  $type
+     * @return \DOMElement
+     *
+     * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
+     */
+    private static function entity(HardenedParser $parser, string $type): \DOMElement
+    {
+        $xml = '<md:EntitiesDescriptor xmlns:md="urn:oasis:names:tc:SAML:2.0:metadata" xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion"'
+            . ' xmlns:xs="http://www.w3.org/2001/XMLSchema" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">'
+            . '<md:EntityDescriptor entityID="https://idp.example.test/saml">'
+            . '<md:IDPSSODescriptor protocolSupportEnumeration="urn:oasis:names:tc:SAML:2.0:protocol">'
+            . '<md:SingleSignOnService Binding="urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect" Location="https://idp.example.test/saml/sso"/>'
+            . '<saml:Attribute Name="role"><saml:AttributeValue xsi:type="' . $type . '">admin</saml:AttributeValue></saml:Attribute>'
+            . '</md:IDPSSODescriptor></md:EntityDescriptor></md:EntitiesDescriptor>';
+
+        $entity = $parser->loadUnique($xml, strlen($xml))->documentElement?->firstChild;
+
+        self::assertInstanceOf(\DOMElement::class, $entity);
+
+        return $entity;
+    }
 }

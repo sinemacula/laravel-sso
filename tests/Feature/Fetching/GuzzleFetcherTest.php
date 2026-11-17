@@ -948,6 +948,21 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
+     * An ASCII host keeps its authority as given when only the path is not
+     * ASCII.
+     *
+     * @return void
+     */
+    public function testSendsANonAsciiPathUnderAnAsciiHost(): void
+    {
+        $result = $this->fetcher([new Response(200, [], 'ok')])->fetch(FetchRequest::metadata('https://idp.example.com:8443/métadonnées'));
+
+        self::assertTrue($result->isFetched());
+        self::assertSame('https://idp.example.com:8443/m%C3%A9tadonn%C3%A9es', (string) $this->sentRequest()->getUri());
+        self::assertSame(['idp.example.com:8443:93.184.216.34'], $this->curlOptions()[CURLOPT_RESOLVE]);
+    }
+
+    /**
      * An injected handler works without `ext-curl`; only the default cURL
      * handler needs it.
      *

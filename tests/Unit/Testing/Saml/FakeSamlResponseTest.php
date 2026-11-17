@@ -31,6 +31,9 @@ final class FakeSamlResponseTest extends TestCase
     /** @var ?\SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider The provider, made once. */
     private static ?FakeSamlIdentityProvider $idp = null;
 
+    /** @var ?string The service provider's encryption certificate, made once. */
+    private static ?string $certificate = null;
+
     /**
      * The defaults are a successful response to the service provider, its
      * identifiers sharing one 16-hex-digit suffix and its instants relative to
@@ -118,10 +121,71 @@ final class FakeSamlResponseTest extends TestCase
      */
     public function testEncryptsOrLeavesOutTheAssertion(): void
     {
-        [, $certificate] = FakeSamlIdentityProvider::keyPair('sp.example.test');
-
-        self::assertSame('Response#_response{EncryptedAssertion}', self::outline(self::response()->encryptedFor($certificate)->toXml()));
+        self::assertSame('Response#_response{EncryptedAssertion}', self::outline(self::response()->encryptedFor(self::certificate())->toXml()));
         self::assertSame('Response#_response', self::outline(self::response()->with(['assertion' => false])->toXml()));
+    }
+
+    /**
+     * A response signed by another key carries that key's certificate.
+     *
+     * @return void
+     */
+    public function testSignedByAnotherKeyCarriesItsCertificate(): void
+    {
+        $other = new FakeSamlIdentityProvider('https://other.example.test');
+        $body  = preg_replace('/-----[^-]+-----|\s+/', '', $other->certificate());
+
+        self::assertStringContainsString('<ds:X509Certificate>' . $body . '</ds:X509Certificate>', self::response()->signedBy($other->signer())->toXml());
+    }
+
+    /**
+     * Rows of `[variant, outline]`: a variant wrapping the signed response, one
+     * reusing the assertion's ID and one with an evil ID.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideWrappings(): iterable
+    {
+        yield from [
+            'xsw1'           => ['xsw1', 'Response#_evil-response{Signature{Response#_response{Assertion#_assertion}},Assertion#_assertion}'],
+            'same_id_before' => ['same_id_before', 'Response#_response{Assertion#_assertion,Assertion#_assertion{Signature}}'],
+            'xsw3'           => ['xsw3', 'Response#_response{Assertion#_evil-assertion,Assertion#_assertion{Signature}}'],
+        ];
+    }
+
+    /**
+     * A wrapped response signs what the variant attacks and leaves the
+     * assertion unencrypted, whatever was asked.
+     *
+     * @param  string  $variant
+     * @param  string  $outline
+     * @return void
+     */
+    #[DataProvider('provideWrappings')]
+    public function testWrapsTheSignedPartInPlainText(string $variant, string $outline): void
+    {
+        $response = self::response()->signed(false, false)->encryptedFor(self::certificate())->wrapped($variant);
+
+        self::assertSame($outline, self::outline($response->toXml()));
+    }
+
+    /**
+     * A value XML cannot hold is refused rather than written.
+     *
+     * @return void
+     */
+    public function testRefusesAValueXmlCannotHold(): void
+    {
+        $previous = libxml_use_internal_errors(true);
+
+        try {
+            $this->expectExceptionObject(new \LogicException('The fake identity provider wrote XML it cannot parse.'));
+
+            self::response()->with(['name_id' => "alice\x01"])->toXml();
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
     }
 
     /**
@@ -221,5 +285,15 @@ final class FakeSamlResponseTest extends TestCase
         self::$idp ??= new FakeSamlIdentityProvider;
 
         return self::$idp->response('https://sp.example.test', self::ACS)->with(['response_id' => '_response', 'assertion_id' => '_assertion']);
+    }
+
+    /**
+     * The service provider's encryption certificate.
+     *
+     * @return string
+     */
+    private static function certificate(): string
+    {
+        return self::$certificate ??= FakeSamlIdentityProvider::keyPair('sp.example.test')[1];
     }
 }

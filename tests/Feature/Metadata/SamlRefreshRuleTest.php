@@ -136,6 +136,20 @@ final class SamlRefreshRuleTest extends TestCase
     }
 
     /**
+     * A connection with no metadata URL is never refreshed, even opted in.
+     *
+     * @return void
+     */
+    public function testAQueuedRefreshOfAConnectionWithNoUrlIsSkipped(): void
+    {
+        $connection = $this->saml(['metadata_url' => null, 'metadata_refresh' => true]);
+
+        self::assertSame(RefreshOutcome::SKIPPED, $this->refresher()->refreshQueued($connection->id, Clients::browser())->outcome);
+        self::assertSame(0, $this->row($connection)->metadata_version);
+        self::assertSame([], $this->fetcher->requests());
+    }
+
+    /**
      * Every chunk of a due listing keeps its order whatever anchors bring in.
      *
      * @return void

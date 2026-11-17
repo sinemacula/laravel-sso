@@ -24,6 +24,7 @@ use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\ReplayRecord;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
+use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
 use Tests\Concerns\CapturesLogs;
@@ -41,6 +42,7 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(AssertionValidator::class)]
+#[CoversClass(ValidationContext::class)]
 final class AssertionValidatorTest extends TestCase
 {
     use CapturesLogs, UsesConnections;

@@ -8,6 +8,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
+use Tests\Fixtures\Keys\Certificates;
 
 /**
  * Unit tests for a masked key or certificate.
@@ -143,6 +144,28 @@ final class MaskedKeyTest extends TestCase
             self::fail('Expected the certificate to be refused.');
         } catch (\InvalidArgumentException $exception) {
             self::assertSame('The certificate is not one PEM-encoded X.509 certificate.', $exception->getMessage());
+            self::assertFalse(openssl_error_string());
+        }
+    }
+
+    /**
+     * A certificate whose public key OpenSSL cannot read is refused, clearing
+     * OpenSSL's errors.
+     *
+     * @return void
+     */
+    public function testRefusesACertificateWhosePublicKeyCannotBeRead(): void
+    {
+        $pem = Certificates::unknownKeyAlgorithm();
+
+        self::clearOpenSslErrors();
+
+        try {
+            MaskedKey::fromCertificate($pem);
+
+            self::fail('Expected the certificate to be refused.');
+        } catch (\InvalidArgumentException $exception) {
+            self::assertSame('The certificate\'s public key cannot be read.', $exception->getMessage());
             self::assertFalse(openssl_error_string());
         }
     }

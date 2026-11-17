@@ -28,13 +28,18 @@ use Tests\TestCase;
 #[CoversTrait(FreshnessContract::class)]
 final class FreshnessContractTest extends TestCase
 {
-    use FreshnessContract;
+    use FreshnessContract {
+        judgesSessions as private judgesSessionsByDefault;
+    }
 
     /** @var array<string, array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: \Carbon\CarbonImmutable}> Each session's identity and authentication time. */
     private array $sessions = [];
 
     /** @var ?string How the binding breaks the contract, if it does. */
     private ?string $flaw = null;
+
+    /** @var ?bool Whether the binding judges sessions, or null for the kit's default. */
+    private ?bool $judges = null;
 
     /**
      * The kit fails a binding that judges the session without its identity.
@@ -46,6 +51,34 @@ final class FreshnessContractTest extends TestCase
         $this->flaw = 'identity';
 
         $this->expectException(AssertionFailedError::class);
+
+        $this->testFreshnessFindsAnUnjudgeableCallerStale();
+    }
+
+    /**
+     * The kit fails a binding that finds a caller with no session fresh.
+     *
+     * @return void
+     */
+    public function testCatchesABindingThatFindsASessionlessCallerFresh(): void
+    {
+        $this->flaw = 'sessionless';
+
+        $this->expectException(AssertionFailedError::class);
+
+        $this->testFreshnessFindsAnUnjudgeableCallerStale();
+    }
+
+    /**
+     * The kit accepts a caller with no session as fresh from a binding that
+     * does not judge sessions.
+     *
+     * @return void
+     */
+    public function testAcceptsASessionlessCallerFromABindingThatDoesNotJudgeSessions(): void
+    {
+        $this->flaw   = 'sessionless';
+        $this->judges = false;
 
         $this->testFreshnessFindsAnUnjudgeableCallerStale();
     }
@@ -117,7 +150,9 @@ final class FreshnessContractTest extends TestCase
             {
                 unset($operation);
 
-                [$identity, $at] = ($this->sessions)()[$caller->sessionId ?? ''] ?? [null, null];
+                [$identity, $at] = $this->flaw === 'sessionless' && $caller !== null && $caller->sessionId === null
+                    ? [$caller->identity, CarbonImmutable::now()]
+                    : ($this->sessions)()[$caller->sessionId ?? ''] ?? [null, null];
 
                 $maxAge = match (true) {
                     $this->flaw === 'age'                                                     => 300,
@@ -130,6 +165,14 @@ final class FreshnessContractTest extends TestCase
                 return $owned && $at !== null && $at->diffInSeconds(CarbonImmutable::now()) <= $maxAge ? FreshnessOutcome::FRESH : FreshnessOutcome::STALE;
             }
         };
+    }
+
+    /**
+     * @return bool
+     */
+    protected function judgesSessions(): bool
+    {
+        return $this->judges ?? $this->judgesSessionsByDefault();
     }
 
     /**

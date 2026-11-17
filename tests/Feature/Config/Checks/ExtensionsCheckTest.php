@@ -4,8 +4,10 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Config\Checks;
 
+use Composer\InstalledVersions;
 use Illuminate\Filesystem\Filesystem;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\RunInSeparateProcess;
 use SineMacula\Laravel\Sso\Config\Checks\ExtensionsCheck;
 use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
@@ -131,6 +133,27 @@ final class ExtensionsCheckTest extends TestCase
         mkdir($this->directory . '/loaded/element.registry.3.php');
 
         self::assertSame([], $this->registryProblems());
+    }
+
+    /**
+     * An installed XML provider that ships no registry is not asked for one.
+     *
+     * @return void
+     */
+    #[RunInSeparateProcess]
+    public function testAnInstalledProviderWithoutARegistryIsSkipped(): void
+    {
+        $package = ['pretty_version' => '1.0.0', 'version' => '1.0.0.0', 'reference' => null, 'install_path' => $this->directory, 'aliases' => []];
+
+        InstalledVersions::reload([
+            'root'     => ['name' => 'vendor/root', 'type' => 'library', 'dev' => true, ...$package],
+            'versions' => ['vendor/bare' => ['type' => 'simplesamlphp-xmlprovider', 'dev_requirement' => false, ...$package]],
+        ]);
+
+        $this->useThePackage();
+
+        self::assertContains('vendor/bare', InstalledVersions::getInstalledPackagesByType('simplesamlphp-xmlprovider'));
+        self::assertSame([], $this->problemsOf(ExtensionsCheck::class));
     }
 
     /**

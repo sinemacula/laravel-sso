@@ -50,33 +50,39 @@ final class AdministrationEventClassesTest extends TestCase
     /**
      * Each administration event with its declared public properties, in order.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Contracts\SsoEvent, 1: list<string>}>
+     * @return iterable<string, array{0: \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent, 1: list<string>}>
      */
     public static function provideEvents(): iterable
     {
         $context  = self::context();
         $notAfter = CarbonImmutable::parse('2027-11-01T09:30:00Z');
 
-        yield 'connection created' => [new ConnectionCreated($context), ['context']];
-        yield 'connection updated' => [new ConnectionUpdated($context, ['token_endpoint', 'client_secret', 'display_name']), ['context', 'changedSettings']];
-        yield 'connection enabled' => [new ConnectionEnabled($context), ['context']];
-        yield 'connection disabled' => [new ConnectionDisabled($context), ['context']];
-        yield 'connection deleted' => [new ConnectionDeleted($context), ['context']];
+        yield 'connection created' => [static fn (): SsoEvent => new ConnectionCreated($context), ['context']];
+        yield 'connection updated' => [
+            static fn (): SsoEvent => new ConnectionUpdated($context, ['token_endpoint', 'client_secret', 'display_name']),
+            ['context', 'changedSettings'],
+        ];
+        yield 'connection enabled' => [static fn (): SsoEvent => new ConnectionEnabled($context), ['context']];
+        yield 'connection disabled' => [static fn (): SsoEvent => new ConnectionDisabled($context), ['context']];
+        yield 'connection deleted' => [static fn (): SsoEvent => new ConnectionDeleted($context), ['context']];
         yield 'key added' => [
-            new KeyAdded($context, '01jbkey0000000000000000001', KeyUse::SP_SIGNING, KeyState::NEXT, self::FINGERPRINT, $notAfter),
+            static fn (): SsoEvent => new KeyAdded($context, '01jbkey0000000000000000001', KeyUse::SP_SIGNING, KeyState::NEXT, self::FINGERPRINT, $notAfter),
             ['context', 'keyId', 'use', 'state', 'fingerprint', 'notAfter'],
         ];
         yield 'certificate added' => [
-            new KeyAdded($context, '01jbkey0000000000000000002', KeyUse::IDP_SIGNING, null, self::FINGERPRINT, null),
+            static fn (): SsoEvent => new KeyAdded($context, '01jbkey0000000000000000002', KeyUse::IDP_SIGNING, null, self::FINGERPRINT, null),
             ['context', 'keyId', 'use', 'state', 'fingerprint', 'notAfter'],
         ];
         yield 'key made current' => [
-            new KeyMadeCurrent($context, '01jbkey0000000000000000001', KeyUse::CLIENT_ASSERTION, self::FINGERPRINT, '01jbkey0000000000000000003'),
+            static fn (): SsoEvent => new KeyMadeCurrent($context, '01jbkey0000000000000000001', KeyUse::CLIENT_ASSERTION, self::FINGERPRINT, '01jbkey0000000000000000003'),
             ['context', 'keyId', 'use', 'fingerprint', 'previousKeyId'],
         ];
-        yield 'key retired' => [new KeyRetired($context, '01jbkey0000000000000000003', KeyUse::SP_ENCRYPTION, self::FINGERPRINT), ['context', 'keyId', 'use', 'fingerprint']];
+        yield 'key retired' => [
+            static fn (): SsoEvent => new KeyRetired($context, '01jbkey0000000000000000003', KeyUse::SP_ENCRYPTION, self::FINGERPRINT),
+            ['context', 'keyId', 'use', 'fingerprint'],
+        ];
         yield 'key nearing expiry' => [
-            new KeyNearingExpiry($context, '01jbkey0000000000000000002', KeyUse::IDP_SIGNING, self::FINGERPRINT, $notAfter, 7),
+            static fn (): SsoEvent => new KeyNearingExpiry($context, '01jbkey0000000000000000002', KeyUse::IDP_SIGNING, self::FINGERPRINT, $notAfter, 7),
             ['context', 'keyId', 'use', 'fingerprint', 'notAfter', 'thresholdDays'],
         ];
     }
@@ -84,13 +90,15 @@ final class AdministrationEventClassesTest extends TestCase
     /**
      * Each event is a final, read-only package event returning its context.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testEachIsAPackageEventReturningItsContext(SsoEvent $event, array $properties): void
+    public function testEachIsAPackageEventReturningItsContext(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $class = new \ReflectionClass($event);
 
         self::assertSame('context', $properties[0]);
@@ -105,13 +113,15 @@ final class AdministrationEventClassesTest extends TestCase
     /**
      * A serialise round trip, as a queue makes, gives an equal event.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testEachSurvivesASerializeRoundTrip(SsoEvent $event, array $properties): void
+    public function testEachSurvivesASerializeRoundTrip(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $restored = unserialize(serialize($event));
 
         self::assertInstanceOf($event::class, $restored);
@@ -136,13 +146,15 @@ final class AdministrationEventClassesTest extends TestCase
     /**
      * Each event holds exactly its declared properties, none sensitive.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testEachHoldsExactlyItsDeclaredProperties(SsoEvent $event, array $properties): void
+    public function testEachHoldsExactlyItsDeclaredProperties(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $declared = (new \ReflectionClass($event))->getProperties();
         $names    = array_map(static fn (\ReflectionProperty $property): string => $property->getName(), $declared);
 

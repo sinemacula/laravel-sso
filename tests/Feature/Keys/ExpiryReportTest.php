@@ -649,6 +649,34 @@ final class ExpiryReportTest extends TestCase
     }
 
     /**
+     * A key removed after its page was read is skipped: neither listed nor
+     * counted.
+     *
+     * @return void
+     */
+    public function testSkipsAKeyRemovedDuringTheRun(): void
+    {
+        $first   = $this->key(self::DAY);
+        $removed = $this->key(2 * self::DAY);
+        $listed  = [];
+
+        $remove = static function (ExpiringKey $entry) use (&$listed, $removed): void {
+            $listed[] = $entry->key->id;
+
+            $removed->delete();
+        };
+
+        $run = $this->report()->report(Clients::browser(), null, $remove);
+
+        self::assertSame([$first->id], $listed);
+        self::assertSame(
+            ['listed' => 1, 'expired' => 0, 'notices' => ['notified' => 1, 'already_notified' => 0, 'not_due' => 0, 'claimed' => 0, 'failed' => 0]],
+            $run->jsonSerialize(),
+        );
+        self::assertSame([$first->id], $this->reportedKeyIds());
+    }
+
+    /**
      * With no key to look at, a run reads one page and nothing else.
      *
      * @return void

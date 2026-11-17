@@ -182,6 +182,23 @@ final class XmlSignerTest extends TestCase
     }
 
     /**
+     * A key too short for the hash cannot sign.
+     *
+     * @return void
+     */
+    public function testRefusesAKeyTooShortForTheHash(): void
+    {
+        $key = openssl_pkey_new(['private_key_bits' => 512]);
+
+        self::assertNotFalse($key);
+        self::assertTrue(openssl_pkey_export($key, $privateKey));
+
+        $this->expectExceptionObject(new \LogicException('The fake identity provider could not sign.'));
+
+        (new XmlSigner($privateKey, self::keys()[1]))->signatureValue('data', 'rsa-sha512');
+    }
+
+    /**
      * The `SignedInfo` the tests expect, in exclusive canonical form.
      *
      * @param  string  $canonicalisation

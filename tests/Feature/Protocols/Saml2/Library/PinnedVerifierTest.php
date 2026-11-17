@@ -6,11 +6,17 @@ namespace Tests\Feature\Protocols\Saml2\Library;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use SimpleSAML\SAML2\XML\md\AbstractSignedMdElement;
 use SimpleSAML\SAML2\XML\saml\Assertion;
 use SimpleSAML\SAML2\XML\samlp\Response;
+use SimpleSAML\XML\Type\IDValue;
+use SimpleSAML\XMLSecurity\Alg\Signature\SignatureAlgorithmInterface;
+use SimpleSAML\XMLSecurity\XML\ds\Signature;
+use SimpleSAML\XMLSecurity\XML\SignedElementInterface;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\PinnedVerifier;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure;
+use SineMacula\Laravel\Sso\Protocols\Saml2\Library\SignedDescriptor;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\TestCase;
 
@@ -112,6 +118,72 @@ final class PinnedVerifierTest extends TestCase
     }
 
     /**
+     * A signed descriptor's verified element is its entity without the
+     * signature, in a document of its own.
+     *
+     * @return void
+     *
+     * @throws \Exception
+     */
+    public function testADescriptorsVerifiedElementIsItsEntityUnsigned(): void
+    {
+        $root = self::document(self::idp()->metadata()->with(['sign' => 'entity'])->toXml())->documentElement;
+
+        self::assertNotNull($root);
+
+        [$descriptor, $element] = app(PinnedVerifier::class)->verifiedElement(SignedDescriptor::fromXML($root), [self::idp()->certificate()], PinnedVerifier::SIGNATURE_ALGORITHMS);
+
+        self::assertSame($root->getAttribute('ID'), $descriptor->getId()?->getValue());
+        self::assertSame(self::unsigned($root), $element->C14N(true, false));
+        self::assertNull(self::child($element, self::NS_DS, 'Signature', false));
+        self::assertNotSame($root->ownerDocument, $element->ownerDocument);
+    }
+
+    /**
+     * A signed element with no `ID` for its reference to name is refused before
+     * its signature is verified.
+     *
+     * @return void
+     */
+    public function testAnElementWithNoIdIsRefusedBeforeVerifying(): void
+    {
+        $xml  = (string) preg_replace('/(<md:EntityDescriptor[^>]*?) ID="[^"]+"/', '$1', self::idp()->metadata()->with(['sign' => 'entity'])->toXml());
+        $root = self::document($xml)->documentElement;
+
+        self::assertNotNull($root);
+
+        try {
+            app(PinnedVerifier::class)->verified(SignedDescriptor::fromXML($root), [self::idp()->certificate()], PinnedVerifier::SIGNATURE_ALGORITHMS);
+            self::fail('An element with no ID was verified.');
+        } catch (ReadFailure $failure) {
+            self::assertSame([FailureReason::SIGNATURE_INVALID, 'signature_policy'], [$failure->reason, $failure->detail]);
+        }
+    }
+
+    /**
+     * An element whose digested bytes cannot be rebuilt is refused with the
+     * reason given, however it verified.
+     *
+     * @return void
+     */
+    public function testAnElementWhoseDigestCannotBeRebuiltIsRefused(): void
+    {
+        $xml  = (string) preg_replace('#<ds:Transforms>.*?</ds:Transforms>#s', '', self::idp()->metadata()->with(['sign' => 'entity'])->toXml());
+        $root = self::document($xml)->documentElement;
+
+        self::assertNotNull($root);
+
+        try {
+            $verifier = app(PinnedVerifier::class);
+
+            $verifier->verifiedElement(self::alwaysVerified($root), [self::idp()->certificate()], PinnedVerifier::SIGNATURE_ALGORITHMS, FailureReason::METADATA_SIGNATURE_INVALID);
+            self::fail('An element whose digest cannot be rebuilt was answered.');
+        } catch (ReadFailure $failure) {
+            self::assertSame([FailureReason::METADATA_SIGNATURE_INVALID, 'signature'], [$failure->reason, $failure->detail]);
+        }
+    }
+
+    /**
      * Rows of `[transforms]`: the transforms of a reference the trusted key
      * signs over the same digested bytes, which the library would verify.
      *
@@ -167,6 +239,88 @@ final class PinnedVerifierTest extends TestCase
         self::idp()->signer()->sign($assertion, ['transforms' => $transforms]);
 
         return Assertion::fromXML($assertion);
+    }
+
+    /**
+     * The signed descriptor as an element that claims to verify under any key.
+     *
+     * @param  \DOMElement  $xml
+     * @return \SimpleSAML\SAML2\XML\md\AbstractSignedMdElement
+     */
+    private static function alwaysVerified(\DOMElement $xml): AbstractSignedMdElement
+    {
+        return new class ($xml) extends AbstractSignedMdElement {
+            /**
+             * Constructor.
+             *
+             * @param  \DOMElement  $xml
+             */
+            public function __construct(\DOMElement $xml)
+            {
+                $this->setSignature(Signature::getChildrenOfClass($xml)[0]);
+                $this->setXML($xml);
+            }
+
+            /**
+             * Never called by the verifier.
+             *
+             * @param  \DOMElement  $xml
+             * @return static
+             *
+             * @throws \LogicException
+             */
+            #[\Override]
+            public static function fromXML(\DOMElement $xml): static
+            {
+                throw new \LogicException('The verifier called fromXML().');
+            }
+
+            /**
+             * The element's `ID`.
+             *
+             * @return \SimpleSAML\XML\Type\IDValue
+             */
+            #[\Override]
+            public function getId(): IDValue
+            {
+                return IDValue::fromString($this->xml->getAttribute('ID'));
+            }
+
+            /**
+             * The element it was read from.
+             *
+             * @param  ?\DOMElement  $parent
+             * @return \DOMElement
+             */
+            #[\Override]
+            public function toUnsignedXML(?\DOMElement $parent = null): \DOMElement
+            {
+                return $this->xml;
+            }
+
+            /**
+             * Itself, whatever the key.
+             *
+             * @param  ?\SimpleSAML\XMLSecurity\Alg\Signature\SignatureAlgorithmInterface  $verifier
+             * @return \SimpleSAML\XMLSecurity\XML\SignedElementInterface
+             */
+            #[\Override]
+            public function verify(?SignatureAlgorithmInterface $verifier = null): SignedElementInterface
+            {
+                return $this;
+            }
+
+            /**
+             * The element it was read from.
+             *
+             * @return \DOMElement
+             */
+            #[\Override]
+            protected function getOriginalXML(): \DOMElement
+            {
+                return $this->xml;
+            }
+        };
     }
 
     /**

@@ -208,6 +208,20 @@ final class KeyRingTest extends TestCase
     }
 
     /**
+     * An own key's use is not a trusted certificate's, and is refused.
+     *
+     * @return void
+     */
+    public function testRefusesToReadTrustedCertificatesOfAnOwnKeysUse(): void
+    {
+        $this->row($this->connection, KeyUse::SP_SIGNING, KeyState::CURRENT);
+
+        $this->expectExceptionObject(new \InvalidArgumentException('[sp_signing] is not a use of a trusted certificate.'));
+
+        $this->ring()->trustedCertificates($this->connection->id, KeyUse::SP_SIGNING);
+    }
+
+    /**
      * A key's private half is decrypted for its own connection, as a secret.
      *
      * @return void

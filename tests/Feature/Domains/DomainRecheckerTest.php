@@ -525,6 +525,50 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
+     * A claim whose connection is deleted before the lease is skipped unasked.
+     *
+     * @return void
+     */
+    public function testAClaimWhoseConnectionIsGoneBeforeTheLeaseIsSkipped(): void
+    {
+        $claim = $this->verifiedClaim();
+
+        $this->clock->advance(3600);
+        $this->beforeTheNextTransaction(fn (): mixed => Connection::query()->whereKey($this->connection->id)->delete());
+
+        self::assertSame(1, $this->runRecheck()->count(RecheckOutcome::SKIPPED));
+        self::assertNull(self::reload($claim)->recheck_leased_until);
+        $this->dns->assertNothingLookedUp();
+        $this->assertNoEvents();
+    }
+
+    /**
+     * A throw after the claim's connection is deleted leaves the lease alone.
+     *
+     * @return void
+     */
+    public function testAResolverThatThrowsAfterItsConnectionIsGoneLeavesTheLease(): void
+    {
+        $this->captureLogs();
+
+        $claim = $this->verifiedClaim();
+
+        $this->clock->advance(3600);
+
+        $this->dns->answer(self::RECORD, function (): never {
+            Connection::query()->whereKey($this->connection->id)->delete();
+
+            throw new \RuntimeException('Too slow.');
+        });
+
+        $report = $this->runRecheck();
+
+        self::assertSame(RecheckOutcome::RESOLVER_THREW, $report->entries[0]->outcome);
+        self::assertSame($this->clock->now()->addSeconds(DomainRechecker::LEASE_SECONDS)->toAtomString(), self::reload($claim)->recheck_leased_until?->toAtomString());
+        $this->assertLoggedOnce(\RuntimeException::class);
+    }
+
+    /**
      * A database error while releasing a thrower's lease still stops the run.
      *
      * @return void

@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Applications\Application;
+use SineMacula\Laravel\Sso\Completion\CompletionLock;
 use SineMacula\Laravel\Sso\Completion\CompletionLocks;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
@@ -92,6 +93,7 @@ use Tests\TestCase;
  */
 #[CoversClass(CompletionPipeline::class)]
 #[CoversClass(CompletionLocks::class)]
+#[CoversClass(CompletionLock::class)]
 #[CoversClass(UnsolicitedReinitiation::class)]
 final class CompletionPipelineTest extends TestCase
 {

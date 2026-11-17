@@ -470,6 +470,19 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
+     * An email whose domain is no host name matches nobody, unasked.
+     *
+     * @return void
+     */
+    public function testAnEmailOfNoHostNameMatchesNobody(): void
+    {
+        $match = self::eligibility()->match($this->resultWith(null), new LinkingEmail('person@exa_mple.com', LinkingEmailSource::ID_TOKEN));
+
+        self::assertEquals(LinkEmailMatch::none(), $match);
+        self::assertSame([], $this->matcher->queries);
+    }
+
+    /**
      * A domain verified for another connection, and a pending claim of this
      * one, link nothing.
      *

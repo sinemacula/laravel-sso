@@ -48,7 +48,7 @@ final class DomainAndEnforcementEventClassesTest extends TestCase
     /**
      * Each event, with the public properties it declares, in order.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Contracts\SsoEvent, 1: list<string>}>
+     * @return iterable<string, array{0: \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent, 1: list<string>}>
      */
     public static function provideEvents(): iterable
     {
@@ -56,38 +56,46 @@ final class DomainAndEnforcementEventClassesTest extends TestCase
         $at      = CarbonImmutable::parse('2026-11-08T09:30:00Z');
 
         yield 'domain claimed' => [
-            new DomainClaimed($context, self::DOMAIN_ID, 'example.com', '_sso-verification.example.com', $at),
+            static fn (): SsoEvent => new DomainClaimed($context, self::DOMAIN_ID, 'example.com', '_sso-verification.example.com', $at),
             ['context', 'domainId', 'domain', 'recordName', 'pendingExpiresAt'],
         ];
-        yield 'domain verified' => [new DomainVerified($context, self::DOMAIN_ID, 'example.com', $at), ['context', 'domainId', 'domain', 'verifiedAt']];
+        yield 'domain verified' => [static fn (): SsoEvent => new DomainVerified($context, self::DOMAIN_ID, 'example.com', $at), ['context', 'domainId', 'domain', 'verifiedAt']];
         yield 'domain recheck failed' => [
-            new DomainRecheckFailed($context, self::DOMAIN_ID, 'example.com', RecheckFailure::RECORD_CHANGED, $at),
+            static fn (): SsoEvent => new DomainRecheckFailed($context, self::DOMAIN_ID, 'example.com', RecheckFailure::RECORD_CHANGED, $at),
             ['context', 'domainId', 'domain', 'failure', 'lapsesAt'],
         ];
         yield 'domain recheck failed by a lookup' => [
-            new DomainRecheckFailed($context, self::DOMAIN_ID, 'example.com', RecheckFailure::LOOKUP_FAILED, null),
+            static fn (): SsoEvent => new DomainRecheckFailed($context, self::DOMAIN_ID, 'example.com', RecheckFailure::LOOKUP_FAILED, null),
             ['context', 'domainId', 'domain', 'failure', 'lapsesAt'],
         ];
-        yield 'domain restored' => [new DomainRestored($context, self::DOMAIN_ID, 'example.com', $at, $at), ['context', 'domainId', 'domain', 'verifiedAt', 'checkedAt']];
-        yield 'domain lapsed' => [new DomainLapsed($context, self::DOMAIN_ID, 'example.com'), ['context', 'domainId', 'domain']];
-        yield 'domain removed' => [new DomainRemoved($context, self::DOMAIN_ID, 'example.com', DomainState::VERIFIED), ['context', 'domainId', 'domain', 'state']];
+        yield 'domain restored' => [
+            static fn (): SsoEvent => new DomainRestored($context, self::DOMAIN_ID, 'example.com', $at, $at),
+            ['context', 'domainId', 'domain', 'verifiedAt', 'checkedAt'],
+        ];
+        yield 'domain lapsed' => [static fn (): SsoEvent => new DomainLapsed($context, self::DOMAIN_ID, 'example.com'), ['context', 'domainId', 'domain']];
+        yield 'domain removed' => [
+            static fn (): SsoEvent => new DomainRemoved($context, self::DOMAIN_ID, 'example.com', DomainState::VERIFIED),
+            ['context', 'domainId', 'domain', 'state'],
+        ];
         yield 'enforcement changed' => [
-            new EnforcementChanged($context, true, ['01jbconnection000000000001'], '01jbversion000000000000002', '01jbversion000000000000001'),
+            static fn (): SsoEvent => new EnforcementChanged($context, true, ['01jbconnection000000000001'], '01jbversion000000000000002', '01jbversion000000000000001'),
             ['context', 'enabled', 'connectionIds', 'version', 'previousVersion'],
         ];
-        yield 'exemption used' => [new ExemptionUsed($context, '01jbversion000000000000002'), ['context', 'enforcementVersion']];
+        yield 'exemption used' => [static fn (): SsoEvent => new ExemptionUsed($context, '01jbversion000000000000002'), ['context', 'enforcementVersion']];
     }
 
     /**
      * Each event is a final, read-only package event returning its context.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testEachIsAPackageEventReturningItsContext(SsoEvent $event, array $properties): void
+    public function testEachIsAPackageEventReturningItsContext(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $class = new \ReflectionClass($event);
 
         self::assertSame('context', $properties[0]);
@@ -100,13 +108,15 @@ final class DomainAndEnforcementEventClassesTest extends TestCase
     /**
      * A serialise round trip, as a queue makes, gives an equal event.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testEachSurvivesASerializeRoundTrip(SsoEvent $event, array $properties): void
+    public function testEachSurvivesASerializeRoundTrip(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $restored = unserialize(serialize($event));
 
         self::assertInstanceOf($event::class, $restored);
@@ -130,13 +140,15 @@ final class DomainAndEnforcementEventClassesTest extends TestCase
     /**
      * Each event holds exactly its declared properties, none sensitive.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testEachHoldsExactlyItsDeclaredProperties(SsoEvent $event, array $properties): void
+    public function testEachHoldsExactlyItsDeclaredProperties(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $declared = (new \ReflectionClass($event))->getProperties();
 
         self::assertSame($properties, array_map(static fn (\ReflectionProperty $property): string => $property->getName(), $declared));

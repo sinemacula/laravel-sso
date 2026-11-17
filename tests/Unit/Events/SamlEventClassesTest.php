@@ -34,7 +34,7 @@ final class SamlEventClassesTest extends TestCase
     /**
      * Each event, with the public properties it declares, in order.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Contracts\SsoEvent, 1: list<string>}>
+     * @return iterable<string, array{0: \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent, 1: list<string>}>
      */
     public static function provideEvents(): iterable
     {
@@ -42,29 +42,31 @@ final class SamlEventClassesTest extends TestCase
 
         $refreshed = ['context', 'changedSettings', 'metadataVersion', 'trustChanged'];
 
-        yield 'metadata refreshed' => [new MetadataRefreshed($context, ['sso_url', 'idp_signing_certificates'], 4, true), $refreshed];
-        yield 'metadata unchanged' => [new MetadataRefreshed($context, [], 3, false), $refreshed];
+        yield 'metadata refreshed' => [static fn (): SsoEvent => new MetadataRefreshed($context, ['sso_url', 'idp_signing_certificates'], 4, true), $refreshed];
+        yield 'metadata unchanged' => [static fn (): SsoEvent => new MetadataRefreshed($context, [], 3, false), $refreshed];
         yield 'metadata refresh failed' => [
-            new MetadataRefreshFailed($context, FailureReason::METADATA_SIGNATURE_INVALID, 3, CarbonImmutable::parse('2026-11-01T10:30:00Z')),
+            static fn (): SsoEvent => new MetadataRefreshFailed($context, FailureReason::METADATA_SIGNATURE_INVALID, 3, CarbonImmutable::parse('2026-11-01T10:30:00Z')),
             ['context', 'reason', 'failures', 'nextAttemptAt'],
         ];
         yield 'metadata refresh failed, none scheduled' => [
-            new MetadataRefreshFailed($context, FailureReason::FETCH_FAILED, 1, null),
+            static fn (): SsoEvent => new MetadataRefreshFailed($context, FailureReason::FETCH_FAILED, 1, null),
             ['context', 'reason', 'failures', 'nextAttemptAt'],
         ];
-        yield 'unsolicited response reinitiated' => [new UnsolicitedResponseReinitiated($context), ['context']];
+        yield 'unsolicited response reinitiated' => [static fn (): SsoEvent => new UnsolicitedResponseReinitiated($context), ['context']];
     }
 
     /**
      * Each event is a final, read-only package event returning its context.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testEachIsAPackageEventReturningItsContext(SsoEvent $event, array $properties): void
+    public function testEachIsAPackageEventReturningItsContext(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $class = new \ReflectionClass($event);
 
         self::assertSame('context', $properties[0]);
@@ -78,13 +80,15 @@ final class SamlEventClassesTest extends TestCase
     /**
      * A serialise round trip, as a queue makes, gives an equal event.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testEachSurvivesASerializeRoundTrip(SsoEvent $event, array $properties): void
+    public function testEachSurvivesASerializeRoundTrip(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $restored = unserialize(serialize($event));
 
         self::assertInstanceOf($event::class, $restored);
@@ -99,13 +103,15 @@ final class SamlEventClassesTest extends TestCase
     /**
      * Each event holds exactly its declared properties, none sensitive.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testEachHoldsExactlyItsDeclaredProperties(SsoEvent $event, array $properties): void
+    public function testEachHoldsExactlyItsDeclaredProperties(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $declared = (new \ReflectionClass($event))->getProperties();
 
         self::assertSame($properties, array_map(static fn (\ReflectionProperty $property): string => $property->getName(), $declared));
