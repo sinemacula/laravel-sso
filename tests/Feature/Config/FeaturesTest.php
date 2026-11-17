@@ -137,25 +137,4 @@ final class FeaturesTest extends TestCase
         self::assertTrue(Features::isInUse(new Repository(['sso' => ['features' => ['oidc' => true]]])));
         self::assertTrue(Features::requested(new Repository, Feature::METADATA_REFRESH));
     }
-
-    /**
-     * `Features` is a utility container, not to be instantiated.
-     *
-     * @return void
-     *
-     * @SuppressWarnings("php:S3011")
-     */
-    public function testConstructorIsPrivate(): void
-    {
-        $reflection  = new \ReflectionClass(Features::class);
-        $constructor = $reflection->getConstructor();
-
-        self::assertNotNull($constructor);
-        self::assertTrue($constructor->isPrivate());
-
-        $instance = $reflection->newInstanceWithoutConstructor();
-        $constructor->invoke($instance);
-
-        self::assertInstanceOf(Features::class, $instance);
-    }
 }

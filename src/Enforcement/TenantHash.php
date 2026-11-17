@@ -16,11 +16,6 @@ namespace SineMacula\Laravel\Sso\Enforcement;
 final class TenantHash
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Lower-case hex SHA-256 of the tenant id.
      *
      * @param  string  $tenantId

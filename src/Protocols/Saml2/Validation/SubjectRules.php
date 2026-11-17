@@ -22,11 +22,6 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAttribute;
 final class SubjectRules
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The encoded subject and its NameID format, or why there is none; an
      * unknown source fails closed.
      *

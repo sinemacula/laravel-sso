@@ -49,11 +49,6 @@ final class KeyedValues
     private const string OTHER = '.';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Redact every keyed value; `null` on a PCRE failure.
      *
      * @param  string  $text
@@ -95,12 +90,10 @@ final class KeyedValues
         $found = preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE);
 
         while ($found === 1) {
-
             $offset      = $match[0][1] + strlen($match[0][0]);
             $replacement = $value($match, $text, $offset);
 
             if ($replacement !== null && $replacement[1] > $replacement[0]) {
-
                 [$from, $to, $with] = $replacement;
 
                 $with .= $to === strlen($text) && str_ends_with($text, DiagnosticSanitizer::ELLIPSIS) ? DiagnosticSanitizer::ELLIPSIS : '';
@@ -241,7 +234,6 @@ final class KeyedValues
         $depth  = 0;
 
         while ($at < $length) {
-
             [$token, $next] = self::token($text, $at, $level);
 
             $depth += match ($token) {
@@ -275,7 +267,6 @@ final class KeyedValues
         $at     = self::token($text, $at, $level)[1];
 
         while ($at < $length) {
-
             [$token, $next] = self::token($text, $at, $level);
 
             if ($token === $quote) {
@@ -301,7 +292,6 @@ final class KeyedValues
         $closing = [];
 
         while ($at < $length) {
-
             if ($closing === [] && self::endsUnquoted($text, $at)) {
                 return $at;
             }
@@ -393,7 +383,6 @@ final class KeyedValues
         $depth   = 1;
 
         while (preg_match($pattern, $text, $match, PREG_OFFSET_CAPTURE, $at) === 1) {
-
             $depth += $match[1][0] === '/' ? -1 : (int) ($match[2][0] === '');
 
             if ($depth === 0) {

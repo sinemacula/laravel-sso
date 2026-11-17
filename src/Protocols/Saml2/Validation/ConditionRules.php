@@ -21,11 +21,6 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
 final class ConditionRules
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Why the conditions or either `IssueInstant` refuse the response, or
      * `null`.
      *

@@ -107,17 +107,4 @@ final class ConstantTimeTest extends TestCase
 
         ConstantTime::matchesDigest(hash('sha256', self::VALUE), self::VALUE, $algorithm);
     }
-
-    /**
-     * It is a utility container, never instantiated.
-     *
-     * @return void
-     */
-    public function testCannotBeInstantiated(): void
-    {
-        $constructor = (new \ReflectionClass(ConstantTime::class))->getConstructor();
-
-        self::assertNotNull($constructor);
-        self::assertTrue($constructor->isPrivate());
-    }
 }

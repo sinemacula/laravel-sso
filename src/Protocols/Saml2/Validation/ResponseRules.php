@@ -21,11 +21,6 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse;
 final class ResponseRules
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Why a successful response and its assertion are refused, or `null`.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlResponse  $response

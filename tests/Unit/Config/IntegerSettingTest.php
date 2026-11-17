@@ -201,25 +201,4 @@ final class IntegerSettingTest extends TestCase
     {
         self::assertSame($expected, IntegerSetting::parse($value));
     }
-
-    /**
-     * The constructor is private; reflection invokes it to cover the line.
-     *
-     * @return void
-     *
-     * @SuppressWarnings("php:S3011")
-     */
-    public function testConstructorIsPrivate(): void
-    {
-        $reflection  = new \ReflectionClass(IntegerSetting::class);
-        $constructor = $reflection->getConstructor();
-
-        self::assertNotNull($constructor);
-        self::assertTrue($constructor->isPrivate());
-
-        $instance = $reflection->newInstanceWithoutConstructor();
-        $constructor->invoke($instance);
-
-        self::assertInstanceOf(IntegerSetting::class, $instance);
-    }
 }

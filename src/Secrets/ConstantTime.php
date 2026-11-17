@@ -16,11 +16,6 @@ namespace SineMacula\Laravel\Sso\Secrets;
 final class ConstantTime
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Whether the given value is the known one.
      *
      * @param  string  $known

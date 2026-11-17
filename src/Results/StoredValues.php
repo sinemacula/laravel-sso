@@ -24,11 +24,6 @@ final class StoredValues
     public const string REDACTED = '[redacted]';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * `[redacted]` for a stated value, `null` for none.
      *
      * @param  mixed  $value

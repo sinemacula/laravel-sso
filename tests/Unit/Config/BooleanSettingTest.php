@@ -109,25 +109,4 @@ final class BooleanSettingTest extends TestCase
 
         BooleanSetting::isOn(self::KEY, $value);
     }
-
-    /**
-     * `BooleanSetting` is a utility container, not to be instantiated.
-     *
-     * @return void
-     *
-     * @SuppressWarnings("php:S3011")
-     */
-    public function testConstructorIsPrivate(): void
-    {
-        $reflection  = new \ReflectionClass(BooleanSetting::class);
-        $constructor = $reflection->getConstructor();
-
-        self::assertNotNull($constructor);
-        self::assertTrue($constructor->isPrivate());
-
-        $instance = $reflection->newInstanceWithoutConstructor();
-        $constructor->invoke($instance);
-
-        self::assertInstanceOf(BooleanSetting::class, $instance);
-    }
 }

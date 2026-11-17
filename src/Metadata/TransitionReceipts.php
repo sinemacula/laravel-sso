@@ -22,11 +22,6 @@ use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 final class TransitionReceipts
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Whether the receipt lets the request go on, the rows given as locked.
      *
      * @param  ?\SineMacula\Laravel\Sso\Protocols\TransitionReceipt  $receipt

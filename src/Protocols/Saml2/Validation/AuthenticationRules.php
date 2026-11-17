@@ -22,11 +22,6 @@ use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 final class AuthenticationRules
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The authentication context the assertion states, or why it is refused.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion

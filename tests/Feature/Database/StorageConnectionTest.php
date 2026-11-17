@@ -265,25 +265,4 @@ final class StorageConnectionTest extends TestCase
         self::assertSame(['Refused at level 1.', 'Refused at level 2.'], $refusals);
         self::assertSame(0, $database->transactionLevel());
     }
-
-    /**
-     * `StorageConnection` is a utility container, not to be instantiated.
-     *
-     * @return void
-     *
-     * @SuppressWarnings("php:S3011")
-     */
-    public function testConstructorIsPrivate(): void
-    {
-        $reflection  = new \ReflectionClass(StorageConnection::class);
-        $constructor = $reflection->getConstructor();
-
-        self::assertNotNull($constructor);
-        self::assertTrue($constructor->isPrivate());
-
-        $instance = $reflection->newInstanceWithoutConstructor();
-        $constructor->invoke($instance);
-
-        self::assertInstanceOf(StorageConnection::class, $instance);
-    }
 }

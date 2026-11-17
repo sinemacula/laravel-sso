@@ -25,11 +25,6 @@ final class RetriedTransaction
     private const string SERIALIZATION_FAILURE = '40001';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Run the work in a transaction, tried at most `$attempts` times in all.
      *
      * @template TResult

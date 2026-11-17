@@ -25,11 +25,6 @@ final class UrlSetting
     private const string PRIVATE_USE_SCHEME = '/^[a-z][a-z0-9+\-]*(?:\.[a-z0-9+\-]+)+$/';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The value as a web URL: `https`, or `http` on a loopback address.
      *
      * @param  string  $key

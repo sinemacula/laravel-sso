@@ -31,11 +31,6 @@ final class ClockSkew
     private const int MIN_SECONDS = 0;
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The configured clock skew, in seconds.
      *
      * @return int

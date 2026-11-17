@@ -23,11 +23,6 @@ final class AccessTokenHash
     private const array HASHES = [256 => 'sha256', 384 => 'sha384', 512 => 'sha512'];
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Why the token's `at_hash` refuses it, or `null`.
      *
      * @param  array<array-key, mixed>  $claims

@@ -19,11 +19,6 @@ use SineMacula\Laravel\Sso\Config\Enums\Feature;
 final class Features
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The answer a flow acts on; a malformed switch fails closed.
      *
      * @param  \SineMacula\Laravel\Sso\Config\Enums\Feature  $feature

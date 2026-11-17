@@ -27,11 +27,6 @@ final class ClientAssertionAlgorithm
     public const string ES256 = 'ES256';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The algorithms a key of the type may sign with, its default first.
      *
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type

@@ -25,11 +25,6 @@ final class CiphertextWrite
     private const string UNKNOWN_STATE = 'unknown';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Save the model, keeping the column's ciphertext out of any failure.
      *
      * @param  \Illuminate\Database\Eloquent\Model  $model

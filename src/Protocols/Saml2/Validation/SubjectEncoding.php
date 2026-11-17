@@ -31,11 +31,6 @@ final class SubjectEncoding
     private const string ABSENT = '-';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The subject of a `NameID`, e.g.
      * `v1|7:name_id|52:urn:...:persistent|-|-|5:alice`.
      *

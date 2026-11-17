@@ -25,11 +25,6 @@ final class AuthenticationContext
     public const string NAMESPACE = 'sso';
 
     /**
-     * Disallow instantiation; a pure projection only.
-     */
-    private function __construct() {}
-
-    /**
      * The `sso.*` keys of the provenance; none for none.
      *
      * @param  ?\SineMacula\Laravel\Sso\Sessions\Provenance  $provenance

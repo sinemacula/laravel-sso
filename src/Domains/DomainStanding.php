@@ -20,11 +20,6 @@ use SineMacula\Laravel\Sso\Models\Domain;
 final class DomainStanding
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The name the claim's TXT record is looked up at, such as
      * `_sso-verification.example.com`.
      *

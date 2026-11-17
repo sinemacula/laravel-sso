@@ -22,11 +22,6 @@ use SineMacula\Laravel\Sso\Models\Link;
 final class LinkHoldings
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Count the identity's held links in the connection by a locking read.
      *
      * @param  string  $connectionId

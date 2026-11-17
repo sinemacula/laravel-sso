@@ -26,11 +26,6 @@ final class EmailPairing
     private const string EMAIL_VERIFIED = 'email_verified';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Whether `email` is absent or a string of 1 to 320 bytes; a `null` member
      * does not fit.
      *

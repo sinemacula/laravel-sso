@@ -21,11 +21,6 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SubjectConfirmation;
 final class ReplayWindow
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The replay record of the assertion accepted by the confirmation.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\SamlAssertion  $assertion
@@ -54,7 +49,6 @@ final class ReplayWindow
         $until = $context->freshUntil($assertion->issueInstant());
 
         foreach ([$assertion->conditions()?->notOnOrAfter(), $confirmation->notOnOrAfter()] as $notOnOrAfter) {
-
             if ($notOnOrAfter === null) {
                 continue;
             }

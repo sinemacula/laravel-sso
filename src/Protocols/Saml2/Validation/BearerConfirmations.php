@@ -26,11 +26,6 @@ final class BearerConfirmations
     private const int RULES = 4;
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The bearer confirmation the assertion is accepted by, or why none is. The
      * check covers an encrypted assertion the envelope could not see into.
      *
@@ -77,7 +72,6 @@ final class BearerConfirmations
         $expected = $context->expectedRequestId();
 
         foreach ($bearers as $bearer) {
-
             $named = $bearer->inResponseTo();
 
             if ($named !== null && $named !== $expected) {
@@ -120,7 +114,6 @@ final class BearerConfirmations
         $bestRank = self::rank($best, $context);
 
         foreach (array_slice($candidates, 1) as $candidate) {
-
             $rank = self::rank($candidate, $context);
 
             if (($rank <=> $bestRank) <= 0) {

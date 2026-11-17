@@ -26,11 +26,6 @@ final class ClaimTypes
     private const array TEXT_CLAIMS = ['iss', 'sub', 'aud', 'azp', 'nonce', 'at_hash', 'email', 'acr', 'sid', 'amr'];
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Why the token's claims refuse it, or `null` when each has its type.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken  $token
@@ -188,7 +183,6 @@ final class ClaimTypes
         }
 
         foreach (self::TEXT_CLAIMS as $name) {
-
             $value = $written->{$name} ?? [];
 
             if ($value instanceof \stdClass || !self::holdsOnlyStrings((array) $value)) {

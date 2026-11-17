@@ -19,11 +19,6 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 final class TimeClaims
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Why the `exp`, `iat` and `nbf` claims fail, or `null`.
      *
      * @param  array<array-key, mixed>  $claims

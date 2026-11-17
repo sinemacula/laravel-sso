@@ -18,11 +18,6 @@ use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 final class AudienceRules
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Why the token's `aud` and `azp` refuse it, or `null`.
      *
      * @param  array<array-key, mixed>  $claims

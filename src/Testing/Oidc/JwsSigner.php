@@ -23,11 +23,6 @@ final class JwsSigner
     private const array DIGESTS = ['sha256' => OPENSSL_ALGO_SHA256, 'sha384' => OPENSSL_ALGO_SHA384, 'sha512' => OPENSSL_ALGO_SHA512];
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Sign a compact JWS; a string header or payload is encoded as given, so a
      * test can repeat a member.
      *

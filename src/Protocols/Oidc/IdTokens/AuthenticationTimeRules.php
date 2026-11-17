@@ -20,11 +20,6 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\TimeClaims;
 final class AuthenticationTimeRules
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Why the token's `auth_time` refuses it, or `null`; `$notBefore` is the
      * moment authentication must follow, if any.
      *
