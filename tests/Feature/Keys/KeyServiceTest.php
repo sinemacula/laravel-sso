@@ -916,6 +916,22 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
+     * A certificate trusted between the first read and the transaction makes
+     * the second a duplicate.
+     *
+     * @return void
+     */
+    public function testACertificateTrustedMeanwhileIsADuplicate(): void
+    {
+        $trust = fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser());
+
+        $this->beforeTheNextTransaction($trust);
+
+        self::assertSame([['setting' => 'certificate', 'code' => 'duplicate']], $trust()->jsonSerialize()['violations']);
+        self::assertCount(1, $this->rows());
+    }
+
+    /**
      * A key id no key can have is not found without querying the keys.
      *
      * @return void
