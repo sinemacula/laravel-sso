@@ -131,6 +131,19 @@ final class FakeSamlMetadataTest extends TestCase
     }
 
     /**
+     * An entity ID that XML normalises cannot be found again, so the entity is
+     * not signed.
+     *
+     * @return void
+     */
+    public function testRefusesToSignAnEntityItCannotFind(): void
+    {
+        $this->expectExceptionObject(new \LogicException('The fake metadata holds the entity it signs.'));
+
+        self::metadata()->with(['entity_id' => "https://idp.example.test/\tsaml", 'sign' => 'entity'])->toXml();
+    }
+
+    /**
      * An entity with the defaults but its id and `validUntil`.
      *
      * @param  string  $id

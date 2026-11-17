@@ -203,6 +203,29 @@ final class OidcDriverTest extends TestCase
     }
 
     /**
+     * The public JWKS and the inline-key document carry the same current key.
+     *
+     * @return void
+     *
+     * @throws \JsonException
+     */
+    public function testThePublicKeysAndTheInlineKeysAgree(): void
+    {
+        $connection = $this->oidc([...self::SETTINGS, 'client_authentication' => 'private_key_jwt'], false);
+
+        $this->clientKey($connection, KeyState::CURRENT);
+
+        $public = $this->driver()->publicKeys($connection);
+        $inline = $this->driver()->describeWithInlineKeys($connection);
+        $keys   = json_decode((string) $public->body, true, 512, JSON_THROW_ON_ERROR)['keys'] ?? null;
+
+        self::assertSame([true, true], [$public->isAvailable(), $inline->isAvailable()]);
+        self::assertIsArray($keys);
+        self::assertCount(1, $keys);
+        self::assertSame($keys, json_decode((string) $inline->body, true, 512, JSON_THROW_ON_ERROR)['jwks']['keys'] ?? null);
+    }
+
+    /**
      * The reasons a start and a completion were refused with; the callback
      * names an error so no token request is sent.
      *

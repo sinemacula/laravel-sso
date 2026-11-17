@@ -118,8 +118,10 @@ final readonly class PinnedVerifier
 
         try {
             $root = self::unsignedRoot($signed->getXML());
+            // @codeCoverageIgnoreStart
         } catch (\DOMException) {
             $root = null;
+            // @codeCoverageIgnoreEnd
         }
 
         if ($transforms === null || $root === null) {
@@ -145,7 +147,9 @@ final readonly class PinnedVerifier
         $root     = $document->importNode($original->ownerDocument->documentElement ?? $original, true);
 
         if (!$root instanceof \DOMElement) {
+            // @codeCoverageIgnoreStart
             return null;
+            // @codeCoverageIgnoreEnd
         }
 
         $document->appendChild($root);

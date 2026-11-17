@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\CompactToken;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\JoseAdapter;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\ProviderKeySet;
 use SineMacula\Laravel\Sso\Protocols\Oidc\Jose\TimeClaims;
+use SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey;
 use SineMacula\Laravel\Sso\Testing\Oidc\HostileIdToken;
 use SineMacula\Laravel\Sso\Testing\Oidc\HostileIdTokens;
 use SineMacula\Laravel\Sso\Testing\Oidc\JwsSigner;
@@ -366,6 +367,25 @@ final class HostileIdTokensTest extends TestCase
     {
         self::assertTrue(JwsSigner::verify(self::cases()['kid unknown']->token, self::tokens()->rsa->publicKeyPem));
         self::assertFalse(JwsSigner::verify(self::cases()['signed by another key under k1']->token, self::tokens()->rsa->publicKeyPem));
+    }
+
+    /**
+     * A new suite generates its five keys, the weak one at 1024 bits, and
+     * certifies the attacker's.
+     *
+     * @return void
+     */
+    public function testANewSuiteGeneratesItsKeys(): void
+    {
+        $tokens = new HostileIdTokens;
+        $keys   = [$tokens->rsa, $tokens->rsaWithAlgorithm, $tokens->ec, $tokens->attacker, $tokens->weak];
+        $pem    = "-----BEGIN CERTIFICATE-----\n" . chunk_split($tokens->attackerCertificate, 64, "\n") . "-----END CERTIFICATE-----\n";
+
+        self::assertSame(['k1', 'k2', 'e1', 'attacker', 's1'], array_map(static fn (FakeSigningKey $key): ?string => $key->kid, $keys));
+        self::assertSame([2048, 2048, 256, 2048, 1024], array_map(static fn (FakeSigningKey $key): int => $key->bits, $keys));
+        self::assertSame(['RSA', 'RSA', 'EC', 'RSA', 'RSA'], array_map(static fn (FakeSigningKey $key): string => $key->type, $keys));
+        self::assertCount(5, array_unique(array_map(static fn (FakeSigningKey $key): string => $key->publicKeyPem, $keys)));
+        self::assertSame(1, openssl_x509_verify($pem, $tokens->attacker->publicKeyPem));
     }
 
     /**

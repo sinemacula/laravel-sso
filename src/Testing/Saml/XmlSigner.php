@@ -82,7 +82,9 @@ final readonly class XmlSigner
         try {
             return $this->signed($element, $options);
         } catch (\DOMException $exception) {
+            // @codeCoverageIgnoreStart
             throw new \LogicException('The fake identity provider could not sign the element.', 0, $exception);
+            // @codeCoverageIgnoreEnd
         }
     }
 

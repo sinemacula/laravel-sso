@@ -82,6 +82,24 @@ final class AssertionMapperTest extends TestCase
     }
 
     /**
+     * An assertion with no subject and no conditions reads both as absent.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    public function testReadsAnAbsentSubjectAndConditionsAsNull(): void
+    {
+        $statement = '<saml:Statement xsi:type="saml:AttributeStatementType"><saml:Attribute Name="email"/></saml:Statement>';
+        $assertion = $this->read(self::edited(
+            ['subject' => false, 'conditions' => false, 'authn_statements' => [], 'attributes' => []],
+            static fn (string $xml): string => str_replace('</saml:Assertion>', $statement . '</saml:Assertion>', $xml),
+        ));
+
+        self::assertSame([null, null, [self::SAML . 'Statement']], [$assertion->subject(), $assertion->conditions(), $assertion->otherStatements()]);
+    }
+
+    /**
      * A subject with no identifier reads as such, with no NameID; one with an
      * encrypted identifier reads as encrypted, with no NameID either.
      *

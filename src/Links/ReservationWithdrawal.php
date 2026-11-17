@@ -29,11 +29,6 @@ final class ReservationWithdrawal
     private const int ATTEMPTS = 3;
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Delete every reservation of the locked connection, and answer how many.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
@@ -82,7 +77,6 @@ final class ReservationWithdrawal
         $deleted = 0;
 
         foreach ($rows as $row) {
-
             if ($row->state !== LinkState::RESERVED) {
                 continue;
             }
@@ -108,7 +102,6 @@ final class ReservationWithdrawal
     public static function expired(string $connectionId, array $ids, string $cutoff): int
     {
         return RetriedTransaction::run(DB::connection(StorageConnection::name()), static function () use ($connectionId, $ids, $cutoff): int {
-
             Connection::query()->useWritePdo()->whereKey($connectionId)->lockForUpdate()->first();
 
             $deleted = Link::query()->useWritePdo()

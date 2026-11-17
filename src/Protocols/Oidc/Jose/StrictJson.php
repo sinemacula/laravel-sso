@@ -25,11 +25,6 @@ final class StrictJson
     private const string TOKENS = '/"(?:[^"\\\]++|\\\.)*+"|[{}\[\],:]/s';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The object's members, or `null` when refused. An oversized integer stays
      * a string of digits, so a string-typed reader must not use this.
      *
@@ -108,7 +103,6 @@ final class StrictJson
         $open   = new OpenContainers;
 
         foreach ($tokens as $index => $token) {
-
             self::track($open, $token);
 
             if (($tokens[$index + 1] ?? null) === ':' && self::isRepeated($open->top(), $token)) {

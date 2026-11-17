@@ -16,11 +16,6 @@ use Random\RandomException;
 final class PssSignature
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Sign the message, with a salt as long as the hash (RFC 7518 section 3.5).
      *
      * @param  string  $message
@@ -81,9 +76,11 @@ final class PssSignature
     {
         try {
             return random_bytes($length);
+            // @codeCoverageIgnoreStart
         } catch (RandomException $exception) {
             throw new \LogicException('The fake provider could not make a salt.', 0, $exception);
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**

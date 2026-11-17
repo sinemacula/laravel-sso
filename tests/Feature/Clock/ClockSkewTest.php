@@ -144,25 +144,4 @@ final class ClockSkewTest extends TestCase
 
         self::assertSame(120, ClockSkew::seconds());
     }
-
-    /**
-     * `ClockSkew` is a utility container, not to be instantiated.
-     *
-     * @return void
-     *
-     * @SuppressWarnings("php:S3011")
-     */
-    public function testConstructorIsPrivate(): void
-    {
-        $reflection  = new \ReflectionClass(ClockSkew::class);
-        $constructor = $reflection->getConstructor();
-
-        self::assertNotNull($constructor);
-        self::assertTrue($constructor->isPrivate());
-
-        $instance = $reflection->newInstanceWithoutConstructor();
-        $constructor->invoke($instance);
-
-        self::assertInstanceOf(ClockSkew::class, $instance);
-    }
 }

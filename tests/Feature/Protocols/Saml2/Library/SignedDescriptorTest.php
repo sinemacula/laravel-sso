@@ -6,6 +6,12 @@ namespace Tests\Feature\Protocols\Saml2\Library;
 
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use SimpleSAML\XMLSecurity\Alg\Signature\SignatureAlgorithmFactory;
+use SimpleSAML\XMLSecurity\Alg\Signature\SignatureAlgorithmInterface;
+use SimpleSAML\XMLSecurity\Constants as C;
+use SimpleSAML\XMLSecurity\CryptoEncoding\PEM;
+use SimpleSAML\XMLSecurity\Exception\SignatureVerificationFailedException;
+use SimpleSAML\XMLSecurity\Key\X509Certificate;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\SignedDescriptor;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use Tests\TestCase;
@@ -126,6 +132,46 @@ final class SignedDescriptorTest extends TestCase
         $this->expectExceptionObject(new \LogicException('A signed descriptor is only ever read.'));
 
         $descriptor->toUnsignedXML();
+    }
+
+    /**
+     * A signed descriptor verifies against its signer's key as the element it
+     * was read from, unsigned once verified.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    public function testASignedDescriptorVerifiesAsTheElementItWasReadFrom(): void
+    {
+        $root       = self::root(self::idp()->metadata()->with(['sign' => 'entity'])->toXml());
+        $descriptor = SignedDescriptor::fromXML($root);
+        $verified   = $descriptor->verify(self::verifier());
+
+        self::assertInstanceOf(SignedDescriptor::class, $verified);
+        self::assertSame([$descriptor->getId()?->getValue(), false], [$verified->getId()?->getValue(), $verified->isSigned()]);
+
+        $root->setAttribute('entityID', 'https://attacker.example.test/saml');
+
+        try {
+            $tampered = $descriptor->verify(self::verifier());
+        } catch (SignatureVerificationFailedException) {
+            $tampered = null;
+        }
+
+        self::assertNull($tampered);
+    }
+
+    /**
+     * The provider's RSA-SHA256 signature verifier.
+     *
+     * @return \SimpleSAML\XMLSecurity\Alg\Signature\SignatureAlgorithmInterface
+     */
+    private static function verifier(): SignatureAlgorithmInterface
+    {
+        $key = (new X509Certificate(PEM::fromString(self::idp()->certificate())))->getPublicKey();
+
+        return (new SignatureAlgorithmFactory)->getAlgorithm(C::SIG_RSA_SHA256, $key);
     }
 
     /**

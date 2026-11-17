@@ -26,11 +26,6 @@ final class BooleanSetting
     ];
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The switch under the key, or the default when it is not set.
      *
      * @param  \Illuminate\Contracts\Config\Repository  $config

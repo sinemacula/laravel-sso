@@ -16,11 +16,6 @@ namespace SineMacula\Laravel\Sso\Protocols\Oidc\Jose;
 final class Base64Url
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Encode the bytes without padding.
      *
      * @param  string  $bytes

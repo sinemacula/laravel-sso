@@ -31,25 +31,4 @@ final class ElementRegistriesTest extends TestCase
         self::assertSame(dirname(__DIR__, 5) . '/vendor/simplesamlphp/composer-xmlprovider-installer/classes', $directory);
         self::assertDirectoryExists($directory);
     }
-
-    /**
-     * `ElementRegistries` is a utility container, not to be instantiated.
-     *
-     * @return void
-     *
-     * @SuppressWarnings("php:S3011")
-     */
-    public function testConstructorIsPrivate(): void
-    {
-        $reflection  = new \ReflectionClass(ElementRegistries::class);
-        $constructor = $reflection->getConstructor();
-
-        self::assertNotNull($constructor);
-        self::assertTrue($constructor->isPrivate());
-
-        $instance = $reflection->newInstanceWithoutConstructor();
-        $constructor->invoke($instance);
-
-        self::assertInstanceOf(ElementRegistries::class, $instance);
-    }
 }

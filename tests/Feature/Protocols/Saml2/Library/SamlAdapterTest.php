@@ -401,6 +401,23 @@ final class SamlAdapterTest extends TestCase
         self::assertSame(['urn:oasis:names:tc:SAML:2.0:status:AuthnFailed', 'The user cancelled'], [$status->subCode(), $status->message()]);
         self::assertSame(['signature_invalid', 'signature'], $this->refusal($failed->signedBy(self::attacker()->signer())->encoded()));
         self::assertTrue($this->read($failed->with(['assertion' => false])->signed(false, false)->encoded())->isRead());
+        self::assertSame('unsuccessful', $this->read($failed->signed(false, false)->encoded())->response?->profile()->value);
+    }
+
+    /**
+     * An unsuccessful response's assertion that cannot stand alone, needing a
+     * prefix only the response declares, is refused.
+     *
+     * @return void
+     */
+    public function testAnUnsuccessfulResponsesAssertionMustStandAlone(): void
+    {
+        $options   = [...self::responseOptions(), 'status' => 'urn:oasis:names:tc:SAML:2.0:status:Responder'];
+        $writer    = new ResponseWriter;
+        $assertion = str_replace('</saml:Conditions>', '<saml:Condition xsi:type="p:OneTimeUseType"/></saml:Conditions>', $writer->assertion($options));
+        $response  = str_replace('<samlp:Response ', '<samlp:Response xmlns:p="urn:oasis:names:tc:SAML:2.0:assertion" ', $writer->response($options, $assertion));
+
+        self::assertSame(['response_invalid', 'structure'], $this->refusal(base64_encode($response)));
     }
 
     /**
@@ -646,6 +663,26 @@ final class SamlAdapterTest extends TestCase
         $response = self::response()->signed(true, false)->encryptedFor(self::spKeys()[1], 'rsa-oaep-mgf1p', 'aes128-cbc');
 
         self::assertTrue($this->read($response->encoded(), ['data' => [...Saml2Settings::DATA_ENCRYPTION_ALGORITHMS, self::AES128_CBC]])->isRead());
+    }
+
+    /**
+     * Ciphertext that fails its AES-GCM tag under the unwrapped key is refused
+     * as a decryption failure.
+     *
+     * @return void
+     */
+    public function testATamperedCiphertextIsADecryptionFailure(): void
+    {
+        $options = self::responseOptions();
+        $writer  = new ResponseWriter;
+
+        $encrypted = (string) preg_replace_callback(
+            '#(<xenc:CipherValue>)([^<]+)(</xenc:CipherValue></xenc:CipherData></xenc:EncryptedData>)#',
+            static fn (array $match): string => $match[1] . base64_encode(strrev((string) base64_decode($match[2], true))) . $match[3],
+            (new AssertionEncryptor)->encrypt($writer->assertion($options), self::spKeys()[1]),
+        );
+
+        self::assertSame(['decryption_failed', 'decryption'], $this->refusal(base64_encode($writer->response($options, $encrypted))));
     }
 
     /**

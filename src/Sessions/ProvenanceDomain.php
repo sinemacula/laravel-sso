@@ -22,11 +22,6 @@ final class ProvenanceDomain
     private const string PRINTABLE = '/^[\x20-\x7E]+$/D';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Refuse a value that is not 1 to `$maxBytes` of printable ASCII.
      *
      * @param  string  $name

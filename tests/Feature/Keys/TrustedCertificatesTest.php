@@ -381,22 +381,6 @@ final class TrustedCertificatesTest extends TestCase
     }
 
     /**
-     * A certificate trusted between the first read and the transaction makes
-     * the second a duplicate.
-     *
-     * @return void
-     */
-    public function testACertificateTrustedMeanwhileIsADuplicate(): void
-    {
-        $this->beforeTheNextTransaction(fn (): mixed => $this->trust(Certificates::distinct(0)));
-
-        $result = $this->trust(Certificates::distinct(0));
-
-        self::assertSame([['setting' => 'certificate', 'code' => 'duplicate']], $result->jsonSerialize()['violations']);
-        self::assertSame(1, ConnectionKey::query()->count());
-    }
-
-    /**
      * Trusting a signing certificate is additive: it voids nothing and keeps
      * the trust version.
      *

@@ -33,6 +33,11 @@ final class FakeIdTokenTest extends TestCase
 {
     use TreatsWarningsAsErrors;
 
+    /** @var string An Ed25519 test key, which OpenSSL reads but cannot sign a request with by SHA-256. */
+    private const string ED25519 = "-----BEGIN PRIVATE KEY-----\n"
+        . "MC4CAQAwBQYDK2VwBCIEIGvRtmYPeQE1VOXYlgym6i6USNLWo9VEsC6qGMJ0LL4p\n"
+        . "-----END PRIVATE KEY-----\n";
+
     /** @var array<string, \SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey> The keys, generated once. */
     private static array $keys = [];
 
@@ -472,6 +477,91 @@ final class FakeIdTokenTest extends TestCase
         openssl_private_encrypt($masked . $digest . "\xbc", $signature, $key->privateKeyPem, OPENSSL_NO_PADDING);
 
         self::assertSame($accepted, PssSignature::verify($message, (string) $signature, $key->publicKeyPem, 'sha256'));
+    }
+
+    /**
+     * Rows of `[key]`: a key of each type.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideKeyTypes(): iterable
+    {
+        yield from ['RSA' => ['rsa'], 'EC' => ['ec']];
+    }
+
+    /**
+     * A key's certificate is self-signed for the key itself.
+     *
+     * @param  string  $name
+     * @return void
+     */
+    #[DataProvider('provideKeyTypes')]
+    public function testACertificateIsOfTheKey(string $name): void
+    {
+        $key         = self::key($name);
+        $certificate = "-----BEGIN CERTIFICATE-----\n" . chunk_split($key->certificate(), 64, "\n") . "-----END CERTIFICATE-----\n";
+        $public      = openssl_pkey_get_public($certificate);
+
+        self::assertNotFalse($public);
+        self::assertSame($key->publicKeyPem, openssl_pkey_get_details($public)['key'] ?? null);
+        self::assertSame(1, openssl_x509_verify($certificate, $key->publicKeyPem));
+        self::assertSame('fake-signing-key.example.test', openssl_x509_parse($certificate)['subject']['CN'] ?? null);
+    }
+
+    /**
+     * A key that cannot sign a certificate request is not certified.
+     *
+     * @return void
+     */
+    public function testAKeyThatCannotSignIsNotCertified(): void
+    {
+        $key = new FakeSigningKey(self::ED25519, 'ed');
+
+        $this->expectExceptionObject(new \LogicException('The fake OpenID provider could not certify its key.'));
+
+        @$key->certificate();
+    }
+
+    /**
+     * An RSA key smaller than OpenSSL generates is refused.
+     *
+     * @return void
+     */
+    public function testAKeyOpensslWillNotGenerateIsRefused(): void
+    {
+        $this->expectExceptionObject(new \LogicException('The fake OpenID provider could not generate its key.'));
+
+        FakeSigningKey::rsa('tiny', 400);
+    }
+
+    /**
+     * Rows of `[sign]`: a signature a 512-bit RSA key cannot make.
+     *
+     * @return iterable<string, array{0: \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey): string}>
+     */
+    public static function provideImpossibleSignatures(): iterable
+    {
+        yield from [
+            'RS512'                   => [static fn (FakeSigningKey $key): string => JwsSigner::sign(['alg' => 'RS512'], [], $key)],
+            'ES512'                   => [static fn (FakeSigningKey $key): string => JwsSigner::sign(['alg' => 'ES512'], [], $key)],
+            'PSS for a wider modulus' => [static fn (FakeSigningKey $key): string => PssSignature::sign('m', $key->privateKeyPem, $key->bits * 2, 'sha256')],
+        ];
+    }
+
+    /**
+     * A signature the key is too small to make is refused.
+     *
+     * @param  \Closure(\SineMacula\Laravel\Sso\Testing\Oidc\FakeSigningKey): string  $sign
+     * @return void
+     */
+    #[DataProvider('provideImpossibleSignatures')]
+    public function testASignatureTheKeyCannotMakeIsRefused(\Closure $sign): void
+    {
+        $key = FakeSigningKey::rsa('small', 512);
+
+        $this->expectExceptionObject(new \LogicException('The fake provider could not sign.'));
+
+        $sign($key);
     }
 
     /**

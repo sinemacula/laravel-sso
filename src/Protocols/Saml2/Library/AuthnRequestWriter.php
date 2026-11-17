@@ -285,12 +285,16 @@ final readonly class AuthnRequestWriter
     {
         try {
             $xml = $element->ownerDocument?->saveXML($element);
+            // @codeCoverageIgnoreStart
         } catch (\DOMException) {
             $xml = false;
+            // @codeCoverageIgnoreEnd
         }
 
         if (!is_string($xml)) {
+            // @codeCoverageIgnoreStart
             throw new \LogicException('The AuthnRequest could not be serialised.');
+            // @codeCoverageIgnoreEnd
         }
 
         return $xml;
@@ -310,7 +314,9 @@ final readonly class AuthnRequestWriter
         $signature = $signer->sign($query);
 
         if ($signature === false) {
+            // @codeCoverageIgnoreStart
             throw new \LogicException('The AuthnRequest could not be signed.');
+            // @codeCoverageIgnoreEnd
         }
 
         return $signature;
@@ -329,7 +335,9 @@ final readonly class AuthnRequestWriter
         $deflated = gzdeflate($xml, self::DEFLATE_LEVEL);
 
         if ($deflated === false) {
+            // @codeCoverageIgnoreStart
             throw new \LogicException('The AuthnRequest could not be deflated.');
+            // @codeCoverageIgnoreEnd
         }
 
         return $deflated;

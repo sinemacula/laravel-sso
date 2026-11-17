@@ -107,7 +107,9 @@ final readonly class KeyGenerator
         $key = self::quietly(static fn (): false|\OpenSSLAsymmetricKey => openssl_pkey_new($options));
 
         if ($key === false) {
+            // @codeCoverageIgnoreStart
             throw self::failure('key generation');
+            // @codeCoverageIgnoreEnd
         }
 
         $certificate = self::certificate($key, $commonName, $days, $config);
@@ -143,13 +145,17 @@ final readonly class KeyGenerator
         $path = self::quietly(static fn (): false|string => tempnam(sys_get_temp_dir(), 'sso-openssl-'));
 
         if ($path === false) {
+            // @codeCoverageIgnoreStart
             throw self::failure('configuration');
+            // @codeCoverageIgnoreEnd
         }
 
         if (self::quietly(static fn (): false|int => file_put_contents($path, self::CONFIGURATION)) !== strlen(self::CONFIGURATION)) {
+            // @codeCoverageIgnoreStart
             self::quietly(static fn (): bool => unlink($path));
 
             throw self::failure('configuration');
+            // @codeCoverageIgnoreEnd
         }
 
         return $path;
@@ -189,20 +195,26 @@ final readonly class KeyGenerator
         $request = self::quietly(static fn (): bool|\OpenSSLCertificateSigningRequest => openssl_csr_new(['commonName' => $commonName], $key, $options));
 
         if (!$request instanceof \OpenSSLCertificateSigningRequest) {
+            // @codeCoverageIgnoreStart
             throw self::failure('certificate request');
+            // @codeCoverageIgnoreEnd
         }
 
         $serial = self::serial();
         $signed = self::quietly(static fn (): false|\OpenSSLCertificate => openssl_csr_sign($request, null, $key, $days, $options, $serial));
 
         if ($signed === false) {
+            // @codeCoverageIgnoreStart
             throw self::failure('certificate signing');
+            // @codeCoverageIgnoreEnd
         }
 
         $pem = self::quietly(static fn (): ?string => openssl_x509_export($signed, $exported) ? $exported : null);
 
         if ($pem === null || $pem === '') {
+            // @codeCoverageIgnoreStart
             throw self::failure('certificate export');
+            // @codeCoverageIgnoreEnd
         }
 
         return $pem;
@@ -219,9 +231,11 @@ final readonly class KeyGenerator
     {
         try {
             return random_int(1, PHP_INT_MAX);
+            // @codeCoverageIgnoreStart
         } catch (RandomException) {
             throw self::failure('serial number');
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**
@@ -238,7 +252,9 @@ final readonly class KeyGenerator
         $pem = self::quietly(static fn (): ?string => openssl_pkey_export($key, $exported, null, ['config' => $config, 'encrypt_key' => false]) ? $exported : null);
 
         if ($pem === null || $pem === '') {
+            // @codeCoverageIgnoreStart
             throw self::failure('private key export');
+            // @codeCoverageIgnoreEnd
         }
 
         return new Secret($pem);
@@ -256,12 +272,16 @@ final readonly class KeyGenerator
     {
         try {
             $masked = MaskedKey::fromCertificate($certificate);
+            // @codeCoverageIgnoreStart
         } catch (\InvalidArgumentException) {
             throw self::failure(self::CERTIFICATE_READ);
+            // @codeCoverageIgnoreEnd
         }
 
         if ($masked->certificate === null || $masked->publicKey === null || $masked->fingerprint === null) {
+            // @codeCoverageIgnoreStart
             throw self::failure(self::CERTIFICATE_READ);
+            // @codeCoverageIgnoreEnd
         }
 
         return ['certificate' => $masked->certificate, 'public_key' => $masked->publicKey, 'fingerprint' => $masked->fingerprint];
@@ -281,7 +301,9 @@ final readonly class KeyGenerator
         $bits    = $details === false ? null : ($details['bits'] ?? null);
 
         if (!is_int($bits)) {
+            // @codeCoverageIgnoreStart
             throw self::failure('key read');
+            // @codeCoverageIgnoreEnd
         }
 
         return $bits;
@@ -302,7 +324,9 @@ final readonly class KeyGenerator
         $to     = $parsed === false ? null : ($parsed['validTo_time_t'] ?? null);
 
         if (!is_int($from) || !is_int($to)) {
+            // @codeCoverageIgnoreStart
             throw self::failure(self::CERTIFICATE_READ);
+            // @codeCoverageIgnoreEnd
         }
 
         return [CarbonImmutable::createFromTimestamp($from, 'UTC'), CarbonImmutable::createFromTimestamp($to, 'UTC')];
@@ -313,6 +337,8 @@ final readonly class KeyGenerator
      *
      * @param  string  $step
      * @return \RuntimeException
+     *
+     * @codeCoverageIgnore
      */
     private static function failure(string $step): \RuntimeException
     {

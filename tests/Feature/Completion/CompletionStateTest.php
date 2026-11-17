@@ -21,6 +21,8 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Correlation;
+use SineMacula\Laravel\Sso\Protocols\ReplayRecord;
+use SineMacula\Laravel\Sso\Protocols\TransitionReceipt;
 use Tests\Fixtures\Clients;
 use Tests\Fixtures\Links\ExampleLinks;
 use Tests\Fixtures\Results\ExampleResults;
@@ -110,6 +112,33 @@ final class CompletionStateTest extends TestCase
         self::assertSame($notAfter, $state->sessionNotAfter);
         self::assertSame($handoff, $state->handoff);
         self::assertTrue($state->hasRedirectTarget());
+    }
+
+    /**
+     * The replay record, key rotation receipt and validation are added and the
+     * rest kept.
+     *
+     * @return void
+     */
+    public function testTheValidationPartsAreAddedAndTheRestKept(): void
+    {
+        $until   = CarbonImmutable::parse('2026-11-01T10:05:00Z');
+        $replay  = ReplayRecord::samlAssertion('c', 'https://idp.example.com', '_a1', $until);
+        $receipt = new TransitionReceipt('c', 'request-1', 4, 5, 7);
+        $claims  = ExampleResults::claims();
+        $first   = CompletionState::arrived('c', new CompletionRequest('POST', '', []), Clients::browser())->withClaims($claims);
+        $state   = $first->withReplay($replay)->withTransitionReceipt($receipt)->withValidation(3, $until);
+
+        self::assertNull($first->replay);
+        self::assertNull($first->transitionReceipt);
+        self::assertNull($first->linkingVersion);
+        self::assertNull($first->verifiedUntil);
+        self::assertSame($replay, $state->replay);
+        self::assertSame($receipt, $state->transitionReceipt);
+        self::assertSame(3, $state->linkingVersion);
+        self::assertSame($until, $state->verifiedUntil);
+        self::assertSame($claims, $state->claims);
+        self::assertSame($first->request, $state->request);
     }
 
     /**
@@ -220,5 +249,34 @@ final class CompletionStateTest extends TestCase
         self::assertFalse($refuse->isProceeding());
         self::assertSame($state, $refuse->state);
         self::assertSame(FailureReason::ENFORCEMENT_UNSATISFIED, $refuse->reason);
+    }
+
+    /**
+     * A stage hands over to re-initiation or stops at provisioning, neither
+     * proceeding nor refusing.
+     *
+     * @return void
+     */
+    public function testAStageCanHandOverOrStopAtProvisioning(): void
+    {
+        $state      = CompletionState::arrived('c', new CompletionRequest('GET', '', []), Clients::browser());
+        $proceed    = StageOutcome::proceed($state);
+        $reinitiate = StageOutcome::reinitiate($state);
+        $provision  = StageOutcome::provision($state);
+
+        self::assertFalse($proceed->isReinitiating());
+        self::assertFalse($proceed->isProvisioning());
+
+        self::assertTrue($reinitiate->isReinitiating());
+        self::assertFalse($reinitiate->isProvisioning());
+        self::assertFalse($reinitiate->isProceeding());
+        self::assertFalse($reinitiate->isRefused());
+        self::assertSame($state, $reinitiate->state);
+
+        self::assertTrue($provision->isProvisioning());
+        self::assertFalse($provision->isReinitiating());
+        self::assertFalse($provision->isProceeding());
+        self::assertFalse($provision->isRefused());
+        self::assertSame($state, $provision->state);
     }
 }

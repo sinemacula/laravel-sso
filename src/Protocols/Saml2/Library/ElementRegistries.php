@@ -21,11 +21,6 @@ final class ElementRegistries
     private const string DIRECTORY = '/vendor/simplesamlphp/composer-xmlprovider-installer/classes';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The directory `ElementRegistry` loads `element.registry.*.php` from.
      *
      * @return string

@@ -40,11 +40,6 @@ final class Presets
     private const string MS_CLAIMS = 'http://schemas.microsoft.com/identity/claims/';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The shipped presets, by name.
      *
      * @return array<string, \SineMacula\Laravel\Sso\Protocols\Preset>

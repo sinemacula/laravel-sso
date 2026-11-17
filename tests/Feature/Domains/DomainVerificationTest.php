@@ -552,6 +552,26 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
+     * A claim removed between the lookup and the lock is not found.
+     *
+     * @return void
+     */
+    public function testAClaimRemovedBeforeTheLockIsNotFound(): void
+    {
+        $claim      = $this->makeDomain($this->connection);
+        $withdrawal = new RecordingWithdrawal;
+
+        $this->app?->instance(DomainWithdrawal::class, $withdrawal);
+        $this->beforeTheNextTransaction(static fn (): mixed => Domain::query()->whereKey($claim->id)->delete());
+
+        $result = $this->domains()->remove(self::TENANT, $this->connection->id, 'example.com', Clients::browser(), $this->actor);
+
+        self::assertSame(FailureReason::DOMAIN_NOT_FOUND, $result->reason);
+        self::assertSame([], $withdrawal->calls->getArrayCopy());
+        $this->assertNoEvents();
+    }
+
+    /**
      * A verified domain removed from one connection can be verified for
      * another.
      *

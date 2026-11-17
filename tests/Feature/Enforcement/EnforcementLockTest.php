@@ -160,6 +160,28 @@ final class EnforcementLockTest extends TestCase
     }
 
     /**
+     * A row under the tenant's hash that holds another tenant is never taken.
+     *
+     * @return void
+     */
+    public function testARowOfAnotherTenantUnderTheHashIsUnreadable(): void
+    {
+        $other = $this->makeEnforcement(['tenant_id' => 'tenant-other']);
+
+        TenantEnforcement::query()->whereKey($other->id)->update(['tenant_hash' => TenantHash::of(self::TENANT)]);
+
+        try {
+            $this->acquire(self::TENANT);
+
+            self::fail('Another tenant\'s row was locked as this tenant\'s.');
+        } catch (\UnexpectedValueException $exception) {
+            self::assertSame('The tenant\'s enforcement could not be read back.', $exception->getMessage());
+        }
+
+        self::assertSame('tenant-other', TenantEnforcement::query()->sole()->tenant_id);
+    }
+
+    /**
      * Acquiring outside a transaction is a `LogicException`.
      *
      * @return void
@@ -407,6 +429,7 @@ final class EnforcementLockTest extends TestCase
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
+     * @throws \UnexpectedValueException
      */
     private function acquire(string $tenantId): TenantEnforcement
     {

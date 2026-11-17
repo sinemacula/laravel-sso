@@ -23,11 +23,6 @@ final class SchemaDateTime
     private const int MAX_OFFSET_MINUTES = 840;
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Whether the value is a real `xs:dateTime` of a four-digit year.
      *
      * @param  string  $value

@@ -164,6 +164,7 @@ final class DiagnosticSanitizerTest extends TestCase
             'a JSON number'             => ['{"code": 123456}', '{"code": "[redacted]"}'],
             'a JSON boolean'            => ['{"nonce":true}', '{"nonce":"[redacted]"}'],
             'escaped JSON'              => ['body {\"id_token\":\"abc\",\"error\":\"bad\"}', 'body {\"id_token\":\"[redacted]\",\"error\":\"bad\"}'],
+            'a run encoded too deeply'  => ['ref %' . str_repeat('25', 9) . '41 end', 'ref [redacted] end'],
             'a long base64 run'         => ['response ' . $base64 . ' rejected', 'response [redacted] rejected'],
             'a long base64url run'      => ['code ' . $base64url . ' rejected', 'code [redacted] rejected'],
             'forty characters'          => ['ref ' . str_repeat('abcd', 10) . ' end', 'ref [redacted] end'],

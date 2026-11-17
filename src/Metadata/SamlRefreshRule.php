@@ -30,11 +30,6 @@ final class SamlRefreshRule
     private const array NOTHING_FETCHED = ['metadata_fetched_at' => null, 'metadata_valid_until' => null, 'metadata_refresh_at' => null];
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Whether the settings name a metadata URL the package may fetch.
      *
      * @param  array<string, mixed>  $settings
@@ -74,7 +69,6 @@ final class SamlRefreshRule
         $ids = [];
 
         foreach ($connections as $connection) {
-
             if (self::switchOf($connection->settings) !== null) {
                 continue;
             }

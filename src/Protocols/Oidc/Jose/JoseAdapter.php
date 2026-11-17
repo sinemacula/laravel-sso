@@ -72,11 +72,13 @@ final readonly class JoseAdapter
 
             return $jws->getSignature(0)->getProtectedHeader() === $token->header()
                 && (new JWSVerifier(self::manager($allowed->names)))->verifyWithKey($jws, new JWK($key->toArray()), 0);
+            // @codeCoverageIgnoreStart
             // The library declares no @throws, though unreadable input throws
             // @phpstan-ignore catch.neverThrown
         } catch (\Throwable) {
             return false;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**

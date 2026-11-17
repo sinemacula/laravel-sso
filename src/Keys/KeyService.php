@@ -218,7 +218,14 @@ final readonly class KeyService
             return $facts;
         }
 
-        $insert = fn (Connection $locked): KeyResult => $this->insertTrusted($locked, $facts, $use, $caller, $client);
+        $insert = function (Connection $locked) use ($facts, $use, $caller, $client): KeyResult {
+            // Judged again under the lock: trusted or the cap reached meanwhile
+            $violation = self::trustViolation($locked, $facts, $use, true);
+
+            return $violation === null
+                ? KeyResult::trusted($this->insertTrusted($locked, $facts, $use, $caller, $client))
+                : KeyResult::invalid([$violation]);
+        };
 
         return $this->change($tenantId, $connectionId, $use->freshness(), $caller, $insert);
     }
@@ -262,8 +269,6 @@ final readonly class KeyService
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @return Replacement
      *
-     * @throws \LogicException
-     *
      * @internal
      */
     public function replaceTrustedCertificatesLocked(Connection $locked, array $pems, ClientContext $client, ?Caller $caller = null): array
@@ -303,8 +308,7 @@ final readonly class KeyService
         $added = [];
 
         foreach (array_diff_key($wanted, $stored) as $facts) {
-            $added[] = $this->insertTrusted($locked, $facts, KeyUse::IDP_SIGNING, $caller, $client)->key
-                ?? throw new \LogicException('A judged certificate is trusted.');
+            $added[] = $this->insertTrusted($locked, $facts, KeyUse::IDP_SIGNING, $caller, $client);
         }
 
         return [
@@ -551,28 +555,21 @@ final readonly class KeyService
     }
 
     /**
-     * Trust the certificate for the use, voiding what is in flight for a
-     * metadata signing anchor, unless it was trusted or the cap reached
-     * meanwhile.
+     * Insert the judged certificate for the use, voiding what is in flight for
+     * a metadata signing anchor.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $locked
      * @param  CertificateFacts  $facts
      * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
      * @param  ?\SineMacula\Laravel\Sso\Identities\Caller  $caller
      * @param  \SineMacula\Laravel\Sso\Http\ClientContext  $client
-     * @return \SineMacula\Laravel\Sso\Keys\KeyResult
+     * @return \SineMacula\Laravel\Sso\Keys\KeySummary
      *
      * @throws \InvalidArgumentException
      * @throws \LogicException
      */
-    private function insertTrusted(Connection $locked, array $facts, KeyUse $use, ?Caller $caller, ClientContext $client): KeyResult
+    private function insertTrusted(Connection $locked, array $facts, KeyUse $use, ?Caller $caller, ClientContext $client): KeySummary
     {
-        $violation = self::trustViolation($locked, $facts, $use, true);
-
-        if ($violation !== null) {
-            return KeyResult::invalid([$violation]);
-        }
-
         $anchor = $use === KeyUse::METADATA_SIGNING;
         $reset  = $anchor ? SamlRefreshRule::resetForAnchor($locked) : [];
         $key    = new ConnectionKey;
@@ -598,7 +595,7 @@ final readonly class KeyService
 
         $this->events->keyAdded($locked, $key, $caller, $client);
 
-        return KeyResult::trusted(KeySummary::of($key));
+        return KeySummary::of($key);
     }
 
     /**

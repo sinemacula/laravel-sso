@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Fetching;
 
-use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Handler\MockHandler;
@@ -430,7 +429,7 @@ final class GuzzleFetcherTest extends TestCase
 
         unset($curl[CURLOPT_RESOLVE]);
 
-        self::assertSame(self::isCurlOptionSetByGuzzle() ? [] : $managed, $curl);
+        self::assertSame($managed, $curl);
     }
 
     /**
@@ -948,6 +947,21 @@ final class GuzzleFetcherTest extends TestCase
     }
 
     /**
+     * An ASCII host keeps its authority as given when only the path is not
+     * ASCII.
+     *
+     * @return void
+     */
+    public function testSendsANonAsciiPathUnderAnAsciiHost(): void
+    {
+        $result = $this->fetcher([new Response(200, [], 'ok')])->fetch(FetchRequest::metadata('https://idp.example.com:8443/métadonnées'));
+
+        self::assertTrue($result->isFetched());
+        self::assertSame('https://idp.example.com:8443/m%C3%A9tadonn%C3%A9es', (string) $this->sentRequest()->getUri());
+        self::assertSame(['idp.example.com:8443:93.184.216.34'], $this->curlOptions()[CURLOPT_RESOLVE]);
+    }
+
+    /**
      * An injected handler works without `ext-curl`; only the default cURL
      * handler needs it.
      *
@@ -1068,18 +1082,5 @@ final class GuzzleFetcherTest extends TestCase
     private function logged(): string
     {
         return json_encode(array_map(static fn (LogRecord $record): array => [$record->message, $record->context], $this->log->getRecords()), JSON_THROW_ON_ERROR);
-    }
-
-    /**
-     * Whether the installed Guzzle (8 and later) sets the protocol, redirect
-     * and proxy cURL options itself.
-     *
-     * @return bool
-     */
-    private static function isCurlOptionSetByGuzzle(): bool
-    {
-        $version = (new \ReflectionClassConstant(ClientInterface::class, 'MAJOR_VERSION'))->getValue();
-
-        return is_int($version) && $version >= 8;
     }
 }

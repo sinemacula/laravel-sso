@@ -382,7 +382,9 @@ final readonly class MetadataRefresher
         $source = $this->sources->for($connection->protocol);
 
         if ($source === null) {
+            // @codeCoverageIgnoreStart
             throw new \LogicException(sprintf('The [%s] protocol has no metadata source.', $connection->protocol));
+            // @codeCoverageIgnoreEnd
         }
 
         return $source;

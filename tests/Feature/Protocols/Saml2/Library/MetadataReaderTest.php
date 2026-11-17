@@ -291,6 +291,24 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
+     * With an anchor, an aggregate holding two signatures of its own is refused
+     * before either is verified.
+     *
+     * @return void
+     */
+    public function testAnAggregateWithTwoSignaturesIsRefused(): void
+    {
+        $xml = (string) preg_replace(
+            '#<md:EntitiesDescriptor[^>]*>#',
+            '$0' . self::roleSignature() . self::roleSignature(),
+            self::metadata()->with(['aggregate' => [self::OTHER]])->toXml(),
+            1,
+        );
+
+        self::assertRefused(FailureReason::METADATA_INVALID, 'structure', $this->read($xml, anchors: [self::idp()->certificate()]));
+    }
+
+    /**
      * A signed aggregate changed after it was signed is refused, wherever the
      * change is.
      *

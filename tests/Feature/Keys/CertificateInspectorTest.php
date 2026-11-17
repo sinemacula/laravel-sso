@@ -43,6 +43,8 @@ final class CertificateInspectorTest extends TestCase
             'two certificates'            => [static fn (): string => Certificates::ecP256() . Certificates::ecP384(), ViolationCode::INVALID_FORMAT],
             'a damaged body'              => [static fn (): string => str_replace('MI', 'xx', Certificates::ecP256()), ViolationCode::INVALID_FORMAT],
             'a file path'                 => [static fn (): string => 'file:///etc/passwd', ViolationCode::INVALID_FORMAT],
+            'an unknown key algorithm'    => [static fn (): string => Certificates::unknownKeyAlgorithm(), ViolationCode::INVALID_FORMAT],
+            'an undecodable alt name'     => [static fn (): string => Certificates::undecodableAltName(), ViolationCode::INVALID_FORMAT],
             'an rsa 1024 key'             => [static fn (): string => Certificates::rsa1024(), ViolationCode::WEAK_KEY],
             'a curve the package refuses' => [static fn (): string => Certificates::unsupportedCurve(), ViolationCode::WEAK_KEY],
             'an ed25519 key'              => [static fn (): string => Certificates::ED25519, ViolationCode::NOT_ALLOWED],

@@ -138,6 +138,7 @@ final class MetadataSettingsTest extends TestCase
             'the default, at it'       => [null, 'slow', 90, '90', sprintf($past, 'slow')],
             'its own, none set'        => ['slow', 'slow', 3600, null, null],
             'its own over the default' => ['fast', 'slow', 600, 600, null],
+            'no connection at all'     => [null, '', 3600, 600, null],
         ];
     }
 

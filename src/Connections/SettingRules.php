@@ -33,11 +33,6 @@ final class SettingRules
     private const string HOST = '/^(?:\[[0-9A-Fa-f:.]+\]|[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]*[A-Za-z0-9])?)*)$/D';
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * A non-empty, bounded UTF-8 string with no control character and, unless
      * allowed, no whitespace.
      *
@@ -152,7 +147,6 @@ final class SettingRules
         $seen       = [];
 
         foreach ($value as $index => $entry) {
-
             $code = self::choice($entry, $allowed) ?? (in_array($entry, $seen, true) ? ViolationCode::DUPLICATE : null);
 
             if ($code === null) {

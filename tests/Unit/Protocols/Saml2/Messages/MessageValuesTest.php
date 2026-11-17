@@ -149,7 +149,7 @@ final class MessageValuesTest extends TestCase
             (new SamlConditions)->notBefore(), (new SamlConditions)->notOnOrAfter(), (new SamlConditions)->audienceRestrictions(),
             (new SamlConditions)->oneTimeUse(), (new SamlConditions)->proxyRestrictions(), (new SamlConditions)->otherConditions(),
         ]);
-        self::assertSame([null, null, null], [$statement->sessionIndex(), $statement->sessionNotOnOrAfter(), $statement->contextClassRef()]);
+        self::assertSame([$now, null, null, null], [$statement->authnInstant(), $statement->sessionIndex(), $statement->sessionNotOnOrAfter(), $statement->contextClassRef()]);
         self::assertSame(['name', null, null, []], [$attribute->name(), $attribute->nameFormat(), $attribute->friendlyName(), $attribute->values()]);
         self::assertSame([IdentifierKind::NONE, null, []], [$subject->kind(), $subject->nameId(), $subject->confirmations()]);
         self::assertSame(['_a', $nameId, $now, null, null, [], [], 0, [], false, false, false], [

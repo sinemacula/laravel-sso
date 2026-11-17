@@ -32,11 +32,6 @@ final class PublicKeyEncoding
     ];
 
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * The bits and PEM of the RSA key from big-endian modulus and exponent, or
      * `null` when OpenSSL refuses it.
      *

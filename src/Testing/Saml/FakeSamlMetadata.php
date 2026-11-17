@@ -115,7 +115,9 @@ final readonly class FakeSamlMetadata
         try {
             return $this->written();
         } catch (\DOMException $exception) {
+            // @codeCoverageIgnoreStart
             throw new \LogicException('The fake identity provider could not write its metadata.', 0, $exception);
+            // @codeCoverageIgnoreEnd
         }
     }
 

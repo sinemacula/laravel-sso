@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Fetching;
 
 use GuzzleHttp\Client;
-use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\GuzzleException;
 use GuzzleHttp\Handler\CurlHandler;
 use GuzzleHttp\HandlerStack;
@@ -71,9 +70,6 @@ final readonly class GuzzleFetcher implements Fetcher
     /** @var callable(\Psr\Http\Message\RequestInterface, array<string, mixed>): \GuzzleHttp\Promise\PromiseInterface The Guzzle handler. */
     private mixed $handler;
 
-    /** @var bool Whether to set the cURL options Guzzle 8 manages itself. */
-    private bool $setsManagedCurlOptions;
-
     /** @var \Closure(): int The monotonic clock in nanoseconds. */
     private \Closure $monotonicClock;
 
@@ -119,11 +115,8 @@ final readonly class GuzzleFetcher implements Fetcher
             throw new \LogicException(self::NO_CURL);
         }
 
-        $version = (new \ReflectionClassConstant(ClientInterface::class, 'MAJOR_VERSION'))->getValue();
-
-        $this->handler                = $handler ?? new CurlHandler;
-        $this->setsManagedCurlOptions = !is_int($version) || $version < 8;
-        $this->monotonicClock         = $monotonicClock ?? static fn (): int => (int) hrtime(true);
+        $this->handler        = $handler        ?? new CurlHandler;
+        $this->monotonicClock = $monotonicClock ?? static fn (): int => (int) hrtime(true);
     }
 
     /**
@@ -385,8 +378,7 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The cURL options of one hop; Guzzle 8 sets the protocol, redirect and
-     * proxy options itself and refuses them here.
+     * The cURL options of one hop.
      *
      * @param  array{uri: \Psr\Http\Message\UriInterface, host: string, port: int, literal: ?string}  $target
      * @param  string  $address
@@ -398,10 +390,6 @@ final readonly class GuzzleFetcher implements Fetcher
         $canonical = (string) inet_ntop($bytes);
         $pinned    = strlen($bytes)     === 16 ? '[' . $canonical . ']' : $canonical;
         $options   = $target['literal'] === null ? [CURLOPT_RESOLVE => [sprintf('%s:%d:%s', $target['host'], $target['port'], $pinned)]] : [];
-
-        if (!$this->setsManagedCurlOptions) {
-            return $options;
-        }
 
         return $options + [
             CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
@@ -467,9 +455,11 @@ final readonly class GuzzleFetcher implements Fetcher
             $uri = (new Uri)->withScheme('https')->withHost($host)->withPath($parts['path'] ?? '')->withQuery($parts['query'] ?? '');
 
             return isset($parts['port']) ? $uri->withPort($parts['port']) : $uri;
+            // @codeCoverageIgnoreStart
         } catch (\InvalidArgumentException) {
             return null;
         }
+        // @codeCoverageIgnoreEnd
     }
 
     /**

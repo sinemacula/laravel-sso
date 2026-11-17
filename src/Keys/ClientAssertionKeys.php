@@ -27,11 +27,6 @@ use SineMacula\Laravel\Sso\Protocols\Oidc\OidcSettings;
 final class ClientAssertionKeys
 {
     /**
-     * Disallow instantiation; utility container only.
-     */
-    private function __construct() {}
-
-    /**
      * Whether a key of the use and type fits the connection's pinned algorithm.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection

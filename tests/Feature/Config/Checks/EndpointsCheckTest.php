@@ -7,6 +7,7 @@ namespace Tests\Feature\Config\Checks;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Config\Checks\EndpointsCheck;
+use SineMacula\Laravel\Sso\Endpoints\EndpointSettings;
 use Tests\Concerns\RunsConfigurationChecks;
 use Tests\TestCase;
 
@@ -19,6 +20,7 @@ use Tests\TestCase;
  * @internal
  */
 #[CoversClass(EndpointsCheck::class)]
+#[CoversClass(EndpointSettings::class)]
 final class EndpointsCheckTest extends TestCase
 {
     use RunsConfigurationChecks;

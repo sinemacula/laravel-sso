@@ -74,7 +74,9 @@ final readonly class FakeSamlIdentityProvider
         $cert = $csr instanceof \OpenSSLCertificateSigningRequest ? openssl_csr_sign($csr, null, $key, 365, ['digest_alg' => 'sha256']) : self::failed();
 
         if ($cert === false || !openssl_pkey_export($key, $private) || !openssl_x509_export($cert, $certificate)) {
+            // @codeCoverageIgnoreStart
             self::failed();
+            // @codeCoverageIgnoreEnd
         }
 
         return [$private, $certificate];
@@ -177,6 +179,8 @@ final readonly class FakeSamlIdentityProvider
      * @return never
      *
      * @throws \LogicException
+     *
+     * @codeCoverageIgnore
      */
     private static function failed(): never
     {

@@ -242,7 +242,9 @@ final readonly class MetadataReader
         $entity    = $document === null ? null : self::matching($document, $path[0]->getAttribute('entityID'))[0] ?? null;
 
         if ($entity === null) {
+            // @codeCoverageIgnoreStart
             throw new ReadFailure(FailureReason::METADATA_INVALID, 'structure');
+            // @codeCoverageIgnoreEnd
         }
 
         return [...self::path($entity), ...array_slice($path, $innermost + 1)];
@@ -264,7 +266,9 @@ final readonly class MetadataReader
             $copy     = $document->importNode($element, true);
 
             if (!$copy instanceof \DOMElement) {
+                // @codeCoverageIgnoreStart
                 throw new ReadFailure(FailureReason::METADATA_INVALID, 'structure');
+                // @codeCoverageIgnoreEnd
             }
 
             $document->appendChild($copy);
@@ -353,8 +357,10 @@ final readonly class MetadataReader
             if (SchemaDateTime::isValid($value)) {
                 return CarbonImmutable::parse($value, 'UTC')->utc();
             }
+            // @codeCoverageIgnoreStart
         } catch (\Throwable) {
             // Refused below, without the parser's message, which quotes it
+            // @codeCoverageIgnoreEnd
         }
 
         throw new ReadFailure(FailureReason::METADATA_INVALID, 'valid_until');

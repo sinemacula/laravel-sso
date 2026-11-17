@@ -108,6 +108,29 @@ final class SignatureWrappingTest extends TestCase
     }
 
     /**
+     * An evil element that is not XML is refused.
+     *
+     * @return void
+     */
+    public function testRefusesAnEvilElementThatIsNotXml(): void
+    {
+        $signed = new \DOMDocument;
+
+        self::assertTrue($signed->loadXML(self::response()->signed(true, false)->toXml()));
+
+        $previous = libxml_use_internal_errors(true);
+
+        try {
+            $this->expectExceptionObject(new \LogicException('The fake identity provider wrote XML it cannot parse.'));
+
+            (new SignatureWrapping)->apply('xsw1', $signed, '<samlp:Response');
+        } finally {
+            libxml_clear_errors();
+            libxml_use_internal_errors($previous);
+        }
+    }
+
+    /**
      * The `NameID`s of the XML, in document order.
      *
      * @param  string  $xml

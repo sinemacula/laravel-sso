@@ -7,9 +7,10 @@ namespace Tests\Fixtures\Keys;
 /**
  * Throwaway identity provider certificates for the key tests, generated with
  * PHP's OpenSSL extension in the test process: RSA 2048 and 1024, EC P-256 and
- * P-384, one on a curve the package refuses, one valid for a single day, and
- * any number of distinct P-256 ones; and a private key PEM. Each is generated
- * once per process and kept, since RSA generation is slow.
+ * P-384, one on a curve the package refuses, one valid for a single day, one
+ * whose subject alternative name cannot be decoded, one whose key algorithm is
+ * unknown, and any number of distinct P-256 ones; and a private key PEM. Each
+ * is generated once per process and kept, since RSA generation is slow.
  *
  * Every certificate is self-signed for its common name, read through a minimal
  * configuration of its own, so the system's `openssl.cnf` neither shapes it nor
@@ -127,6 +128,33 @@ final class Certificates
     }
 
     /**
+     * An EC P-256 certificate whose subject alternative name is not DER that
+     * OpenSSL can decode, so it reads but does not parse.
+     *
+     * @return string
+     */
+    public static function undecodableAltName(): string
+    {
+        return self::generate('bad-alt-name', ['private_key_type' => OPENSSL_KEYTYPE_EC, 'curve_name' => 'prime256v1'], 365, 'subjectAltName = DER:01:02:03')['certificate'];
+    }
+
+    /**
+     * The EC P-256 certificate with its key's algorithm changed to one OpenSSL
+     * does not know, so the certificate reads but its public key does not.
+     *
+     * @return string
+     */
+    public static function unknownKeyAlgorithm(): string
+    {
+        $der = (string) base64_decode((string) preg_replace('/-----[A-Z ]+-----|\s+/', '', self::ecP256()), true);
+
+        // id-ecPublicKey (1.2.840.10045.2.1) becomes the unassigned .2.127.
+        $der = str_replace("\x06\x07\x2A\x86\x48\xCE\x3D\x02\x01", "\x06\x07\x2A\x86\x48\xCE\x3D\x02\x7F", $der);
+
+        return "-----BEGIN CERTIFICATE-----\n" . chunk_split(base64_encode($der), 64, "\n") . "-----END CERTIFICATE-----\n";
+    }
+
+    /**
      * The private key of the EC P-256 certificate, PEM-encoded.
      *
      * @return string
@@ -139,14 +167,16 @@ final class Certificates
     }
 
     /**
-     * The certificate and private key of the name, generated on first use.
+     * The certificate and private key of the name, generated on first use, with
+     * the line given, if any, as its one extension.
      *
      * @param  string  $name
      * @param  array<string, int|string>  $options
      * @param  int  $days
+     * @param  string  $extension
      * @return array{certificate: string, private_key: string}
      */
-    private static function generate(string $name, array $options, int $days): array
+    private static function generate(string $name, array $options, int $days, string $extension = ''): array
     {
         if (isset(self::$generated[$name])) {
             return self::$generated[$name];
@@ -157,10 +187,10 @@ final class Certificates
         $privateKey  = '';
 
         // PHP 8.3 checks default_bits against RSA's minimum even for an EC key.
-        file_put_contents($config, "[req]\ndefault_bits = 2048\ndistinguished_name = subject\n\n[subject]\n");
+        file_put_contents($config, "[req]\ndefault_bits = 2048\ndistinguished_name = subject\n\n[subject]\n\n[extensions]\n{$extension}\n");
 
         try {
-            $options += ['config' => $config, 'digest_alg' => 'sha256'];
+            $options += ['config' => $config, 'digest_alg' => 'sha256'] + ($extension === '' ? [] : ['x509_extensions' => 'extensions']);
             $key = openssl_pkey_new($options);
 
             assert($key !== false);

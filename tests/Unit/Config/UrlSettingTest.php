@@ -150,25 +150,4 @@ final class UrlSettingTest extends TestCase
 
         UrlSetting::web(self::KEY, 'https://api.example.com/v1?tenant=a', query: false);
     }
-
-    /**
-     * `UrlSetting` is a utility container, not to be instantiated.
-     *
-     * @return void
-     *
-     * @SuppressWarnings("php:S3011")
-     */
-    public function testConstructorIsPrivate(): void
-    {
-        $reflection  = new \ReflectionClass(UrlSetting::class);
-        $constructor = $reflection->getConstructor();
-
-        self::assertNotNull($constructor);
-        self::assertTrue($constructor->isPrivate());
-
-        $instance = $reflection->newInstanceWithoutConstructor();
-        $constructor->invoke($instance);
-
-        self::assertInstanceOf(UrlSetting::class, $instance);
-    }
 }

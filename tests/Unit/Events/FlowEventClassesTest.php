@@ -15,6 +15,7 @@ use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
 use SineMacula\Laravel\Sso\Events\LinkCreated;
 use SineMacula\Laravel\Sso\Events\LinkRemoved;
+use SineMacula\Laravel\Sso\Events\LinkSuspended;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 
@@ -32,6 +33,7 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 #[CoversClass(HandoffRedeemed::class)]
 #[CoversClass(LinkCreated::class)]
 #[CoversClass(LinkRemoved::class)]
+#[CoversClass(LinkSuspended::class)]
 final class FlowEventClassesTest extends TestCase
 {
     /** @var list<string> Forbidden property names, ignoring case and underscores. */
@@ -40,30 +42,33 @@ final class FlowEventClassesTest extends TestCase
     /**
      * Each event, with the public properties it declares, in order.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Contracts\SsoEvent, 1: list<string>}>
+     * @return iterable<string, array{0: \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent, 1: list<string>}>
      */
     public static function provideEvents(): iterable
     {
         $context = self::context();
 
-        yield 'authorisation request started' => [new AuthorizationRequestStarted($context), ['context']];
-        yield 'result verified' => [new ResultVerified($context), ['context']];
-        yield 'handoff issued' => [new HandoffIssued($context), ['context']];
-        yield 'handoff redeemed' => [new HandoffRedeemed($context), ['context']];
-        yield 'link created' => [new LinkCreated('link-1', $context, LinkOrigin::VERIFIED_DOMAIN), ['linkId', 'context', 'origin']];
-        yield 'link removed' => [new LinkRemoved('link-1', $context), ['linkId', 'context']];
+        yield 'authorisation request started' => [static fn (): SsoEvent => new AuthorizationRequestStarted($context), ['context']];
+        yield 'result verified' => [static fn (): SsoEvent => new ResultVerified($context), ['context']];
+        yield 'handoff issued' => [static fn (): SsoEvent => new HandoffIssued($context), ['context']];
+        yield 'handoff redeemed' => [static fn (): SsoEvent => new HandoffRedeemed($context), ['context']];
+        yield 'link created' => [static fn (): SsoEvent => new LinkCreated('link-1', $context, LinkOrigin::VERIFIED_DOMAIN), ['linkId', 'context', 'origin']];
+        yield 'link removed' => [static fn (): SsoEvent => new LinkRemoved('link-1', $context), ['linkId', 'context']];
+        yield 'link suspended' => [static fn (): SsoEvent => new LinkSuspended('link-1', $context), ['linkId', 'context']];
     }
 
     /**
      * Each event is a final, read-only package event with these properties.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testIsAFinalReadOnlyPackageEvent(SsoEvent $event, array $properties): void
+    public function testIsAFinalReadOnlyPackageEvent(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         $class = new \ReflectionClass($event);
 
         self::assertTrue($class->isFinal());
@@ -79,13 +84,15 @@ final class FlowEventClassesTest extends TestCase
     /**
      * Each event survives a queue unchanged.
      *
-     * @param  \SineMacula\Laravel\Sso\Contracts\SsoEvent  $event
+     * @param  \Closure(): \SineMacula\Laravel\Sso\Contracts\SsoEvent  $make
      * @param  list<string>  $properties
      * @return void
      */
     #[DataProvider('provideEvents')]
-    public function testSurvivesAQueue(SsoEvent $event, array $properties): void
+    public function testSurvivesAQueue(\Closure $make, array $properties): void
     {
+        $event = $make();
+
         self::assertNotSame([], $properties);
 
         $copy = unserialize(serialize($event));

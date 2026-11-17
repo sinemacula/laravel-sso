@@ -214,7 +214,9 @@ final readonly class HardenedParser
                 self::declare($copy, $namespace);
             }
         } catch (\DOMException) {
+            // @codeCoverageIgnoreStart
             throw new ReadFailure($reason, 'structure');
+            // @codeCoverageIgnoreEnd
         }
 
         return $document;

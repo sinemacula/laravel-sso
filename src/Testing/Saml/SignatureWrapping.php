@@ -39,7 +39,9 @@ final readonly class SignatureWrapping
         try {
             return $this->wrapped($variant, $signed, $evil);
         } catch (\DOMException $exception) {
+            // @codeCoverageIgnoreStart
             throw new \LogicException('The fake identity provider could not wrap its response.', 0, $exception);
+            // @codeCoverageIgnoreEnd
         }
     }
 
