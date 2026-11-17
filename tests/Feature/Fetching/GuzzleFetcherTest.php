@@ -4,7 +4,6 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Fetching;
 
-use GuzzleHttp\ClientInterface;
 use GuzzleHttp\Exception\ConnectException;
 use GuzzleHttp\Exception\RequestException;
 use GuzzleHttp\Handler\MockHandler;
@@ -430,7 +429,7 @@ final class GuzzleFetcherTest extends TestCase
 
         unset($curl[CURLOPT_RESOLVE]);
 
-        self::assertSame(self::isCurlOptionSetByGuzzle() ? [] : $managed, $curl);
+        self::assertSame($managed, $curl);
     }
 
     /**
@@ -1083,18 +1082,5 @@ final class GuzzleFetcherTest extends TestCase
     private function logged(): string
     {
         return json_encode(array_map(static fn (LogRecord $record): array => [$record->message, $record->context], $this->log->getRecords()), JSON_THROW_ON_ERROR);
-    }
-
-    /**
-     * Whether the installed Guzzle (8 and later) sets the protocol, redirect
-     * and proxy cURL options itself.
-     *
-     * @return bool
-     */
-    private static function isCurlOptionSetByGuzzle(): bool
-    {
-        $version = (new \ReflectionClassConstant(ClientInterface::class, 'MAJOR_VERSION'))->getValue();
-
-        return is_int($version) && $version >= 8;
     }
 }
