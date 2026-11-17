@@ -71,18 +71,18 @@ final class MetadataRefreshQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * The connection, anchors, certificates, three locked reads and the
-     * insert's check; the counter's two, the claim, the insert and refresh.
+     * The connection, anchors, certificates and three locked reads; the
+     * counter's two, the claim, the insert and refresh.
      *
      * @return void
      */
-    public function testARefreshAddingACertificateIsSevenReadsAndFiveWrites(): void
+    public function testARefreshAddingACertificateIsSixReadsAndFiveWrites(): void
     {
         $connection = $this->saml([self::idp()->certificate()]);
 
         $this->serve(self::idp()->metadata()->with(['signing_certificates' => [self::idp()->certificate(), Certificates::distinct(0)]]));
 
-        $result = $this->assertQueryBudget(7, 5, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
+        $result = $this->assertQueryBudget(6, 5, fn (): RefreshResult => $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser()));
 
         self::assertSame([RefreshOutcome::REFRESHED, ['idp_signing_certificates'], false], [$result->outcome, $result->changedSettings, $result->trustChanged]);
     }
