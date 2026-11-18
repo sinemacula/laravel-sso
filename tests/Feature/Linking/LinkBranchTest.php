@@ -20,6 +20,7 @@ use SineMacula\Laravel\Sso\Contracts\LinkLimit;
 use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
+use SineMacula\Laravel\Sso\Enforcement\EnforcementService;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
@@ -382,6 +383,46 @@ final class LinkBranchTest extends LinkingTestCase
 
         $this->assertRefused($this->redeem($completion, $start, null), FailureReason::CONNECTION_UNAVAILABLE, $start);
         self::assertSame(0, Link::query()->count());
+    }
+
+    /**
+     * A link through a connection outside the tenant's enforcement rule is
+     * refused at completion, with nothing linked.
+     *
+     * @return void
+     */
+    public function testALinkOutsideTheEnforcementRuleIsRefusedAtCompletion(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $this->enforceThroughAnotherConnection();
+
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+
+        $this->assertRefusedAtCompletion($completion, FailureReason::ENFORCEMENT_UNSATISFIED, $start);
+        self::assertSame(0, Link::query()->count());
+    }
+
+    /**
+     * Enforcement turned on since completion by another connection refuses the
+     * link at redemption, with nothing linked.
+     *
+     * @return void
+     */
+    public function testEnforcementTurnedOnSinceCompletionRefusesTheLink(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        [$start, $completion] = $this->linkFlow();
+
+        $this->enforceThroughAnotherConnection();
+
+        $before = $this->linksVersion();
+
+        $this->assertRefused($this->redeem($completion, $start, $this->person), FailureReason::ENFORCEMENT_UNSATISFIED, $start);
+        self::assertSame(0, Link::query()->count());
+        self::assertSame($before, $this->linksVersion());
     }
 
     /**
@@ -1400,6 +1441,19 @@ final class LinkBranchTest extends LinkingTestCase
         $request->forceFill(['identity_type' => $type, 'identity_id' => $id]);
 
         return $this->withRequest($this->arrived()->withConnection($this->connection), $request);
+    }
+
+    /**
+     * Turn the tenant's enforcement on through another of its connections.
+     *
+     * @return void
+     */
+    private function enforceThroughAnotherConnection(): void
+    {
+        $other  = $this->makeConnection(['enabled' => true, 'has_completed_sign_in' => true]);
+        $result = app(EnforcementService::class)->update('tenant-1', true, [$other->id], Clients::browser());
+
+        self::assertTrue($result->isChanged(), (string) json_encode($result));
     }
 
     /**

@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Completion;
 
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
@@ -18,12 +19,15 @@ use SineMacula\Laravel\Sso\Contracts\AttemptLimiter;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Fetcher;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\JwksRefreshed;
 use SineMacula\Laravel\Sso\Fetching\FetchRequest;
 use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
+use SineMacula\Laravel\Sso\Handoffs\RedemptionResult;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
@@ -170,6 +174,35 @@ final class OidcKeyRotationCompletionTest extends TestCase
         self::assertSame(1, $connection->trust_version);
         self::assertSame(1, $connection->jwks_version);
         self::assertCount(1, array_filter($this->recordedEvents(), static fn (object $event): bool => $event instanceof JwksRefreshed));
+    }
+
+    /**
+     * The triggering sign-in's code carries the new trust version and redeems.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testTheTriggeringSignInsCodeCarriesTheNewTrustVersionAndRedeems(): void
+    {
+        $connection = $this->connection();
+
+        $this->rotate();
+
+        [, $grant, $verifier] = $this->started($connection);
+
+        $code = $this->complete($connection, $grant)->handoff?->code->reveal();
+
+        self::assertNotNull($code);
+        self::assertSame(1, HandoffCode::query()->sole()->trust_version);
+
+        $redemption = app(HandoffRedemption::class);
+        $redeemed   = DB::connection(StorageConnection::name())->transaction(
+            static fn (): RedemptionResult => $redemption->redeem(Purpose::SIGN_IN, 'web', $connection->id, $code, $verifier, Clients::browser()),
+        );
+
+        self::assertTrue($redeemed->isRedeemed());
+        self::assertSame(FakeOpenIdProvider::SUBJECT, $redeemed->result?->subject);
     }
 
     /**
@@ -578,10 +611,11 @@ final class OidcKeyRotationCompletionTest extends TestCase
     }
 
     /**
-     * Start a sign-in; its request and what the provider granted it.
+     * Start a sign-in; its request, what the provider granted it and the
+     * handoff verifier.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
-     * @return array{0: \SineMacula\Laravel\Sso\Models\AuthorizationRequest, 1: \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization}
+     * @return array{0: \SineMacula\Laravel\Sso\Models\AuthorizationRequest, 1: \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization, 2: string}
      *
      * @throws \Random\RandomException
      */
@@ -594,6 +628,7 @@ final class OidcKeyRotationCompletionTest extends TestCase
         return [
             AuthorizationRequest::query()->where('reference', (string) $started->reference?->value)->firstOrFail(),
             $this->provider->authorize((string) $started->navigation?->url()),
+            (string) $started->verifier?->reveal(),
         ];
     }
 
