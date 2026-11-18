@@ -479,6 +479,35 @@ final class JoseAdapterTest extends TestCase
     }
 
     /**
+     * A P-256 key whose private scalar OpenSSL reads without its leading zero
+     * signs an assertion its public key verifies, under its own `kid`.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testAShortPrivateScalarSignsAVerifiableAssertion(): void
+    {
+        $private = new Secret("-----BEGIN PRIVATE KEY-----\n"
+            . "MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgAGhZaxoOA+HFP+2i\n"
+            . "/g5IWZNnZU8bGy1qfmko8onPm+GhRANCAAQjwHfMMQOsBdpDKisSjFY8Z69LHDPJ\n"
+            . "mgMAbydIOJBQHMaJf7EB2tWCKh3Vo8pKdZC/cUqXelNFhGW/ObftJWP8\n"
+            . "-----END PRIVATE KEY-----\n");
+        $public = "-----BEGIN PUBLIC KEY-----\n"
+            . "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEI8B3zDEDrAXaQyorEoxWPGevSxwz\n"
+            . "yZoDAG8nSDiQUBzGiX+xAdrVgiod1aPKSnWQv3FKl3pTRYRlvzm37SVj/A==\n"
+            . "-----END PUBLIC KEY-----\n";
+
+        $assertion = (new JoseAdapter)->signClientAssertion('client-1', 'https://op.example.test/token', $private, CarbonImmutable::createFromTimestampUTC(1900000000))->reveal();
+        $header    = json_decode(JwsSigner::decode(explode('.', $assertion)[0]), true);
+
+        self::assertTrue(JwsSigner::verify($assertion, $public));
+        self::assertIsArray($header);
+        self::assertSame(['ES256', ClientKey::publicJwk($public)['kid']], [$header['alg'] ?? null, $header['kid'] ?? null]);
+        self::assertSame('AGhZaxoOA-HFP-2i_g5IWZNnZU8bGy1qfmko8onPm-E', ClientKey::fromPrivateKey($private)->privateJwk()['d']);
+    }
+
+    /**
      * The members, sorted by name.
      *
      * @param  array<string, string>  $members

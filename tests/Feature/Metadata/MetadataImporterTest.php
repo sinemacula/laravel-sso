@@ -119,6 +119,31 @@ final class MetadataImporterTest extends TestCase
     }
 
     /**
+     * Metadata as Microsoft Entra ID or AD FS publishes it, with a
+     * WS-Federation role descriptor beside the identity provider's, proposes
+     * its settings.
+     *
+     * @return void
+     */
+    public function testXmlWithAWsFederationRoleDescriptorProposesItsSettings(): void
+    {
+        $role = '<md:RoleDescriptor xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:fed="http://docs.oasis-open.org/wsfed/federation/200706"'
+            . ' xsi:type="fed:SecurityTokenServiceType" protocolSupportEnumeration="http://docs.oasis-open.org/wsfed/federation/200706">'
+            . '<fed:PassiveRequestorEndpoint/></md:RoleDescriptor>';
+        $xml = str_replace('<md:IDPSSODescriptor', $role . '<md:IDPSSODescriptor', self::metadata()->toXml());
+
+        $result = $this->importer()->importXml(self::TENANT, null, $xml, FakeSamlIdentityProvider::ENTITY_ID);
+
+        self::assertSame([
+            ['idp_entity_id' => FakeSamlIdentityProvider::ENTITY_ID, 'sso_url' => FakeSamlIdentityProvider::SSO_URL, 'sso_binding' => 'http_redirect'],
+            [self::certificate(self::idp()->certificate())],
+            [],
+            [FakeSamlResponse::PERSISTENT],
+            null,
+        ], self::proposal($result));
+    }
+
+    /**
      * Naming the tenant's SAML connection prefers the binding it uses.
      *
      * @return void
