@@ -68,7 +68,10 @@ final class FakeTokenEndpoint
         $authorization = $this->granted($request->form());
 
         if ($authorization === null) {
-            return self::json(400, ['error' => 'invalid_grant', 'error_description' => 'The code is unknown, used, or its redirect_uri or code_verifier does not match.']);
+            return self::json(400, [
+                'error'             => 'invalid_grant',
+                'error_description' => 'The code is unknown, used, granted to another client, or its redirect_uri or code_verifier does not match.',
+            ]);
         }
 
         return self::json(200, [
@@ -225,8 +228,8 @@ final class FakeTokenEndpoint
     }
 
     /**
-     * Whether the form has the right grant type, exact `redirect_uri` and PKCE
-     * verifier.
+     * Whether the code was granted to the registered client and the form has
+     * the right grant type, exact `redirect_uri` and PKCE verifier.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Oidc\FakeAuthorization  $authorization
      * @param  array<string, string>  $form
@@ -234,11 +237,12 @@ final class FakeTokenEndpoint
      */
     private function isGrantOf(FakeAuthorization $authorization, array $form): bool
     {
+        $client     = $this->client['client_id']      === $authorization->parameter('client_id');
         $type       = ($form['grant_type'] ?? null)   === 'authorization_code';
         $redirected = ($form['redirect_uri'] ?? null) === $authorization->parameter('redirect_uri');
         $challenge  = JwsSigner::encode(hash('sha256', $form['code_verifier'] ?? '', true));
         $proved     = $challenge === $authorization->parameter('code_challenge');
 
-        return $type && $redirected && $proved;
+        return $client && $type && $redirected && $proved;
     }
 }

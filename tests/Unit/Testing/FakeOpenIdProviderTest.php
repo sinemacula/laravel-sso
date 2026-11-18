@@ -516,8 +516,8 @@ final class FakeOpenIdProviderTest extends TestCase
     {
         [$provider, $fetcher] = self::served();
 
-        $url           = $provider->endpoint('authorization') . '?' . http_build_query(['redirect_uri' => self::CALLBACK, 'code_challenge' => self::CHALLENGE, 'nonce' => 'no']);
-        $authorization = $provider->authorize($url);
+        $query         = ['client_id' => 'fake-client', 'redirect_uri' => self::CALLBACK, 'code_challenge' => self::CHALLENGE, 'nonce' => 'no'];
+        $authorization = $provider->authorize($provider->endpoint('authorization') . '?' . http_build_query($query));
         $body          = self::json($fetcher->fetch(self::tokenRequest($provider, $authorization, FetchCredentials::clientSecretBasic('fake-client', 'fake-secret'))));
 
         self::assertSame('', $body['scope'] ?? null);

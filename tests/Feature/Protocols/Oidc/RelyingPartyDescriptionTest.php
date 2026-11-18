@@ -1209,6 +1209,7 @@ final class RelyingPartyDescriptionTest extends TestCase
         $exchange      = app(TokenExchange::class);
         $options       = OidcOptions::of($connection);
         $authorization = $provider->authorize($provider->endpoint('authorization') . '?' . http_build_query([
+            'client_id'      => self::CLIENT_ID,
             'redirect_uri'   => app(EndpointResolver::class)->endpoints($connection)->callback,
             'code_challenge' => JwsSigner::encode(hash('sha256', self::VERIFIER, true)),
             'nonce'          => 'the-nonce',
