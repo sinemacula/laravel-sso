@@ -350,6 +350,43 @@ final class LinkConfirmationTest extends LinkingTestCase
     }
 
     /**
+     * Under enforcement, a `link` takes its identity's guard before the
+     * enforcement rows, which lock the connection holding its domain link.
+     *
+     * @return void
+     */
+    public function testALinkUnderEnforcementTakesTheGuardBeforeTheEnforcement(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $this->allowLinks(2);
+
+        $this->linkByDomain();
+
+        $first  = $this->connection->id;
+        $second = $this->anotherConnection();
+
+        $this->connection        = $second;
+        $this->verifying->claims = self::claimsOf(self::SECOND_SUBJECT);
+
+        $start      = $this->start(Purpose::LINK, $this->person);
+        $completion = $this->complete();
+
+        $this->recordLockOrder();
+
+        self::assertTrue($this->admit($completion, $start, Purpose::LINK, $this->person)->isRedeemed());
+
+        $ids = [$first, $second->id];
+
+        sort($ids, SORT_STRING);
+
+        self::assertSame(
+            ['identity guard', 'identity mark', 'enforcement upsert', 'enforcement', 'connections ' . implode(', ', $ids), 'code'],
+            array_slice($this->lockOrder(), 0, 6),
+        );
+    }
+
+    /**
      * A domain link in a connection the plain read missed throws for a retry,
      * as Laravel's 40001 deadlock from the caller's transaction, code unspent.
      *

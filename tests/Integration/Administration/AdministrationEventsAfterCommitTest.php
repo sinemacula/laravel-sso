@@ -5,16 +5,20 @@ declare(strict_types = 1);
 namespace Tests\Integration\Administration;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Administration\AdministrationEvents;
+use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
+use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\ConnectionCreated;
+use SineMacula\Laravel\Sso\Events\ConnectionDisabled;
 use SineMacula\Laravel\Sso\Events\ConnectionEnabled;
 use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\KeyAdded;
@@ -24,10 +28,13 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
+use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
+use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
 use Tests\TestCase;
@@ -42,10 +49,11 @@ use Tests\TestCase;
  */
 #[CoversClass(AdministrationEvents::class)]
 #[CoversClass(ConnectionService::class)]
+#[CoversClass(ConnectionLifecycle::class)]
 #[CoversClass(KeyService::class)]
 final class AdministrationEventsAfterCommitTest extends TestCase
 {
-    use RecordsEventSequences;
+    use RecordsEventSequences, UsesFlowTables;
 
     /** @var string The connection the package's tables are moved to. */
     private const string STORE = 'sso_administration_store';
@@ -289,6 +297,38 @@ final class AdministrationEventsAfterCommitTest extends TestCase
     }
 
     /**
+     * A listener that throws on a committed change leaves the change committed,
+     * and the same change again writes and reports nothing.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAListenerThatThrowsLeavesTheChangeCommitted(): void
+    {
+        Event::listen([ConnectionEnabled::class, ConnectionDisabled::class], static function (): void {
+            throw new \RuntimeException('Listener failed.');
+        });
+
+        $enable  = fn (): mixed => $this->connections()->enable(self::TENANT, $this->connection, Clients::browser(), $this->actor);
+        $disable = fn (): mixed => $this->app?->make(ConnectionLifecycle::class)->disable(self::TENANT, $this->connection, Clients::browser(), $this->actor);
+
+        self::assertSame('Listener failed.', $this->exceptionOf($enable));
+        self::assertTrue((bool) $this->connectionRow()['enabled']);
+        $this->assertUnchangedAgain($enable);
+
+        $connection = Connection::query()->findOrFail($this->connection);
+        $request    = $this->makeAuthorizationRequest($connection);
+        $code       = $this->makeHandoffCode($connection);
+
+        self::assertSame('Listener failed.', $this->exceptionOf($disable));
+        self::assertFalse((bool) $this->connectionRow()['enabled']);
+        self::assertNotNull(AuthorizationRequest::query()->findOrFail($request->id)->voided_at);
+        self::assertNotNull(HandoffCode::query()->findOrFail($code->id)->voided_at);
+        $this->assertUnchangedAgain($disable);
+    }
+
+    /**
      * Add the second connection, and move the storage connection to it.
      *
      * @param  mixed  $app
@@ -301,6 +341,51 @@ final class AdministrationEventsAfterCommitTest extends TestCase
 
         config()->set('database.connections.' . self::STORE, ['driver' => 'sqlite', 'database' => ':memory:', 'prefix' => '']);
         config()->set('sso.storage.connection', self::STORE);
+    }
+
+    /**
+     * The message of what the call throws.
+     *
+     * @param  \Closure(): mixed  $call
+     * @return string
+     */
+    private function exceptionOf(\Closure $call): string
+    {
+        try {
+            $call();
+        } catch (\RuntimeException $exception) {
+            return $exception->getMessage();
+        }
+
+        self::fail('Expected the listener to throw.');
+    }
+
+    /**
+     * Make the change again, and assert it succeeds unchanged, writing and
+     * reporting nothing.
+     *
+     * @param  \Closure(): mixed  $call
+     * @return void
+     */
+    private function assertUnchangedAgain(\Closure $call): void
+    {
+        $before  = $this->connectionRow();
+        $queries = [];
+
+        $this->startRecordingEvents();
+
+        Event::listen(QueryExecuted::class, static function (QueryExecuted $query) use (&$queries): void {
+            $queries[] = $query->sql;
+        });
+
+        $result = $call();
+
+        self::assertInstanceOf(ConnectionResult::class, $result);
+        self::assertTrue($result->isSucceeded());
+        self::assertFalse($result->isChanged());
+        self::assertSame($before, $this->connectionRow());
+        self::assertSame([], preg_grep('/^\s*(?:insert|update|delete|replace)\b/i', $queries));
+        $this->assertNoEvents();
     }
 
     /**

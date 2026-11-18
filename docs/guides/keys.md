@@ -75,7 +75,8 @@ The type defaults to RSA; pass `KeyType::EC` for a P-256 key where the use allow
 While a key is current, `addNext()` adds the new one as `next`. Both are now published, the current key first
 (`KeyRing::published()`, which the connection's metadata and JWKS are built from), so the identity provider can take up
 the new key before it is used. A connection has at most one `next` key of a use: adding a second is refused with
-`key_state_conflict`.
+`key_state_conflict`. An assertion the identity provider encrypts to both published encryption keys at once is refused
+with `decryption_failed`.
 
 ### 3. Make it current
 

@@ -848,6 +848,60 @@ final class CompletionPipelineTest extends TestCase
     }
 
     /**
+     * Rows of `[request expiry, seconds in validation, seconds after, reason]`
+     * against the default maximum age of 120 seconds.
+     *
+     * @return iterable<string, array{0: int, 1: int, 2: int, 3: ?string}>
+     */
+    public static function provideVerifiedDeadlines(): iterable
+    {
+        yield 'the request expiring during validation' => [1, 2, 0, 'request_expired'];
+        yield 'the request expiring as validation ends' => [2, 2, 0, 'request_expired'];
+        yield 'the request expiring a second after validation' => [3, 2, 0, null];
+        yield 'the maximum age passing before the lock' => [600, 0, 120, 'request_expired'];
+        yield 'a second short of the maximum age' => [600, 0, 119, null];
+    }
+
+    /**
+     * A verified deadline that passed before the lock is refused under it.
+     *
+     * @param  int  $expiresIn
+     * @param  int  $during
+     * @param  int  $after
+     * @param  ?string  $reason
+     * @return void
+     */
+    #[DataProvider('provideVerifiedDeadlines')]
+    public function testAVerifiedDeadlineThatPassedBeforeTheLockIsRefusedUnderIt(int $expiresIn, int $during, int $after, ?string $reason): void
+    {
+        $request    = $this->request(['expires_at' => $this->clock->now()->addSeconds($expiresIn)]);
+        $clock      = $this->clock;
+        $validation = app(ValidateResponse::class);
+
+        $this->app?->instance(ValidateResponse::class, self::answering(static function (CompletionState $state) use ($validation, $clock, $after): StageOutcome {
+            $outcome = $validation->run($state);
+
+            $clock->advance($after);
+
+            return $outcome;
+        }));
+        $this->spyOnEveryStep();
+
+        $this->driver->replay     = $this->record(300);
+        $this->driver->onComplete = static function () use ($clock, $during): void {
+            $clock->advance($during);
+        };
+
+        $result = $this->completeAtCallback();
+
+        self::assertSame([$reason === null ? 'completed' : 'failed', $reason, 'https://app.example.com/sso', self::REFERENCE], self::summary($result));
+        self::assertCount($reason === null ? 11 : 3, $this->stepsRan());
+        self::assertCount($reason === null ? 1 : 0, $this->issuer->grants());
+        self::assertSame($reason === null ? 1 : 0, SingleUseKey::query()->where('namespace', ReplayRecord::SAML_ASSERTION)->count());
+        self::assertNotNull($this->reread($request)->completed_at);
+    }
+
+    /**
      * Metadata that lapsed during unsolicited validation is refused.
      *
      * @param  string  $limit
