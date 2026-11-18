@@ -201,8 +201,8 @@ final class SamlAdapterTest extends TestCase
     #[DataProvider('provideExactSubjects')]
     public function testTheSubjectIsReadExactlyAsSent(string $value): void
     {
-        $read      = $this->read(self::response()->with(['name_id' => $value, 'attributes' => ['employeeNumber' => [$value]]])->encoded())->response;
-        $assertion = self::assertionOf($read ?? self::fail('The response was refused.'));
+        $result    = $this->read(self::response()->with(['name_id' => $value, 'attributes' => ['employeeNumber' => [$value]]])->encoded());
+        $assertion = self::assertionOf($result->response ?? self::fail(sprintf('The response was refused: %s/%s.', $result->reason?->value, $result->detail)));
 
         self::assertSame([$value, [$value]], [$assertion->subject()?->nameId()?->value(), $assertion->attributes()[0]->values()]);
     }
