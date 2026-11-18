@@ -7,6 +7,8 @@ namespace Tests\Unit\Architecture;
 use PHPUnit\Framework\Attributes\CoversNothing;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use Psr\Log\LoggerInterface;
+use SineMacula\Laravel\Sso\SsoServiceProvider;
 
 /**
  * Architecture tests holding the package's namespaces to the rules in `RULES`.
@@ -114,6 +116,24 @@ final class NamespaceDependenciesTest extends TestCase
         'logger',
         'info',
     ];
+
+    /** @var string A direct read of the time, as `callsIn()` gives it. */
+    private const string TIME_READ = '/^(?:now|today|time|microtime|hrtime|(?!(?:self|static|parent)::)[\w\\\]+::(?:now|today)|date_create(?:_immutable)?'
+        . '|new (?:[\w\\\]*\\\)?(?:datetime|carbon)(?:immutable)?)$/';
+
+    /** @var string A construction of an event context, as `callsIn()` gives it. */
+    private const string CONTEXT_BUILT = '/^new (?:[\w\\\]*\\\)?eventcontext$/';
+
+    /** @var list<string> What dispatches an event directly, by lower-case name; `event` is the root alias and the helper. */
+    private const array EVENT_DISPATCHERS = [
+        'illuminate\contracts\events\dispatcher',
+        'illuminate\events\dispatcher',
+        'illuminate\support\facades\event',
+        'event',
+    ];
+
+    /** @var list<string> The calls that dispatch through an event dispatcher, as `callsIn()` gives them. */
+    private const array DISPATCH_CALLS = ['->dispatch', '->until', '->push', '->flush'];
 
     /** @var ?array<string, list<string>> Every class of the package and the package names it names, read once. */
     private static ?array $names = null;
@@ -238,7 +258,7 @@ final class NamespaceDependenciesTest extends TestCase
                 $found[] = "{$class} resolves the request from the container";
             }
 
-            if (in_array('request', self::helperCallsIn($source), true)) {
+            if (in_array('request', self::callsIn($source), true)) {
                 $found[] = "{$class} calls request()";
             }
 
@@ -258,6 +278,107 @@ final class NamespaceDependenciesTest extends TestCase
         foreach (self::REQUEST_READERS as $reader) {
             self::assertContains('Illuminate\Http\Request', self::qualifiedNamesIn(self::sources()[$reader]), "{$reader} no longer reads a request.");
         }
+    }
+
+    /**
+     * Every class outside `Logging` whose constructor takes a PSR-3 logger is
+     * given the sanitising logger, and no other class is listed.
+     *
+     * @return void
+     */
+    public function testEveryClassThatTakesALoggerIsGivenTheSanitizingLogger(): void
+    {
+        $takers = [];
+
+        foreach (self::sources() as $class => $source) {
+
+            $name = self::PACKAGE . $class;
+
+            if (self::isWithin($class, ['Logging']) || !in_array('psr\log\loggerinterface', array_map(strtolower(...), self::qualifiedNamesIn($source)), true)) {
+                continue;
+            }
+
+            assert(class_exists($name));
+
+            $types = array_map(static function (\ReflectionParameter $parameter): ?string {
+
+                $type = $parameter->getType();
+
+                return $type instanceof \ReflectionNamedType ? $type->getName() : null;
+            }, (new \ReflectionClass($name))->getConstructor()?->getParameters() ?? []);
+
+            if (!in_array(LoggerInterface::class, $types, true)) {
+                continue;
+            }
+
+            $takers[] = $name;
+        }
+
+        $listed = SsoServiceProvider::LOGGING_CLASSES;
+
+        sort($takers);
+        sort($listed);
+
+        self::assertSame($listed, $takers);
+    }
+
+    /**
+     * Nothing reads the time but the clock and the testing helpers; the pacer
+     * and the fetcher's deadline time what elapses on the monotonic clock.
+     *
+     * @return void
+     */
+    public function testOnlyTheClockReadsTheTime(): void
+    {
+        $found = [];
+
+        foreach (self::sources() as $class => $source) {
+
+            if (self::isWithin($class, ['Clock\SystemClock', 'Testing'])) {
+                continue;
+            }
+
+            array_push($found, ...array_map(static fn (string $read): string => "{$class} reads {$read}", self::timeReadsIn($source)));
+        }
+
+        self::assertSame(['Discovery\Pacer reads hrtime', 'Fetching\GuzzleFetcher reads hrtime'], $found);
+        self::assertSame(['date::now'], self::timeReadsIn(self::sources()['Clock\SystemClock']));
+    }
+
+    /**
+     * Only `EventContexts` builds an event context, and only the after-commit
+     * dispatcher and the provisioning offer dispatch an event; the composition
+     * root only listens.
+     *
+     * @return void
+     */
+    public function testOnlyTheAfterCommitDispatcherSendsAnEvent(): void
+    {
+        $found = [];
+
+        foreach (self::sources() as $class => $source) {
+
+            $calls = self::callsIn($source);
+
+            if ($class !== 'Events\EventContexts' && preg_grep(self::CONTEXT_BUILT, $calls) !== []) {
+                $found[] = "{$class} builds an event context";
+            }
+
+            if ($class !== 'Events\AfterCommitDispatcher' && in_array('->dispatchnow', $calls, true)) {
+                $found[] = "{$class} calls dispatchNow()";
+            }
+
+            if (in_array($class, ['Events\AfterCommitDispatcher', 'Completion\ProvisioningOffer'], true)) {
+                continue;
+            }
+
+            array_push($found, ...array_map(static fn (string $name): string => "{$class} names {$name}", self::eventDispatchersIn($source)));
+        }
+
+        self::assertSame(['SsoServiceProvider names Illuminate\Contracts\Events\Dispatcher'], $found);
+        self::assertSame([], array_values(array_intersect(self::DISPATCH_CALLS, self::callsIn(self::sources()['SsoServiceProvider']))));
+        self::assertContains('->listen', self::callsIn(self::sources()['SsoServiceProvider']));
+        self::assertNotSame([], preg_grep(self::CONTEXT_BUILT, self::callsIn(self::sources()['Events\EventContexts'])));
     }
 
     /**
@@ -306,6 +427,121 @@ final class NamespaceDependenciesTest extends TestCase
             'info',
             'logger',
         ], self::logWritersIn($source));
+    }
+
+    /**
+     * The time scan finds the clock helpers, static reads and new date-times,
+     * and skips the package's clock, members and lookalikes.
+     *
+     * @return void
+     */
+    public function testTheTimeScanFindsEveryWayOfReadingTheTime(): void
+    {
+        $source = <<<'PHP'
+            <?php
+
+            namespace SineMacula\Laravel\Sso\Example;
+
+            use Carbon\Carbon;
+            use Carbon\CarbonImmutable as Instant;
+            use Illuminate\Support\Facades\Date;
+
+            final class Example
+            {
+                public function run(): void
+                {
+                    \Carbon\Carbon::now();
+                    Instant::today();
+                    Date::now();
+                    now();
+                    \today();
+                    time();
+                    microtime(true);
+                    hrtime(true);
+                    new \DateTime;
+                    new \DateTimeImmutable('now');
+                    new \Carbon\CarbonImmutable;
+                    new Carbon();
+                    date_create();
+                    date_create_immutable('now');
+                    $this->clock->now();
+                    $this->clock?->today();
+                    self::now();
+                    static::today();
+                    $this->time();
+                    Instant::parse('2026-11-01');
+                    new \DateTimeZone('UTC');
+                    timezone_open('UTC');
+                }
+
+                private static function now(): void {}
+            }
+            PHP;
+
+        self::assertSame([
+            'carbon\carbon::now',
+            'instant::today',
+            'date::now',
+            'now',
+            'today',
+            'time',
+            'microtime',
+            'hrtime',
+            'new datetime',
+            'new datetimeimmutable',
+            'new carbon\carbonimmutable',
+            'new carbon',
+            'date_create',
+            'date_create_immutable',
+        ], self::timeReadsIn($source));
+    }
+
+    /**
+     * The event scan finds a context built and every way of dispatching, and
+     * skips the contexts factory, members and lookalikes.
+     *
+     * @return void
+     */
+    public function testTheEventScanFindsEveryWayOfBuildingAContextOrDispatching(): void
+    {
+        $source = <<<'PHP'
+            <?php
+
+            namespace SineMacula\Laravel\Sso\Example;
+
+            use Illuminate\Contracts\Events\Dispatcher;
+            use Illuminate\Support\Facades\Event as Events;
+            use SineMacula\Laravel\Sso\Events\EventContext;
+
+            final class Example
+            {
+                public function run(Dispatcher $events): void
+                {
+                    new EventContext;
+                    new \SineMacula\Laravel\Sso\Events\EventContext();
+                    new EventContexts;
+                    $this->dispatcher->dispatchNow($event);
+                    \Event::dispatch($event);
+                    event($event);
+                    new \Illuminate\Events\Dispatcher;
+                    $this->event($event);
+                    self::eventContext();
+                    $events->listen('a', 'b');
+                }
+            }
+            PHP;
+
+        $calls = self::callsIn($source);
+
+        self::assertSame(['new eventcontext', 'new sinemacula\laravel\sso\events\eventcontext'], array_values(preg_grep(self::CONTEXT_BUILT, $calls) ?: []));
+        self::assertContains('->dispatchnow', $calls);
+        self::assertSame([
+            'Illuminate\Contracts\Events\Dispatcher',
+            'Illuminate\Support\Facades\Event',
+            'Event',
+            'Illuminate\Events\Dispatcher',
+            'event',
+        ], self::eventDispatchersIn($source));
     }
 
     /**
@@ -741,30 +977,86 @@ final class NamespaceDependenciesTest extends TestCase
     }
 
     /**
-     * The lower-case names of the plain functions the source calls.
+     * The direct reads of the time the source makes, as `callsIn()` gives them.
      *
      * @param  string  $source
      * @return list<string>
      */
-    private static function helperCallsIn(string $source): array
+    private static function timeReadsIn(string $source): array
+    {
+        return array_values(preg_grep(self::TIME_READ, self::callsIn($source)) ?: []);
+    }
+
+    /**
+     * The event dispatchers the source names or calls, in order of first use.
+     *
+     * @param  string  $source
+     * @return list<string>
+     */
+    private static function eventDispatchersIn(string $source): array
+    {
+        $names = [...self::qualifiedNamesIn($source), ...self::callsIn($source)];
+
+        return array_values(array_unique(array_filter($names, static fn (string $name): bool => in_array(strtolower($name), self::EVENT_DISPATCHERS, true))));
+    }
+
+    /**
+     * The distinct calls the source makes, in lower case and as written, not
+     * through an import's alias: `name()` as `name`, `Class::name()` as
+     * `class::name`, `->name()` as `->name` and `new Class` as `new class`.
+     *
+     * @param  string  $source
+     * @return list<string>
+     */
+    private static function callsIn(string $source): array
     {
         $tokens = self::tokens($source);
         $calls  = [];
 
         foreach ($tokens as $index => $token) {
 
-            if (!is_array($token) || !in_array($token[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true)) {
-                continue;
-            }
+            $next = $tokens[$index + 1] ?? null;
 
-            if (($tokens[$index + 1] ?? null) !== '(' || self::isMember($tokens[$index - 1] ?? null)) {
-                continue;
+            if (is_array($token) && $token[0] === T_NEW && is_array($next)) {
+                $calls[] = 'new ' . self::callee($next);
+            } elseif (is_array($token) && $next === '(' && in_array($token[0], [T_STRING, T_NAME_QUALIFIED, T_NAME_FULLY_QUALIFIED], true)) {
+                $calls[] = self::called($tokens, $index);
             }
-
-            $calls[] = strtolower(ltrim($token[1], '\\'));
         }
 
-        return array_values(array_unique($calls));
+        return array_values(array_unique(array_filter($calls, is_string(...))));
+    }
+
+    /**
+     * What the name at the index calls, as `callsIn()` gives it; `null` for a
+     * declaration or a construction.
+     *
+     * @param  list<array{0: int, 1: string, 2: int}|string>  $tokens
+     * @param  int  $index
+     * @return ?string
+     */
+    private static function called(array $tokens, int $index): ?string
+    {
+        $previous = $tokens[$index - 1] ?? null;
+        $name     = self::callee($tokens[$index]);
+
+        return match (is_array($previous) ? $previous[0] : null) {
+            T_FUNCTION, T_NEW                             => null,
+            T_OBJECT_OPERATOR, T_NULLSAFE_OBJECT_OPERATOR => '->' . $name,
+            T_DOUBLE_COLON                                => self::callee($tokens[$index - 2]) . '::' . $name,
+            default                                       => $name,
+        };
+    }
+
+    /**
+     * The lower-case name a token calls, without a leading backslash.
+     *
+     * @param  array{0: int, 1: string, 2: int}|string  $token
+     * @return string
+     */
+    private static function callee(array|string $token): string
+    {
+        return strtolower(ltrim(is_array($token) ? $token[1] : $token, '\\'));
     }
 
     /**

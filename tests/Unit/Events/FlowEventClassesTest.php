@@ -13,6 +13,8 @@ use SineMacula\Laravel\Sso\Events\AuthorizationRequestStarted;
 use SineMacula\Laravel\Sso\Events\EventContext;
 use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
+use SineMacula\Laravel\Sso\Events\LinkActivated;
+use SineMacula\Laravel\Sso\Events\LinkConfirmed;
 use SineMacula\Laravel\Sso\Events\LinkCreated;
 use SineMacula\Laravel\Sso\Events\LinkRemoved;
 use SineMacula\Laravel\Sso\Events\LinkSuspended;
@@ -31,6 +33,8 @@ use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 #[CoversClass(ResultVerified::class)]
 #[CoversClass(HandoffIssued::class)]
 #[CoversClass(HandoffRedeemed::class)]
+#[CoversClass(LinkActivated::class)]
+#[CoversClass(LinkConfirmed::class)]
 #[CoversClass(LinkCreated::class)]
 #[CoversClass(LinkRemoved::class)]
 #[CoversClass(LinkSuspended::class)]
@@ -52,6 +56,8 @@ final class FlowEventClassesTest extends TestCase
         yield 'result verified' => [static fn (): SsoEvent => new ResultVerified($context), ['context']];
         yield 'handoff issued' => [static fn (): SsoEvent => new HandoffIssued($context), ['context']];
         yield 'handoff redeemed' => [static fn (): SsoEvent => new HandoffRedeemed($context), ['context']];
+        yield 'link activated' => [static fn (): SsoEvent => new LinkActivated('link-1', $context), ['linkId', 'context']];
+        yield 'link confirmed' => [static fn (): SsoEvent => new LinkConfirmed('link-1', $context), ['linkId', 'context']];
         yield 'link created' => [static fn (): SsoEvent => new LinkCreated('link-1', $context, LinkOrigin::VERIFIED_DOMAIN), ['linkId', 'context', 'origin']];
         yield 'link removed' => [static fn (): SsoEvent => new LinkRemoved('link-1', $context), ['linkId', 'context']];
         yield 'link suspended' => [static fn (): SsoEvent => new LinkSuspended('link-1', $context), ['linkId', 'context']];
