@@ -33,6 +33,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Results\AuthenticationContext;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
+use Tests\Concerns\ComparesIdentitiesWithoutCase;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
@@ -58,7 +59,7 @@ use Tests\TestCase;
 #[CoversClass(LinkEvents::class)]
 final class LinkStoreTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
+    use ComparesIdentitiesWithoutCase, RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var string The issuer every subject here is from. */
     private const string ISSUER = 'https://idp.example.com';
@@ -786,6 +787,23 @@ final class LinkStoreTest extends TestCase
 
         self::assertTrue($this->linkSubject()->isCreated());
         self::assertSame(4, Link::query()->count());
+    }
+
+    /**
+     * A link the collation finds for an identity differing only in case does
+     * not count toward the limit.
+     *
+     * @return void
+     */
+    public function testALinkOfAnIdentityDifferingOnlyInCaseDoesNotCount(): void
+    {
+        $this->compareIdentityIdsWithoutCase();
+
+        $this->linkSubject('Another person', identity: new IdentityReference('user', 'ADA'));
+
+        self::assertSame(1, Link::query()->where('identity_id', 'ada')->count());
+        self::assertTrue($this->linkSubject(identity: new IdentityReference('user', 'ada'))->isCreated());
+        self::assertSame(2, Link::query()->count());
     }
 
     /**

@@ -16,14 +16,18 @@ use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
 use SineMacula\Laravel\Sso\Domains\RecheckEntry;
 use SineMacula\Laravel\Sso\Http\ClientContext;
+use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\ExpiringKey;
 use SineMacula\Laravel\Sso\Keys\ExpiryReport;
+use SineMacula\Laravel\Sso\Links\LinkService;
+use SineMacula\Laravel\Sso\Links\LinkSummary;
 use SineMacula\Laravel\Sso\Metadata\MetadataRefresher;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Models\Domain;
+use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Pruning\Enums\PruneKind;
 use SineMacula\Laravel\Sso\Pruning\Pruner;
 use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
@@ -53,6 +57,7 @@ use Tests\TestCase;
 #[CoversClass(ExpiryReport::class)]
 #[CoversClass(DomainRechecker::class)]
 #[CoversClass(MetadataRefresher::class)]
+#[CoversClass(LinkService::class)]
 final class LaggingReplicaOperationsTest extends TestCase
 {
     use FlowRoutes, InteractsWithLaggingReplica, MakesPrunableRows;
@@ -368,6 +373,41 @@ final class LaggingReplicaOperationsTest extends TestCase
         DB::connection(self::PRIMARY_CONNECTION)->table($table)->where('id', $gone->id)->delete();
 
         self::assertSame([], app(MetadataRefresher::class)->dueConnectionIds());
+    }
+
+    /**
+     * A list reads the primary: a link missing from the replica is listed, and
+     * one only the replica has is not.
+     *
+     * @return void
+     */
+    public function testAListIgnoresWhatOnlyTheReplicaSays(): void
+    {
+        $connection = $this->makeConnection(['tenant_id' => self::TENANT, 'enabled' => true]);
+        $table      = StorageConnection::table('links.table');
+        $missing    = $this->makeLink($connection, 'subject-missing');
+        $gone       = $this->makeLink($connection, 'subject-gone');
+
+        $this->copyRowToReplica($table, $gone->id);
+
+        DB::connection(self::PRIMARY_CONNECTION)->table($table)->where('id', $gone->id)->delete();
+
+        $listed = app(LinkService::class)->list(new IdentityReference('user', '1'));
+
+        self::assertSame([$missing->id], array_map(static fn (LinkSummary $summary): string => $summary->id, $listed));
+    }
+
+    /**
+     * A link missing from the replica is found and removed.
+     *
+     * @return void
+     */
+    public function testARemovalFindsALinkMissingFromTheReplica(): void
+    {
+        $link = $this->makeLink($this->makeConnection(['tenant_id' => self::TENANT, 'enabled' => true]));
+
+        self::assertTrue(app(LinkService::class)->remove(new IdentityReference('user', '1'), $link->id, Clients::browser())->isRemoved());
+        self::assertSame(0, Link::query()->useWritePdo()->count());
     }
 
     /**
