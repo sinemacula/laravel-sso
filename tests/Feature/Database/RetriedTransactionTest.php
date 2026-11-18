@@ -16,8 +16,8 @@ use SineMacula\Laravel\Sso\Database\StorageConnection;
 use Tests\TestCase;
 
 /**
- * Feature tests for the transaction retried on a deadlock or serialisation
- * failure.
+ * Feature tests for the transaction retried on a deadlock, a lock wait timeout
+ * or a serialisation failure.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -32,6 +32,9 @@ final class RetriedTransactionTest extends TestCase
 
     /** @var string What MySQL says when it rolls a transaction back as a deadlock. */
     private const string DEADLOCK = 'Deadlock found when trying to get lock; try restarting transaction';
+
+    /** @var string What MySQL says when `innodb_lock_wait_timeout` passes. */
+    private const string LOCK_WAIT_TIMEOUT = 'Lock wait timeout exceeded; try restarting transaction';
 
     /** @var string The table the work writes to. */
     private const string TABLE = 'retried_rows';
@@ -129,20 +132,35 @@ final class RetriedTransactionTest extends TestCase
     }
 
     /**
-     * A deadlock in a savepoint is retried by its message.
+     * Rows of `[MySQL's message, whether it fails in a savepoint]`.
      *
+     * @return iterable<string, array{0: string, 1: bool}>
+     */
+    public static function provideMySqlConcurrencyFailures(): iterable
+    {
+        yield 'a deadlock in a savepoint' => [self::DEADLOCK, true];
+        yield 'a lock wait timeout in a savepoint' => [self::LOCK_WAIT_TIMEOUT, true];
+        yield 'a lock wait timeout' => [self::LOCK_WAIT_TIMEOUT, false];
+    }
+
+    /**
+     * A MySQL concurrency failure is retried by its message.
+     *
+     * @param  string  $message
+     * @param  bool  $nested
      * @return void
      *
      * @throws \Throwable
      */
-    public function testADeadlockInASavepointIsRetried(): void
+    #[DataProvider('provideMySqlConcurrencyFailures')]
+    public function testAMySqlConcurrencyFailureIsRetried(string $message, bool $nested): void
     {
-        $failure = self::failure(self::DEADLOCK, 'HY000');
+        $failure = self::failure($message, 'HY000');
 
-        $answer = RetriedTransaction::run($this->database(), function (Connection $connection) use ($failure): int {
+        $answer = RetriedTransaction::run($this->database(), function (Connection $connection) use ($failure, $nested): int {
 
             if (++$this->runs === 1) {
-                $connection->transaction(static fn (): never => throw $failure);
+                $nested ? $connection->transaction(static fn (): never => throw $failure) : throw $failure;
             }
 
             return $this->runs;

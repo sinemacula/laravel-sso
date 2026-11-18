@@ -19,6 +19,7 @@ use SineMacula\Laravel\Sso\Connections\ServiceProviderDescriptions;
 use SineMacula\Laravel\Sso\Events\ConnectionCreated;
 use SineMacula\Laravel\Sso\Events\ConnectionDeleted;
 use SineMacula\Laravel\Sso\Flows\AuthorizationRequestService;
+use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Handoffs\HandoffRedemption;
 use SineMacula\Laravel\Sso\Sessions\AuthenticationContext;
 use SineMacula\Laravel\Sso\Sessions\Enums\ContextKey;
@@ -298,6 +299,65 @@ final class RouteLayoutExampleTest extends ExampleTestCase
 
         $this->postJson($domains . '/example.com/verifications')->assertOk()->assertJsonPath('status', 'verified');
         $this->postJson($domains . '/other.example.com/verifications')->assertNotFound();
+    }
+
+    /**
+     * Each connection management route answers its result with the documented
+     * status.
+     *
+     * @return void
+     */
+    public function testManagingAConnectionAnswersEachResultWithItsStatus(): void
+    {
+        $this->actingAs(User::of('admin-1', self::TENANT, administersSso: true));
+
+        $connection = '/api/auth/sso/connections/' . $this->connectionId;
+
+        $this->patchJson($connection, ['settings' => ['sso_url' => 'not-a-url']])
+            ->assertStatus(422)
+            ->assertJsonPath('status', 'invalid')
+            ->assertJsonPath('violations.0.setting', 'sso_url');
+        $this->patchJson($connection, ['display_name' => 'Acme SAML'])->assertOk()->assertJsonPath('connection.display_name', 'Acme SAML');
+        $this->postJson($connection . '/disable')->assertOk()->assertJsonPath('connection.enabled', false);
+
+        config()->set('sso.features.saml2', false);
+        $this->postJson($connection . '/enable')->assertStatus(409)->assertJsonPath('reason', 'protocol_unavailable');
+        config()->set('sso.features.saml2', true);
+        $this->postJson($connection . '/enable')->assertOk()->assertJsonPath('connection.enabled', true);
+
+        $this->freshness->staleFor(FreshnessOperation::CONNECTION_ENABLE);
+        $this->postJson($connection . '/enable')->assertForbidden()->assertJsonPath('reason', 'freshness_required');
+
+        $this->deleteJson($connection)->assertOk()->assertJsonPath('status', 'deleted');
+        $this->deleteJson($connection)->assertNotFound();
+    }
+
+    /**
+     * A domain check past the limit answers `429` with when to try again, and a
+     * removed claim is gone.
+     *
+     * @return void
+     */
+    public function testCheckingADomainTooOftenAndRemovingIt(): void
+    {
+        config()->set('sso.rate_limits.domain_check.per_connection', ['max' => 1, 'decay_seconds' => 3600]);
+
+        $this->actingAs(User::of('admin-1', self::TENANT, administersSso: true));
+
+        $domains = '/api/auth/sso/connections/' . $this->connectionId . '/domains';
+
+        $this->postJson($domains, ['domain' => 'example.com'])->assertCreated();
+        $this->dns->absent('_sso-verification.example.com');
+
+        $this->postJson($domains . '/example.com/verifications')->assertStatus(409)->assertJsonPath('reason', 'domain_record_not_found');
+
+        // The hour's window ends at 10:00, half an hour after the clock's now
+        $this->postJson($domains . '/example.com/verifications')
+            ->assertStatus(429)
+            ->assertHeader('Retry-After', '1800')
+            ->assertJsonPath('reason', 'rate_limited');
+        $this->deleteJson($domains . '/example.com')->assertOk()->assertJsonPath('status', 'removed');
+        $this->deleteJson($domains . '/example.com')->assertNotFound();
     }
 
     /**
