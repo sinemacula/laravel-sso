@@ -4,6 +4,8 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Linking;
 
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
@@ -11,6 +13,7 @@ use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
 use SineMacula\Laravel\Sso\Connections\LinkingPolicyService;
 use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\ConnectionDisabled;
 use SineMacula\Laravel\Sso\Events\ConnectionUpdated;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
@@ -26,6 +29,7 @@ use SineMacula\Laravel\Sso\Protocols\Preset;
 use SineMacula\Laravel\Sso\Protocols\ProtocolManager;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\CapturesLogs;
+use Tests\Concerns\FailsDatabaseStatements;
 use Tests\Fixtures\Clients;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
@@ -43,7 +47,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 #[CoversClass(Preset::class)]
 final class LinkingPolicyServiceTest extends LinkingTestCase
 {
-    use CapturesLogs;
+    use CapturesLogs, FailsDatabaseStatements;
 
     /** @var string A protocol-neutral issuer no list knows. */
     private const string PLAIN_ISSUER = 'https://plain.example.com';
@@ -276,6 +280,73 @@ final class LinkingPolicyServiceTest extends LinkingTestCase
         self::assertSame(0, AuthorizationRequest::query()->whereNotNull('voided_at')->count());
         self::assertSame([], array_filter($this->recordedEvents(), static fn ($event): bool => $event instanceof ConnectionDisabled));
         self::assertSame(FailureReason::RESERVATION_INVALID, $this->admit($completion, $start)->reason);
+    }
+
+    /**
+     * Rows of `[failure]`: the caller's transaction failing after the change,
+     * or the change's reservation withdrawal failing under a caller that goes
+     * on to commit.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideRolledBackChanges(): iterable
+    {
+        yield 'the caller failing' => ['caller'];
+        yield 'the withdrawal failing' => ['withdrawal'];
+    }
+
+    /**
+     * A change rolled back leaves the settings, versions and reservation as
+     * they were, and reports nothing.
+     *
+     * @param  string  $failure
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    #[DataProvider('provideRolledBackChanges')]
+    public function testARolledBackChangeLeavesEverythingAndReportsNothing(string $failure): void
+    {
+        $this->start();
+        $this->complete();
+        $this->connection->forceFill(['linking_acknowledged_at' => null])->save();
+
+        $connection = Connection::query()->whereKey($this->connection->id)->sole()->getAttributes();
+        $links      = Link::query()->get()->map(static fn (Link $link): array => $link->setHidden([])->attributesToArray())->all();
+        $database   = DB::connection(StorageConnection::name());
+
+        self::assertCount(1, $links);
+
+        $this->startRecordingEvents();
+
+        if ($failure === 'withdrawal') {
+            $this->failStatement(self::onTable('delete', 'sso_links'));
+
+            $database->transaction(function (): void {
+                try {
+                    self::service()->change('tenant-1', $this->connection->id, ['acknowledged' => true], Clients::browser());
+
+                    self::fail('The withdrawal did not fail.');
+                } catch (QueryException $exception) {
+                    self::assertTrue(self::isInjectedFailure($exception));
+                }
+            });
+        } else {
+            try {
+                $database->transaction(function (): void {
+
+                    self::assertTrue(self::service()->change('tenant-1', $this->connection->id, ['acknowledged' => true], Clients::browser())->isChanged());
+
+                    throw new \RuntimeException('The caller failed.');
+                });
+            } catch (\RuntimeException $exception) {
+                self::assertSame('The caller failed.', $exception->getMessage());
+            }
+        }
+
+        self::assertSame($connection, Connection::query()->whereKey($this->connection->id)->sole()->getAttributes());
+        self::assertSame($links, Link::query()->get()->map(static fn (Link $link): array => $link->setHidden([])->attributesToArray())->all());
+        $this->assertNoEvents();
     }
 
     /**

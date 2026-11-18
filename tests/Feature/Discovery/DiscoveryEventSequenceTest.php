@@ -6,6 +6,7 @@ namespace Tests\Feature\Discovery;
 
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Discovery\DiscoveryService;
@@ -171,6 +172,44 @@ final class DiscoveryEventSequenceTest extends TestCase
         }
 
         self::assertSame(0, AuthorizationRequest::query()->count());
+    }
+
+    /**
+     * Rows of `[purpose, the session the context names]`.
+     *
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: ?string}>
+     */
+    public static function provideCallerMisses(): iterable
+    {
+        yield 'link' => [Purpose::LINK, null];
+        yield 'reauthenticate' => [Purpose::REAUTHENTICATE, 'session-1'];
+    }
+
+    /**
+     * A miss for a caller names the caller and asks no contract.
+     *
+     * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
+     * @param  ?string  $sessionId
+     * @return void
+     */
+    #[DataProvider('provideCallerMisses')]
+    public function testAMissForACallerNamesTheCallerAndAsksNoContract(Purpose $purpose, ?string $sessionId): void
+    {
+        self::assertTrue($this->discover('unknown.com', $purpose, identity: new IdentityReference('App\Models\User', '42'), sessionId: 'session-1')->isStarted());
+
+        $this->assertEventSequence([FlowFailed::class]);
+
+        $failure = $this->assertExactlyOneFailure(Flow::AUTHORIZATION_REQUEST, FailureReason::DISCOVERY_NO_MATCH);
+
+        self::assertSame($this->context([
+            'application'          => 'discovering',
+            'purpose'              => $purpose->value,
+            'identity_morph_class' => 'App\Models\User',
+            'identity_id'          => '42',
+            'session_id'           => $sessionId,
+        ]), $failure->context()->toArray());
+        self::assertSame([], $this->freshness->asked());
+        $this->assertNothingOfTheEmailIsShown('unknown.com');
     }
 
     /**
@@ -406,6 +445,7 @@ final class DiscoveryEventSequenceTest extends TestCase
      * @param  string  $application
      * @param  ?string  $codeChallenge
      * @param  ?\SineMacula\Laravel\Sso\Identities\IdentityReference  $identity
+     * @param  ?string  $sessionId
      * @return \SineMacula\Laravel\Sso\Flows\StartResult
      *
      * @throws \Throwable
@@ -416,6 +456,7 @@ final class DiscoveryEventSequenceTest extends TestCase
         string $application = 'discovering',
         ?string $codeChallenge = null,
         ?IdentityReference $identity = null,
+        ?string $sessionId = null,
     ): StartResult {
         /** @var \Illuminate\Foundation\Application $app */
         $app = $this->app;
@@ -426,7 +467,7 @@ final class DiscoveryEventSequenceTest extends TestCase
             self::LOCAL_PART . '@' . $domain,
             self::client(),
             $codeChallenge,
-            $identity === null ? null : new Caller($identity),
+            $identity === null ? null : new Caller($identity, $sessionId),
         );
     }
 

@@ -1309,6 +1309,28 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
+     * Under enforcement, an activation takes its identity's guard before the
+     * enforcement rows.
+     *
+     * @return void
+     */
+    public function testAnActivationUnderEnforcementTakesTheGuardBeforeTheEnforcement(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $start      = $this->start();
+        $completion = $this->complete();
+
+        $this->recordLockOrder();
+
+        self::assertTrue($this->admit($completion, $start)->isRedeemed());
+        self::assertSame(
+            ['identity guard', 'enforcement upsert', 'enforcement', 'connections ' . $this->connection->id, StorageConnection::table('domains.table'), 'code'],
+            array_slice($this->lockOrder(), 0, 6),
+        );
+    }
+
+    /**
      * An identity matched under the locks whose guard was not taken is never
      * reserved for.
      *
