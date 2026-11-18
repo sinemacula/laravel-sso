@@ -8,6 +8,7 @@ use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SimpleSAML\SAML2\XML\samlp\Response;
+use SimpleSAML\XML\Assert\Assert as XmlAssert;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\AssertionDecryptor;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\AssertionMapper;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\HardenedParser;
@@ -1299,7 +1300,13 @@ final class SamlAdapterTest extends TestCase
         try {
             Response::fromXML($document->documentElement ?? self::fail('No root.'));
         } catch (\Throwable $exception) {
-            return $exception::class . ': ' . $exception->getMessage() . ' at ' . $exception->getFile() . ':' . $exception->getLine();
+            $regex = (new \ReflectionClass(XmlAssert::class))->getStaticPropertyValue('string_regex');
+            $match = preg_match(is_string($regex) ? $regex : '//', 'Ålice');
+            $trace = implode(' | ', array_slice(explode("\n", $exception->getTraceAsString()), 0, 8));
+
+            $pcre = var_export($match, true) . '/' . preg_last_error_msg() . ' pcre=' . PCRE_VERSION . ' jit=' . ini_get('pcre.jit');
+
+            return $exception->getMessage() . ' preg=' . $pcre . ' trace=' . $trace;
         }
 
         return 'none';
