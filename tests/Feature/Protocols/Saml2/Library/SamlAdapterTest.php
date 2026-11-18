@@ -7,6 +7,7 @@ namespace Tests\Feature\Protocols\Saml2\Library;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use SimpleSAML\SAML2\XML\samlp\Response;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\AssertionDecryptor;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\AssertionMapper;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\HardenedParser;
@@ -201,8 +202,10 @@ final class SamlAdapterTest extends TestCase
     #[DataProvider('provideExactSubjects')]
     public function testTheSubjectIsReadExactlyAsSent(string $value): void
     {
-        $result    = $this->read(self::response()->with(['name_id' => $value, 'attributes' => ['employeeNumber' => [$value]]])->encoded());
-        $assertion = self::assertionOf($result->response ?? self::fail(sprintf('The response was refused: %s/%s.', $result->reason?->value, $result->detail)));
+        $encoded   = self::response()->with(['name_id' => $value, 'attributes' => ['employeeNumber' => [$value]]])->encoded();
+        $result    = $this->read($encoded);
+        $refusal   = sprintf('The response was refused: %s/%s (%s).', $result->reason?->value, $result->detail, self::libraryError($encoded));
+        $assertion = self::assertionOf($result->response ?? self::fail($refusal));
 
         self::assertSame([$value, [$value]], [$assertion->subject()?->nameId()?->value(), $assertion->attributes()[0]->values()]);
     }
@@ -1280,5 +1283,25 @@ final class SamlAdapterTest extends TestCase
         $result = $this->read($encoded, $policy);
 
         return [$result->reason?->value, $result->detail];
+    }
+
+    /**
+     * Why the library refuses the response, for a diagnostic.
+     *
+     * @param  string  $encoded
+     * @return string
+     */
+    private static function libraryError(string $encoded): string
+    {
+        $document = new \DOMDocument;
+        $document->loadXML((string) base64_decode($encoded, true));
+
+        try {
+            Response::fromXML($document->documentElement ?? self::fail('No root.'));
+        } catch (\Throwable $exception) {
+            return $exception::class . ': ' . $exception->getMessage() . ' at ' . $exception->getFile() . ':' . $exception->getLine();
+        }
+
+        return 'none';
     }
 }
