@@ -45,6 +45,8 @@ use SineMacula\Laravel\Sso\Enforcement\NoExemptions;
 use SineMacula\Laravel\Sso\Enforcement\OwnTenantInheritance;
 use SineMacula\Laravel\Sso\Events\StrandedTransactions;
 use SineMacula\Laravel\Sso\Exceptions\InvalidConfigurationException;
+use SineMacula\Laravel\Sso\Fetching\FetchRequest;
+use SineMacula\Laravel\Sso\Fetching\FetchResult;
 use SineMacula\Laravel\Sso\Fetching\GuzzleFetcher;
 use SineMacula\Laravel\Sso\Fetching\SystemHostResolver;
 use SineMacula\Laravel\Sso\Flows\NoReauthenticationSessions;
@@ -58,6 +60,8 @@ use SineMacula\Laravel\Sso\Revocation\NoSessionRevocation;
 use SineMacula\Laravel\Sso\Secrets\LaravelSecretEncrypter;
 use SineMacula\Laravel\Sso\SingleUse\DatabaseSingleUseStore;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
+use SineMacula\Laravel\Sso\Support\PackageDefaults;
+use SineMacula\Laravel\Sso\Support\RequestState;
 use Symfony\Component\Console\Input\ArrayInput;
 use Symfony\Component\Console\Output\BufferedOutput;
 use Tests\Concerns\ChecksTheFoundations;
@@ -158,6 +162,70 @@ final class SsoServiceProviderTest extends TestCase
 
         self::assertInstanceOf($default, $next);
         self::assertNotSame($first, $next);
+    }
+
+    /**
+     * A default extended by its private key is wrapped once per request, and
+     * wrapped afresh after either reset.
+     *
+     * @return void
+     */
+    public function testExtendingADefaultsKeyWrapsItOncePerRequest(): void
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app      = $this->app;
+        $key      = PackageDefaults::key(Fetcher::class);
+        $resolved = 0;
+
+        $app->extend($key, static fn (Fetcher $fetcher): Fetcher => new readonly class ($fetcher) implements Fetcher {
+            /**
+             * Constructor.
+             *
+             * @param  \SineMacula\Laravel\Sso\Contracts\Fetcher  $inner
+             */
+            public function __construct(
+
+                /** The fetcher wrapped. */
+                public Fetcher $inner,
+            ) {}
+
+            /**
+             * Fetch through the wrapped fetcher.
+             *
+             * @param  \SineMacula\Laravel\Sso\Fetching\FetchRequest  $request
+             * @return \SineMacula\Laravel\Sso\Fetching\FetchResult
+             */
+            #[\Override]
+            public function fetch(FetchRequest $request): FetchResult
+            {
+                return $this->inner->fetch($request);
+            }
+        });
+
+        $app->afterResolving($key, static function () use (&$resolved): void {
+            $resolved++;
+        });
+
+        $innerOf  = static fn (object $wrapper): mixed => (new \ReflectionProperty($wrapper, 'inner'))->getValue($wrapper);
+        $previous = null;
+        $inner    = null;
+
+        foreach ([static fn () => null, $app->forgetScopedInstances(...), RequestState::forget(...)] as $resets => $reset) {
+
+            $reset($app);
+
+            $wrapper = $app->make(Fetcher::class);
+
+            self::assertSame($wrapper, $app->make(Fetcher::class));
+            self::assertNotInstanceOf(GuzzleFetcher::class, $wrapper);
+            self::assertInstanceOf(GuzzleFetcher::class, $innerOf($wrapper));
+            self::assertNotSame($previous, $wrapper);
+            self::assertNotSame($inner, $innerOf($wrapper));
+            self::assertSame($resets + 1, $resolved);
+
+            $previous = $wrapper;
+            $inner    = $innerOf($wrapper);
+        }
     }
 
     /**

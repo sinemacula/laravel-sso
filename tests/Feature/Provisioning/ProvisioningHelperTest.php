@@ -132,6 +132,37 @@ final class ProvisioningHelperTest extends LinkingTestCase
     }
 
     /**
+     * With no transactions manager bound, a claim the listener's retry rolled
+     * back stays spent.
+     *
+     * @return void
+     */
+    public function testWithNoTransactionsManagerARetriedClaimStaysSpent(): void
+    {
+        $this->start();
+        $this->deadlockStatement(self::onTable('insert', 'sso_links'));
+
+        $this->onOffer(function (ResultUnlinked $event): void {
+            self::storage()->transaction(fn (): ProvisioningResult => $this->provision($event), 3);
+        });
+
+        $manager = app('db.transactions');
+
+        $this->app?->offsetUnset('db.transactions');
+
+        try {
+            $completion = $this->complete();
+        } finally {
+            $this->app?->instance('db.transactions', $manager);
+        }
+
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertSame(FailureReason::UNLINKED, $completion->reason);
+        self::assertSame([ProvisioningStatus::GRANT_INVALID], $this->statuses);
+        self::assertSame(0, Link::query()->count());
+    }
+
+    /**
      * Rows of a change made before the helper is asked that leaves its flow
      * unavailable.
      *

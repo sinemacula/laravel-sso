@@ -23,7 +23,7 @@ classification and gate nothing.
 
 - Start: `AuthorizationRequestQueryBudgetTest`.
 - Completion over a scripted driver: `CompletionQueryBudgetTest`.
-- Real SAML completion and encrypted assertions: `SamlCompletionQueryBudgetTest`.
+- Real SAML completion, encrypted assertions and re-initiation: `SamlCompletionQueryBudgetTest`.
 - OIDC callbacks by client secret and client assertion, with doubles of validation and claims:
   `OidcCallbackQueryBudgetTest`.
 - Discovery, match and miss: `DiscoveryQueryBudgetTest`.
@@ -37,11 +37,12 @@ classification and gate nothing.
 - Whole flows, on both connections: `FullFlowQueryBudgetTest`.
 - Pruning, on both connections: `OperationsQueryBudgetTest`.
 - The expiry report: `ExpiryReportQueryBudgetTest`.
-- Management helpers: `ConnectionServiceQueryBudgetTest`, `ConnectionLifecycleQueryBudgetTest`,
-  `KeyServiceQueryBudgetTest`, `DomainServiceQueryBudgetTest`, `LinkStoreQueryBudgetTest`.
+- Management helpers, the subject migration among them: `ConnectionServiceQueryBudgetTest`,
+  `ConnectionLifecycleQueryBudgetTest`, `KeyServiceQueryBudgetTest`, `DomainServiceQueryBudgetTest`,
+  `LinkStoreQueryBudgetTest`.
 - Default stores: `SingleUseStoreQueryBudgetTest`, `AttemptLimiterQueryBudgetTest`.
 - Descriptions and boot: `ServiceProviderDescriptionQueryBudgetTest`, `ServiceProviderQueryBudgetTest`.
-- Growth across many rows and connections: `QueryGrowthTest`.
+- Growth across many rows, connections, links and tenants: `QueryGrowthTest`.
 
 ### Whole flows
 
@@ -73,6 +74,13 @@ budget being its fixed cost plus its cost per unit times the units, so the diffe
   full one.
 - Pruning reservations costs 1 read and 2 writes per connection in a batch and nothing per reservation, beside 1 read
   per page and 1 for the empty page after a full one.
+- A subject migration of links no domain made, with no reservation, costs 3 reads and 2 writes per relink and nothing
+  per removal, beside 2 reads and 6 writes.
+- Locking an enforcement rule inherited from the root of a tenant path costs 2 reads and 1 write per tenant in the
+  path, and reading its policy 1 read per tenant and 1 for the rule's connections.
+- A scope widening of identities holding a domain-made link, with the default session revocation, costs 1 write per
+  identity, 2 per link it suspends and 1 per reservation it withdraws, and nothing per connection but 1 write for each
+  one it withdraws from, beside 3 reads.
 
 ### Benches
 

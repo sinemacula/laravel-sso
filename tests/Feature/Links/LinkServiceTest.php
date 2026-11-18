@@ -31,6 +31,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
 use SineMacula\Laravel\Sso\Revocation\Enums\RevocationScopeKind;
+use Tests\Concerns\ComparesIdentitiesWithoutCase;
 use Tests\Concerns\RecordsEventSequences;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
@@ -54,7 +55,7 @@ use Tests\TestCase;
 #[CoversClass(LinkEvents::class)]
 final class LinkServiceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
+    use ComparesIdentitiesWithoutCase, RecordsEventSequences, UsesConnections, UsesFlowTables;
 
     /** @var \Tests\Fixtures\FixedClock The clock the package reads. */
     private FixedClock $clock;
@@ -423,6 +424,43 @@ final class LinkServiceTest extends TestCase
         self::assertSame(['removed' => false, 'link' => null, 'reason' => 'link_not_found'], $result->jsonSerialize());
         $this->assertNothingChanged(2);
         self::assertSame([], $this->freshness->asked());
+    }
+
+    /**
+     * Rows of `[the stored identity id]`: one the collation matches to `ada`.
+     *
+     * @return iterable<string, array{string}>
+     */
+    public static function provideCollationMatches(): iterable
+    {
+        yield 'another case' => ['ADA'];
+        yield 'a trailing space' => ['ada '];
+    }
+
+    /**
+     * A link the collation finds for another identity is neither listed nor
+     * removed.
+     *
+     * @param  string  $stored
+     * @return void
+     */
+    #[DataProvider('provideCollationMatches')]
+    public function testALinkTheCollationMatchesToTheCallerIsNeitherListedNorRemoved(string $stored): void
+    {
+        $this->compareIdentityIdsWithoutCase();
+
+        if ($stored !== rtrim($stored) && DB::connection(StorageConnection::name())->getDriverName() !== 'mysql') {
+            self::markTestSkipped('Only MySQL ignores trailing spaces when comparing an identity.');
+        }
+
+        $theirs = $this->makeLink($this->connection, 'subject-1', ['identity_id' => $stored]);
+        $caller = new Caller(new IdentityReference('user', 'ada'));
+
+        self::assertSame(1, Link::query()->where('identity_id', 'ada')->count());
+        self::assertSame([], $this->service()->list('me', $caller));
+        self::assertSame(FailureReason::LINK_NOT_FOUND, $this->service()->remove('me', $theirs->id, Clients::browser(), $caller)->reason);
+        self::assertSame([], $this->freshness->asked());
+        $this->assertNothingChanged(1);
     }
 
     /**

@@ -81,7 +81,8 @@ final readonly class AssertionDecryptor
     {
         $data      = $encrypted->getEncryptedData();
         $algorithm = (string) $data->getEncryptionMethod()?->getAlgorithm()->getValue();
-        $keys      = [...$encrypted->getEncryptedKeys(), ...$encrypted->getDecryptionKeys()];
+        $inline    = array_filter($data->getKeyInfo()?->getInfo() ?? [], static fn (object $info): bool => $info instanceof EncryptedKey);
+        $keys      = [...$inline, ...$encrypted->getDecryptionKeys()];
         $cipher    = base64_decode((string) $data->getCipherData()->getCipherValue()?->getContent()->getValue(), true);
 
         if (!self::admitsData($algorithm, $policy, $responseSigned) || count($keys) !== 1 || !self::fits($cipher, $maxBytes + self::OVERHEAD_BYTES)) {

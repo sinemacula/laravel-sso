@@ -91,18 +91,20 @@ final readonly class HardenedParser
 
     /**
      * Validate one element against its schema, re-rooted with its in-scope
-     * namespaces so a prefix in an attribute value still resolves.
+     * namespaces so a prefix in an attribute value still resolves, without the
+     * children of its own namespace named in `$without`.
      *
      * @param  \DOMElement  $element
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind  $kind
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @param  list<string>  $without
      * @return void
      *
      * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
      */
-    public function validateElement(\DOMElement $element, MessageKind $kind, FailureReason $reason = FailureReason::RESPONSE_INVALID): void
+    public function validateElement(\DOMElement $element, MessageKind $kind, FailureReason $reason = FailureReason::RESPONSE_INVALID, array $without = []): void
     {
-        self::validate(self::reRooted($element, $reason), $kind, $reason);
+        self::validate(self::reRooted($element, $reason, $without), $kind, $reason);
     }
 
     /**
@@ -188,15 +190,17 @@ final readonly class HardenedParser
     }
 
     /**
-     * The element copied into its own document with its in-scope namespaces.
+     * The element copied into its own document with its in-scope namespaces,
+     * without the named children of its own namespace.
      *
      * @param  \DOMElement  $element
      * @param  \SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @param  list<string>  $without
      * @return \DOMDocument
      *
      * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
      */
-    private static function reRooted(\DOMElement $element, FailureReason $reason): \DOMDocument
+    private static function reRooted(\DOMElement $element, FailureReason $reason, array $without): \DOMDocument
     {
         $document = new \DOMDocument('1.0', 'UTF-8');
         $scope    = $element->ownerDocument === null ? false : (new \DOMXPath($element->ownerDocument))->query('namespace::*', $element);
@@ -206,6 +210,14 @@ final readonly class HardenedParser
 
             if (!$copy instanceof \DOMElement || $scope === false) {
                 throw new ReadFailure($reason, 'structure');
+            }
+
+            foreach (iterator_to_array($copy->childNodes) as $child) {
+                if ($child->namespaceURI !== $copy->namespaceURI || !in_array($child->localName, $without, true)) {
+                    continue;
+                }
+
+                $copy->removeChild($child);
             }
 
             $document->appendChild($copy);

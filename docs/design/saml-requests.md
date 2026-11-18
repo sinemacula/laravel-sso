@@ -25,8 +25,8 @@ request is written through is in `saml-adapter.md`.
 - `NameIDPolicy` carries the connection's NameID format (`persistent`, `email` or `unspecified`, as its URI) with
   `AllowCreate="true"`. The transient format is never requested: the settings refuse it.
 - `ForceAuthn="true"` when the connection's `force_authn` is on, and always for the `reauthenticate` purpose; otherwise
-  the attribute is absent. The response's `AuthnInstant` is then held to the request's creation by the response
-  validation.
+  the attribute is absent. The response validation holds the `AuthnInstant` to the request's creation for a
+  `reauthenticate` only; `max_authentication_age_seconds`, when set, bounds how old it may be for any purpose.
 - `RequestedAuthnContext` is present only when the connection lists `requested_authn_context` classes: each as an
   `AuthnContextClassRef`, in the order listed, with `Comparison="exact"`. The response's class is checked against the
   same list.

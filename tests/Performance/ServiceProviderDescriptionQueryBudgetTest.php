@@ -13,6 +13,8 @@ use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
 use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Protocols\Oidc\RelyingPartyDescription;
+use SineMacula\Laravel\Sso\Protocols\Saml2\ServiceProviderMetadata;
 use SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
@@ -20,8 +22,8 @@ use Tests\Concerns\UsesConnections;
 use Tests\Fixtures\Clients;
 
 /**
- * Query budgets for the public JWKS, which must not grow with what a connection
- * holds or vary by caller. None of them writes.
+ * Query budgets for the descriptions and the public JWKS, which must not grow
+ * with what a connection holds or vary by caller. None of them writes.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -29,6 +31,8 @@ use Tests\Fixtures\Clients;
  * @internal
  */
 #[CoversClass(ServiceProviderDescriptions::class)]
+#[CoversClass(ServiceProviderMetadata::class)]
+#[CoversClass(RelyingPartyDescription::class)]
 final class ServiceProviderDescriptionQueryBudgetTest extends PerformanceContractTestCase
 {
     use UsesConnections;
@@ -109,13 +113,115 @@ final class ServiceProviderDescriptionQueryBudgetTest extends PerformanceContrac
 
         self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $this->publicKeysOf($connection->id, 2)->reason);
 
-        $this->addKey($connection);
+        $this->addKey($connection, KeyUse::CLIENT_ASSERTION, KeyType::EC);
 
         self::assertTrue($this->publicKeysOf($connection->id, 2)->isAvailable());
 
-        $this->addKey($connection);
+        $this->addKey($connection, KeyUse::CLIENT_ASSERTION, KeyType::EC);
 
         self::assertTrue($this->publicKeysOf($connection->id, 2)->isAvailable());
+    }
+
+    /**
+     * SAML metadata reads the connection, then its signing and its encryption
+     * keys, with none or a current and a next of each.
+     *
+     * @return void
+     */
+    public function testSamlMetadataIsThreeReadsHoweverManyKeys(): void
+    {
+        config()->set('sso.features.saml2', true);
+
+        $saml = $this->makeConnection(['tenant_id' => self::TENANT, 'protocol' => 'saml2']);
+        $bare = $this->describe($saml->id, 3);
+
+        foreach ([KeyUse::SP_SIGNING, KeyUse::SP_SIGNING, KeyUse::SP_ENCRYPTION, KeyUse::SP_ENCRYPTION] as $use) {
+            $this->addKey($saml, $use, null);
+        }
+
+        $keyed = $this->describe($saml->id, 3);
+
+        self::assertTrue($bare->isAvailable());
+        self::assertSame(0, substr_count((string) $bare->body, ':KeyDescriptor '));
+        self::assertSame(4, substr_count((string) $keyed->body, ':KeyDescriptor '));
+    }
+
+    /**
+     * A description refused reads at most the connection: an unknown id,
+     * another tenant's connection and a protocol turned off each read it; an
+     * empty id reads nothing.
+     *
+     * @return void
+     */
+    public function testARefusedDescriptionIsAtMostOneRead(): void
+    {
+        config()->set('sso.features.saml2', true);
+
+        $other = $this->makeConnection(['tenant_id' => 'tenant-2', 'protocol' => 'saml2']);
+        $saml  = $this->makeConnection(['tenant_id' => self::TENANT, 'protocol' => 'saml2']);
+
+        self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $this->describe('', 0)->reason);
+        self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $this->describe('01jbunknownconnection00000', 1)->reason);
+        self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $this->describe($other->id, 1)->reason);
+
+        config()->set('sso.features.saml2', false);
+
+        self::assertSame(FailureReason::PROTOCOL_UNAVAILABLE, $this->describe($saml->id, 1)->reason);
+    }
+
+    /**
+     * An OIDC description, by URL or with its keys inline, reads the key ring
+     * only for `private_key_jwt`, however many keys; inline keys of a SAML
+     * connection are refused on its read.
+     *
+     * @return void
+     */
+    public function testAnOidcDescriptionReadsTheKeysOnlyForPrivateKeyJwt(): void
+    {
+        $secret = $this->oidc('client_secret_basic');
+        $keyed  = $this->oidc('private_key_jwt');
+        $saml   = $this->makeConnection(['tenant_id' => self::TENANT, 'protocol' => 'saml2']);
+
+        config()->set('sso.features.saml2', true);
+
+        self::assertTrue($this->describe($secret->id, 1)->isAvailable());
+        self::assertTrue($this->describeWithInlineKeys($secret->id, 1)->isAvailable());
+        self::assertSame(FailureReason::CONNECTION_UNAVAILABLE, $this->describeWithInlineKeys($saml->id, 1)->reason);
+
+        foreach ([1, 2] as $keys) {
+            $this->addKey($keyed, KeyUse::CLIENT_ASSERTION, KeyType::EC);
+
+            $inline = $this->describeWithInlineKeys($keyed->id, 2);
+
+            self::assertTrue($this->describe($keyed->id, 2)->isAvailable());
+            self::assertSame($keys, substr_count((string) $inline->body, '"kty"'));
+        }
+    }
+
+    /**
+     * The tenant's description of the id, asserted to cost the reads given and
+     * no write.
+     *
+     * @param  string  $id
+     * @param  int  $reads
+     * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription
+     */
+    private function describe(string $id, int $reads): ServiceProviderDescription
+    {
+        return $this->assertQueryBudget($reads, 0, fn (): ServiceProviderDescription => $this->descriptions()->describe(self::TENANT, $id));
+    }
+
+    /**
+     * The tenant's description of the id with its keys inline, asserted to cost
+     * the reads given and no write.
+     *
+     * @param  string  $id
+     * @param  int  $reads
+     * @return \SineMacula\Laravel\Sso\Protocols\ServiceProviderDescription
+     */
+    private function describeWithInlineKeys(string $id, int $reads): ServiceProviderDescription
+    {
+        return $this->assertQueryBudget($reads, 0, fn (): ServiceProviderDescription => $this->descriptions()->describeWithInlineKeys(self::TENANT, $id));
     }
 
     /**
@@ -146,14 +252,17 @@ final class ServiceProviderDescriptionQueryBudgetTest extends PerformanceContrac
     }
 
     /**
-     * Add a client assertion key to the connection.
+     * Add a key of the use and type to the connection, current if it is the
+     * first of the use.
      *
      * @param  \SineMacula\Laravel\Sso\Models\Connection  $connection
+     * @param  \SineMacula\Laravel\Sso\Keys\Enums\KeyUse  $use
+     * @param  ?\SineMacula\Laravel\Sso\Keys\Enums\KeyType  $type
      * @return void
      */
-    private function addKey(Connection $connection): void
+    private function addKey(Connection $connection, KeyUse $use, ?KeyType $type): void
     {
-        self::assertTrue(app(KeyService::class)->addNext(self::TENANT, $connection->id, KeyUse::CLIENT_ASSERTION, Clients::browser(), KeyType::EC)->isSucceeded());
+        self::assertTrue(app(KeyService::class)->addNext(self::TENANT, $connection->id, $use, Clients::browser(), $type)->isSucceeded());
     }
 
     /**

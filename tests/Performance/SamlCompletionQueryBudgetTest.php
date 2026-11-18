@@ -9,6 +9,7 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionResult;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
+use SineMacula\Laravel\Sso\Completion\UnsolicitedReinitiation;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\Linker;
@@ -28,6 +29,7 @@ use SineMacula\Laravel\Sso\Protocols\Saml2\Validation\AssertionValidator;
 use SineMacula\Laravel\Sso\Results\VerifiedResult;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse;
+use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Clients;
@@ -46,9 +48,10 @@ use Tests\Fixtures\Links\ExampleLinks;
 #[CoversClass(CompletionService::class)]
 #[CoversClass(ResponseCorrelator::class)]
 #[CoversClass(AssertionValidator::class)]
+#[CoversClass(UnsolicitedReinitiation::class)]
 final class SamlCompletionQueryBudgetTest extends PerformanceContractTestCase
 {
-    use UsesConnections, UsesFlowTables;
+    use RecordsLockOrder, UsesConnections, UsesFlowTables;
 
     /** @var ?\SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider The trusted identity provider, made once. */
     private static ?FakeSamlIdentityProvider $idp = null;
@@ -155,6 +158,33 @@ final class SamlCompletionQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
+     * An unsolicited response reads the connection and its certificates, then
+     * both again under the connection's lock, the only one it takes, to record
+     * its assertion; a replay tries the record, clears it if expired and tries
+     * again.
+     *
+     * @return void
+     */
+    public function testAReinitiationLocksOnlyTheConnection(): void
+    {
+        config()->set('sso.features.idp_initiated', true);
+
+        $settings = ['idp_initiated' => true, 'idp_initiated_start_url' => 'https://app.example.com/sso/start'];
+
+        $this->connection->forceFill(['settings' => [...$this->connection->settings, ...$settings]])->save();
+
+        $this->recordLockOrder();
+
+        $request     = $this->response(null)->completionRequest();
+        $reinitiated = $this->assertQueryBudget(4, 3, fn (): CompletionResult => $this->complete($request));
+        $replayed    = $this->assertQueryBudget(4, 5, fn (): CompletionResult => $this->complete($request));
+
+        self::assertTrue($reinitiated->isReinitiated());
+        self::assertSame(FailureReason::REPLAYED, $replayed->reason);
+        self::assertSame(array_fill(0, 2, 'connections ' . $this->connection->id), $this->lockOrder());
+    }
+
+    /**
      * Complete at the connection's assertion consumer service.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\CompletionRequest  $request
@@ -183,16 +213,17 @@ final class SamlCompletionQueryBudgetTest extends PerformanceContractTestCase
 
     /**
      * A valid response from the trusted identity provider answering the
-     * request.
+     * request, or unsolicited without one.
      *
-     * @param  string  $requestId
+     * @param  ?string  $requestId
      * @return \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse
      */
-    private function response(string $requestId): FakeSamlResponse
+    private function response(?string $requestId): FakeSamlResponse
     {
         $endpoints = app(EndpointResolver::class)->endpoints($this->connection);
+        $response  = self::idp()->response($endpoints->entityId, $endpoints->assertionConsumerService, $this->clock->now());
 
-        return self::idp()->response($endpoints->entityId, $endpoints->assertionConsumerService, $this->clock->now())->inResponseTo($requestId);
+        return $requestId === null ? $response : $response->inResponseTo($requestId);
     }
 
     /**
