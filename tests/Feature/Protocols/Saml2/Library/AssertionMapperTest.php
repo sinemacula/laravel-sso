@@ -152,6 +152,40 @@ final class AssertionMapperTest extends TestCase
     }
 
     /**
+     * Fractional-second instants are read to the microsecond in UTC, a finer
+     * fraction cut, never rounded.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    public function testReadsFractionalInstantsToTheMicrosecond(): void
+    {
+        $instants = [
+            'IssueInstant' => '2026-11-01T12:00:00.123Z',
+            'AuthnInstant' => '2026-11-01T11:59:00.1234567Z',
+            'NotBefore'    => '2026-11-01T11:59:30.5Z',
+            'NotOnOrAfter' => '2026-11-01T12:05:00.999999999Z',
+        ];
+
+        $assertion = $this->read(self::edited([], static fn (string $xml): string => (string) preg_replace_callback(
+            '/ (IssueInstant|AuthnInstant|NotBefore|NotOnOrAfter)="[^"]+"/',
+            static fn (array $match): string => ' ' . $match[1] . '="' . $instants[$match[1]] . '"',
+            $xml,
+        )));
+
+        $instant = static fn (?CarbonImmutable $instant): ?string => $instant?->format('Y-m-d\TH:i:s.u e');
+
+        self::assertSame([
+            '2026-11-01T12:00:00.123000 UTC', '2026-11-01T11:59:00.123456 UTC', '2026-11-01T11:59:30.500000 UTC',
+            '2026-11-01T12:05:00.999999 UTC', '2026-11-01T12:05:00.999999 UTC',
+        ], [
+            $instant($assertion->issueInstant()), $instant($assertion->authnStatements()[0]->authnInstant()), $instant($assertion->conditions()?->notBefore()),
+            $instant($assertion->conditions()?->notOnOrAfter()), $instant($assertion->subject()?->confirmations()[0]->notOnOrAfter()),
+        ]);
+    }
+
+    /**
      * A response leaving out every optional value it can, with counted
      * conditions, advice and two kinds of confirmation.
      *
