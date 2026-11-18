@@ -67,7 +67,7 @@ trait ReauthenticationSessionsContract
         $answers = DB::connection(StorageConnection::name())->transaction(static fn (): array => [
             $sessions->lockedStanding($identity, $ids['live'], $app, $connection, $links['live']),
             $sessions->lockedStanding($identity, $ids['live'], $app, $connection, $links['revoked']),
-            $sessions->lockedStanding($identity, $ids['revoked'], $app, $connection, $links['live']),
+            $sessions->lockedStanding($identity, $ids['revoked'], $app, $connection, $links['revoked']),
             $sessions->lockedStanding($identity, $ids['others'], $app, $connection, $links['others']),
         ]);
 
