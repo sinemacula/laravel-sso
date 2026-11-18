@@ -222,6 +222,60 @@ final class PinnedVerifierTest extends TestCase
     }
 
     /**
+     * Rows of `[edit]`: a change to a trusted signature the policy refuses,
+     * whatever the library would make of it.
+     *
+     * @return iterable<string, array{0: \Closure(\DOMElement): void}>
+     */
+    public static function provideSignatureShapes(): iterable
+    {
+        yield 'a second reference to the element' => [static function (\DOMElement $signature): void {
+            $info = self::child($signature, self::NS_DS, 'SignedInfo');
+
+            $info->appendChild(self::child($info, self::NS_DS, 'Reference')->cloneNode(true));
+        }];
+
+        yield 'an object' => [static function (\DOMElement $signature): void {
+            $signature->appendChild(new \DOMElement('ds:Object', null, self::NS_DS));
+        }];
+
+        yield 'an HMAC output length' => [static function (\DOMElement $signature): void {
+            $method = self::child(self::child($signature, self::NS_DS, 'SignedInfo'), self::NS_DS, 'SignatureMethod');
+
+            $method->appendChild(new \DOMElement('ds:HMACOutputLength', '256', self::NS_DS));
+        }];
+    }
+
+    /**
+     * A signature with a second reference, an object or an HMAC output length
+     * is refused by policy before any certificate is tried.
+     *
+     * @param  \Closure(\DOMElement): void  $edit
+     * @return void
+     */
+    #[DataProvider('provideSignatureShapes')]
+    public function testASignatureOfAnotherShapeIsRefusedBeforeVerifying(\Closure $edit): void
+    {
+        $verifier = app(PinnedVerifier::class);
+        $root     = self::document(self::idp()->metadata()->with(['sign' => 'entity'])->toXml())->documentElement;
+
+        self::assertNotNull($root);
+
+        $allowed = self::alwaysVerified($root);
+
+        self::assertSame($allowed, $verifier->verified($allowed, [self::idp()->certificate()], PinnedVerifier::SIGNATURE_ALGORITHMS));
+
+        $edit(self::child($root, self::NS_DS, 'Signature'));
+
+        try {
+            $verifier->verified(self::alwaysVerified($root), [], PinnedVerifier::SIGNATURE_ALGORITHMS);
+            self::fail('A signature of a shape the policy does not allow was verified.');
+        } catch (ReadFailure $failure) {
+            self::assertSame([FailureReason::SIGNATURE_INVALID, 'signature_policy'], [$failure->reason, $failure->detail]);
+        }
+    }
+
+    /**
      * An assertion the trusted identity provider signs, its reference listing
      * the transforms given, alone in a document of its own.
      *
@@ -242,7 +296,8 @@ final class PinnedVerifierTest extends TestCase
     }
 
     /**
-     * The signed descriptor as an element that claims to verify under any key.
+     * The signed descriptor as an element that claims to verify under any key,
+     * its signature kept as read, past the library's own checks.
      *
      * @param  \DOMElement  $xml
      * @return \SimpleSAML\SAML2\XML\md\AbstractSignedMdElement
@@ -257,7 +312,7 @@ final class PinnedVerifierTest extends TestCase
              */
             public function __construct(\DOMElement $xml)
             {
-                $this->setSignature(Signature::getChildrenOfClass($xml)[0]);
+                $this->signature = Signature::getChildrenOfClass($xml)[0];
                 $this->setXML($xml);
             }
 
