@@ -34,7 +34,9 @@ use Tests\TestCase;
 #[CoversTrait(ReauthenticationSessionsContract::class)]
 final class ReauthenticationSessionsContractTest extends TestCase
 {
-    use ReauthenticationSessionsContract;
+    use ReauthenticationSessionsContract {
+        completeRenewal as private writtenAtOnce;
+    }
 
     /** @var ?string How the binding breaks the contract, if it does. */
     private ?string $flaw = null;
@@ -337,6 +339,8 @@ final class ReauthenticationSessionsContractTest extends TestCase
     protected function completeRenewal(string $sessionId): void
     {
         if (!isset($this->recorded[$sessionId])) {
+            $this->writtenAtOnce($sessionId);
+
             return;
         }
 
