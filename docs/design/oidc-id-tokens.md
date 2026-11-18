@@ -35,9 +35,10 @@ validated token is `oidc-claims.md`.
   wrong type) fetches nothing and leaves the shared cooldown unclaimed, so it cannot spend the window a good token
   needs. It is answered `signature_invalid`, as any token no held key verifies is. Unverified claims never establish
   identity or choose a URL to fetch, and every step runs again after the signature.
-- The validator reads the clock once per call and the skew (`Clock\ClockSkew`) and the limits (`OidcLimits`) on each
-  call. It keeps nothing between calls, and its collaborators keep nothing either. It runs outside any transaction,
-  since step 2 may fetch; only the refetch's own claim and write touch a row.
+- The validator reads the clock each time it checks the claims, so a token that expires while a refetch is in flight is
+  refused as expired, and reads the skew (`Clock\ClockSkew`) and the limits (`OidcLimits`) on each call. It keeps
+  nothing between calls, and its collaborators keep nothing either. It runs outside any transaction, since step 2 may
+  fetch; only the refetch's own claim and write touch a row.
 - It logs nothing: `ProviderKeys` logs how a refetch ended. Nothing it throws holds the token, and every array of claims
   it passes along is `#[\SensitiveParameter]`. `TokenResponse`, `CompactToken` and `ValidatedIdToken` keep the tokens,
   headers and claims in `\SensitiveParameterValue`, so a dump, a stack trace or a log record cannot show them.

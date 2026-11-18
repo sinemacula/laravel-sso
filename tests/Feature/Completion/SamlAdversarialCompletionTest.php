@@ -14,6 +14,7 @@ use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
+use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
@@ -21,6 +22,7 @@ use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
@@ -86,6 +88,9 @@ final class SamlAdversarialCompletionTest extends TestCase
 
     /** @var string The SAML assertion namespace. */
     private const string NS_SAML = 'urn:oasis:names:tc:SAML:2.0:assertion';
+
+    /** @var string The basic attribute name format. */
+    private const string BASIC = 'urn:oasis:names:tc:SAML:2.0:attrname-format:basic';
 
     /** @var string AES-128-CBC. */
     private const string AES128_CBC = 'http://www.w3.org/2001/04/xmlenc#aes128-cbc';
@@ -201,18 +206,56 @@ final class SamlAdversarialCompletionTest extends TestCase
     {
         $this->settings(['want_assertions_signed' => false]);
 
-        self::assertTrue($this->complete($this->posted(self::commented($this->response(), 'response')))->isCompleted());
+        self::assertTrue($this->complete($this->posted(self::commented($this->response()->with(['name_id' => 'alice@evil']), 'response', 'alice<!--x-->@evil', 1)))->isCompleted());
 
         $this->settings(['want_assertions_signed' => true]);
         $this->request = $this->otherRequestRow();
 
-        $response = $this->response()->inResponseTo(self::OTHER_REQUEST_ID)->with(['assertion_id' => '_assertion-commented']);
+        $response = $this->response()->inResponseTo(self::OTHER_REQUEST_ID)->with(['assertion_id' => '_assertion-commented', 'name_id' => 'alice@evil']);
 
-        self::assertTrue($this->complete($this->posted(self::commented($response, 'assertion'), self::OTHER_RELAY_STATE))->isCompleted());
+        self::assertTrue($this->complete($this->posted(self::commented($response, 'assertion', 'alice<!--x-->@evil', 1), self::OTHER_RELAY_STATE))->isCompleted());
 
         $subject = 'v1|7:name_id|52:' . FakeSamlResponse::PERSISTENT . '|-|-|10:alice@evil';
 
         self::assertSame([$subject, $subject], array_map(static fn ($grant): string => $grant->result->subject, $this->issuer->grants()));
+    }
+
+    /**
+     * A comment inside a subject or linking attribute's value never truncates
+     * either: each is the whole text the signature covers.
+     *
+     * @return void
+     */
+    public function testACommentInsideAnAttributeNeverTruncatesTheSubjectOrLinkingEmail(): void
+    {
+        config()->set('sso.features.domain_linking', true);
+
+        $this->app?->instance(Linker::class, app(LinkStore::class));
+        $this->settings(['subject_source' => 'attribute', 'subject_attribute' => 'employeeNumber', 'want_assertions_signed' => false]);
+        $this->connection->forceFill([
+            'linking_enabled'               => true,
+            'linking_issuer_class'          => 'single_organization',
+            'linking_saml_attribute'        => 'mail',
+            'linking_saml_attribute_format' => self::BASIC,
+            'linking_acknowledged_at'       => $this->now(-60),
+        ])->save();
+
+        $text      = 'victim@corp.example.evil.test';
+        $commented = 'victim@corp.example<!---->.evil.test';
+        $values    = ['attributes' => ['employeeNumber' => [$text], 'mail' => [$text]]];
+
+        self::assertTrue($this->complete($this->posted(self::commented($this->response()->with($values), 'response', $commented, 2)))->isCompleted());
+
+        $this->settings(['want_assertions_signed' => true]);
+        $this->request = $this->otherRequestRow();
+
+        $response = $this->response()->inResponseTo(self::OTHER_REQUEST_ID)->with(['assertion_id' => '_assertion-commented', ...$values]);
+
+        self::assertTrue($this->complete($this->posted(self::commented($response, 'assertion', $commented, 2), self::OTHER_RELAY_STATE))->isCompleted());
+
+        $read = ['v1|9:attribute|14:employeeNumber|' . strlen(self::BASIC) . ':' . self::BASIC . '|29:' . $text, $text];
+
+        self::assertSame([$read, $read], array_map(static fn ($grant): array => [$grant->result->subject, $grant->result->linkingEmail?->email], $this->issuer->grants()));
     }
 
     /**
@@ -832,17 +875,24 @@ final class SamlAdversarialCompletionTest extends TestCase
     }
 
     /**
-     * The response with a comment splitting its `NameID`, signed over it.
+     * The response with the commented text in place of the same text without
+     * its comment, the given number of times, signed over it.
      *
      * @param  \SineMacula\Laravel\Sso\Testing\Saml\FakeSamlResponse  $response
      * @param  string  $signed
+     * @param  string  $commented
+     * @param  int  $times
      * @return string
      *
      * @throws \LogicException
      */
-    private static function commented(FakeSamlResponse $response, string $signed): string
+    private static function commented(FakeSamlResponse $response, string $signed, string $commented, int $times): string
     {
-        $xml      = str_replace('>alice@evil<', '>alice<!--x-->@evil<', $response->signed(false, false)->with(['name_id' => 'alice@evil'])->toXml());
+        $text = (string) preg_replace('/<!--.*?-->/', '', $commented);
+        $xml  = str_replace('>' . $text . '<', '>' . $commented . '<', $response->signed(false, false)->toXml(), $count);
+
+        self::assertSame($times, $count);
+
         $document = self::load($xml);
         $element  = $signed === 'response' ? $document->documentElement : $document->getElementsByTagNameNS(self::NS_SAML, 'Assertion')->item(0);
 

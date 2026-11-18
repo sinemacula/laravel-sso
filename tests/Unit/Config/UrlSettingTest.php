@@ -37,6 +37,7 @@ final class UrlSettingTest extends TestCase
             'http on the IPv4 loopback' => ['http://127.0.0.1:8000/complete'],
             'http on the IPv6 loopback' => ['http://[::1]:8000/complete'],
             'https with a query'        => ['https://app.example.com/complete?app=web'],
+            'exactly 2048 bytes'        => ['https://app.example.com/' . str_repeat('a', 2024)],
         ];
     }
 
@@ -112,6 +113,7 @@ final class UrlSettingTest extends TestCase
             'a scheme without a dot'    => ['myapp:/complete'],
             'an upper-case private use' => ['Com.Example.App:/complete'],
             'too long'                  => ['https://app.example.com/' . str_repeat('a', 2048)],
+            'one byte too long'         => ['https://app.example.com/' . str_repeat('a', 2025)],
         ];
     }
 

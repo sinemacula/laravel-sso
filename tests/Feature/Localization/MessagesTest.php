@@ -154,6 +154,45 @@ final class MessagesTest extends TestCase
     }
 
     /**
+     * A line overridden with an array falls back to English.
+     *
+     * @return void
+     */
+    public function testALineOverriddenWithAnArrayFallsBackToEnglish(): void
+    {
+        $this->translator()->addLines(['messages.post_navigation.title' => ['nested' => 'Connexion']], 'fr', 'sso');
+
+        self::assertSame('Signing you in', $this->messages()->get(Message::POST_NAVIGATION_TITLE, [], 'fr'));
+    }
+
+    /**
+     * A line overridden with an empty string answers empty.
+     *
+     * @return void
+     */
+    public function testALineOverriddenWithAnEmptyStringAnswersEmpty(): void
+    {
+        $this->translator()->addLines(['messages.post_navigation.title' => ''], 'fr', 'sso');
+
+        self::assertSame('', $this->messages()->get(Message::POST_NAVIGATION_TITLE, [], 'fr'));
+    }
+
+    /**
+     * A missing-key handler's answer is taken as the line, before English.
+     *
+     * @return void
+     */
+    public function testAMissingKeyHandlersAnswerIsTheLine(): void
+    {
+        $this->translator()->handleMissingKeysUsing(static fn (): string => 'Missing');
+
+        $this->app?->setFallbackLocale('de');
+        $this->app?->setLocale('fr');
+
+        self::assertSame('Missing', $this->messages()->get(Message::POST_NAVIGATION_TITLE));
+    }
+
+    /**
      * A message without an English line throws naming the key.
      *
      * @return void

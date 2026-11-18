@@ -624,6 +624,39 @@ final class IdTokenValidatorTest extends TestCase
     }
 
     /**
+     * Rows of `[header, value]`: a key the attacker offers in the header, or a
+     * URL it points at one with.
+     *
+     * @return iterable<string, array{0: string, 1: \Closure(): mixed}>
+     */
+    public static function provideOfferedKeys(): iterable
+    {
+        yield from [
+            'jwk' => ['jwk', static fn (): array => self::attacker()->withKid('rsa-1')->jwk()],
+            'x5c' => ['x5c', static fn (): array => [self::attacker()->certificate()]],
+            'jku' => ['jku', static fn (): string => 'https://attacker.example.test/jwks'],
+            'x5u' => ['x5u', static fn (): string => 'https://attacker.example.test/key.pem'],
+        ];
+    }
+
+    /**
+     * A token the attacker signs under the provider's `kid` is refused however
+     * the header offers the attacker's key, and nothing is fetched.
+     *
+     * @param  string  $header
+     * @param  \Closure(): mixed  $value
+     * @return void
+     */
+    #[DataProvider('provideOfferedKeys')]
+    public function testAKeyOfferedInTheHeaderIsNeverUsed(string $header, \Closure $value): void
+    {
+        $token = $this->honest()->signedWith(self::attacker()->withKid('rsa-1'), 'RS256')->withHeader($header, $value());
+
+        self::assertSame(FailureReason::SIGNATURE_INVALID, $this->validate($token)->reason);
+        self::assertSame([], $this->fetcher->requests());
+    }
+
+    /**
      * A token signed by a key the connection already holds is refused for its
      * claims by name, as ever: the prechecks only ever stop a refetch.
      *
@@ -737,6 +770,32 @@ final class IdTokenValidatorTest extends TestCase
         $validation = $this->validate($this->honest()->signedWith(self::next(), 'RS256'));
 
         self::assertTrue($validation->isValidated());
+        self::assertCount(1, $this->jwksFetches());
+    }
+
+    /**
+     * A token valid when its unknown `kid` sends for the JWKS, but expired by
+     * the time the key arrives, is refused as expired.
+     *
+     * @return void
+     */
+    public function testATokenThatExpiresDuringTheRefetchIsRefused(): void
+    {
+        $clock = app(Clock::class);
+
+        self::assertInstanceOf(FixedClock::class, $clock);
+
+        $this->provider->publish(self::next())->respond('jwks', function (FetchRequest $request) use ($clock): FetchResult {
+            unset($request);
+
+            $clock->advance(300);
+
+            return FakeTokenEndpoint::json(200, $this->provider->jwks());
+        });
+
+        $validation = $this->validate($this->honest()->with('exp', self::now() + 60)->signedWith(self::next(), 'RS256'));
+
+        self::assertSame(FailureReason::ASSERTION_EXPIRED, $validation->reason);
         self::assertCount(1, $this->jwksFetches());
     }
 

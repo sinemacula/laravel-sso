@@ -687,6 +687,24 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
+     * Metadata from Microsoft Entra ID or AD FS, whose entity holds
+     * WS-Federation role descriptors beside its identity provider's, is read,
+     * unsigned or signed by the anchor.
+     *
+     * @return void
+     */
+    public function testWsFederationRoleDescriptorsBesideTheIdentityProviderAreRead(): void
+    {
+        $xml = self::withMember(self::metadata()->toXml(), self::ENTITY_ID, self::wsFederationRoles() . self::ROLE);
+
+        self::assertSame(
+            [self::ENTITY_ID, FakeSamlIdentityProvider::SSO_URL, 'http_redirect', [self::certificate(self::idp()->certificate())], [], [FakeSamlResponse::PERSISTENT], null],
+            self::values($this->read($xml)),
+        );
+        self::assertSame(FakeSamlIdentityProvider::SSO_URL, $this->read(self::signedRoot($xml, self::idp()->signer()), anchors: [self::idp()->certificate()])->ssoUrl());
+    }
+
+    /**
      * Only RSA certificates of at least 2048 bits are read, each once, and none
      * usable for signing is refused.
      *
@@ -1032,6 +1050,30 @@ final class MetadataReaderTest extends TestCase
             . ' NameFormat="urn:oasis:names:tc:SAML:2.0:attrname-format:uri">'
             . '<saml:AttributeValue xsi:type="' . $type . '">https://refeds.org/category/research-and-scholarship</saml:AttributeValue>'
             . '</saml:Attribute></mdattr:EntityAttributes>';
+    }
+
+    /**
+     * The security token service and application service role descriptors
+     * Microsoft Entra ID and AD FS publish, as they write them.
+     *
+     * @return string
+     */
+    private static function wsFederationRoles(): string
+    {
+        $namespaces = ' xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:fed="http://docs.oasis-open.org/wsfed/federation/200706"'
+            . ' protocolSupportEnumeration="http://docs.oasis-open.org/wsfed/federation/200706"';
+        $endpoint = static fn (string $name): string => '<fed:' . $name . '><wsa:EndpointReference xmlns:wsa="http://www.w3.org/2005/08/addressing">'
+            . '<wsa:Address>https://idp.example.test/wsfed</wsa:Address></wsa:EndpointReference></fed:' . $name . '>';
+        $claims = '<fed:ClaimTypesOffered><auth:ClaimType xmlns:auth="http://docs.oasis-open.org/wsfed/authorization/200706"'
+            . ' Uri="http://schemas.xmlsoap.org/ws/2005/05/identity/claims/name"><auth:DisplayName>Name</auth:DisplayName>'
+            . '</auth:ClaimType></fed:ClaimTypesOffered>';
+
+        return '<md:RoleDescriptor xsi:type="fed:SecurityTokenServiceType"' . $namespaces . '>'
+            . $claims . $endpoint('SecurityTokenServiceEndpoint') . $endpoint('PassiveRequestorEndpoint')
+            . '</md:RoleDescriptor>'
+            . '<md:RoleDescriptor xsi:type="fed:ApplicationServiceType"' . $namespaces . '>'
+            . $claims . $endpoint('ApplicationServiceEndpoint') . $endpoint('PassiveRequestorEndpoint')
+            . '</md:RoleDescriptor>';
     }
 
     /**

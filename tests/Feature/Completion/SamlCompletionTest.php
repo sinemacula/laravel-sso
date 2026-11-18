@@ -16,12 +16,14 @@ use SineMacula\Laravel\Sso\Completion\Stages\ValidateResponse;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\CompletionStage;
 use SineMacula\Laravel\Sso\Contracts\EndpointResolver;
+use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\SecretEncrypter;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyState;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyType;
 use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
@@ -36,6 +38,7 @@ use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Handoffs\RecordingHandoffIssuer;
 use Tests\TestCase;
 
@@ -190,6 +193,48 @@ final class SamlCompletionTest extends TestCase
 
         self::assertTrue($this->complete($response)->isCompleted());
         $this->assertRecorded('_assertion-cbc', '2026-11-01T09:36:00+00:00');
+    }
+
+    /**
+     * Rows of `[seconds after the key is replaced, reason]` for an hour's
+     * overlap.
+     *
+     * @return iterable<string, array{0: int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideOverlapEnds(): iterable
+    {
+        yield 'a second before it ends' => [3599, null];
+        yield 'as it ends' => [3600, FailureReason::DECRYPTION_FAILED];
+    }
+
+    /**
+     * An assertion encrypted to the key just replaced completes within the
+     * overlap, and is `decryption_failed` once it ends.
+     *
+     * @param  int  $seconds
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('provideOverlapEnds')]
+    public function testAnAssertionEncryptedToTheRetiringKeyCompletesOnlyWithinTheOverlap(int $seconds, ?FailureReason $reason): void
+    {
+        config()->set('sso.keys.overlap_seconds', 3600);
+
+        $this->app?->instance(Freshness::class, new RecordingFreshness);
+
+        $keys = app(KeyService::class);
+        $old  = $keys->addNext('tenant-saml', $this->connection->id, KeyUse::SP_ENCRYPTION, Clients::browser())->key;
+        $new  = $keys->addNext('tenant-saml', $this->connection->id, KeyUse::SP_ENCRYPTION, Clients::browser())->key;
+
+        self::assertTrue($keys->makeCurrent('tenant-saml', $this->connection->id, (string) $new?->id, Clients::browser())->isSucceeded());
+
+        $this->settings(['require_encrypted_assertions' => true]);
+        $this->clock->advance($seconds);
+        $this->request();
+
+        $result = $this->complete($this->response()->with(['assertion_id' => '_assertion-retiring'])->encryptedFor((string) $old?->key->certificate));
+
+        self::assertSame($reason === null ? ['completed', null, 1] : ['failed', $reason, 0], [$result->status->value, $result->reason, count($this->issuer->grants())]);
     }
 
     /**

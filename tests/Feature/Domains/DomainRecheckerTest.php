@@ -93,6 +93,29 @@ final class DomainRecheckerTest extends DomainServiceTestCase
     }
 
     /**
+     * A claim is rechecked at the record name it was made with, whatever the
+     * setting is now.
+     *
+     * @return void
+     */
+    public function testRechecksAtTheRecordNameTheClaimWasMadeWith(): void
+    {
+        $claim = $this->verifiedClaim('example.com', ['record_name' => '_acme-sso']);
+
+        config()->set('sso.domains.record_name', '_other');
+
+        $this->clock->advance(3600);
+        $this->dns->found('_acme-sso.example.com', self::TOKEN);
+
+        $report = $this->runRecheck();
+
+        self::assertSame(RecheckOutcome::CONFIRMED, $report->entries[0]->outcome);
+        self::assertSame('2026-11-01T10:30:00+00:00', self::reload($claim)->last_successful_check_at?->toAtomString());
+        self::assertSame(['_acme-sso.example.com'], $this->dns->lookups());
+        $this->assertNoEvents();
+    }
+
+    /**
      * Rows of `[answer, failure]`: a record absent, different, or containing
      * the token inexactly.
      *
@@ -279,6 +302,43 @@ final class DomainRecheckerTest extends DomainServiceTestCase
         $this->dns->publishes($claimed);
 
         self::assertSame(DomainStatus::VERIFIED, $this->verifyDomain('example.com', $other)->status);
+    }
+
+    /**
+     * A grace period that runs out during the lookup lapses the domain, even
+     * when the record is back.
+     *
+     * @return void
+     */
+    public function testAGracePeriodThatRunsOutDuringTheLookupLapsesTheDomain(): void
+    {
+        $withdrawal = new RecordingWithdrawal;
+        $claim      = $this->verifiedClaim('example.com', [
+            'last_successful_check_at' => CarbonImmutable::parse('2026-10-29T09:30:00Z'),
+            'linking_suspended_at'     => CarbonImmutable::parse('2026-10-29T10:30:00Z'),
+            'lapses_at'                => CarbonImmutable::parse('2026-11-01T10:30:10Z'),
+        ]);
+
+        $this->app?->instance(DomainWithdrawal::class, $withdrawal);
+        $this->clock->advance(3600);
+
+        $this->dns->answer(self::RECORD, function (): DnsLookup {
+            $this->clock->advance(60);
+
+            return DnsLookup::found([self::TOKEN]);
+        });
+
+        $report = $this->runRecheck();
+        $row    = self::reload($claim);
+
+        self::assertSame(RecheckOutcome::LAPSED, $report->entries[0]->outcome);
+        $this->dns->assertLookedUp(self::RECORD, 1);
+        self::assertSame(DomainState::LAPSED, $row->state);
+        self::assertSame([null, null, null, null], [$row->verified_domain, $row->verified_at, $row->lapses_at, $row->linking_suspended_at]);
+        self::assertSame('2026-11-01T10:31:00+00:00', $row->lapsed_at?->toAtomString());
+        self::assertSame('2026-10-29T09:30:00+00:00', $row->last_successful_check_at?->toAtomString());
+        self::assertSame([[$this->connection->id, $claim->id, 1, true]], $withdrawal->calls->getArrayCopy());
+        $this->assertEventSequence([DomainLapsed::class]);
     }
 
     /**

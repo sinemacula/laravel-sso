@@ -13,6 +13,7 @@ use SineMacula\Laravel\Sso\Contracts\Enforcement;
 use SineMacula\Laravel\Sso\Contracts\EvidencePolicy;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\LinkEligibility;
+use SineMacula\Laravel\Sso\Contracts\Linker;
 use SineMacula\Laravel\Sso\Contracts\ProviderSessionDeadline;
 use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
@@ -48,6 +49,8 @@ use Tests\Feature\Linking\LinkingTestCase;
 use Tests\Fixtures\Clients;
 use Tests\Fixtures\Linking\AllowingLinkEligibility;
 use Tests\Fixtures\Linking\RecordingSessions;
+use Tests\Fixtures\Links\ExampleLinks;
+use Tests\Fixtures\Links\FixedLinker;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
@@ -181,6 +184,29 @@ final class ProvenanceCaptureTest extends LinkingTestCase
     }
 
     /**
+     * A link whose linker states no origin is captured with no provenance.
+     *
+     * @return void
+     */
+    public function testALinkWithNoStatedOriginIsCapturedWithNoProvenance(): void
+    {
+        $this->app?->instance(Linker::class, new FixedLinker($this->person));
+
+        // No linking email, so domain linking never needs the package's links
+        $this->verifying->claims = new VerifiedClaims(VerifyingDriver::ISSUER, VerifyingDriver::SUBJECT, null, [], new ProviderContext($this->clock->now()));
+
+        $answer = $this->signIn();
+        $linkId = ExampleLinks::linkId($this->person);
+
+        self::assertTrue($answer->isAdmitted());
+        self::assertSame([$linkId, $linkId, null], [$answer->linkId, $answer->provenance?->linkId, $answer->provenance?->linkProvenance]);
+        self::assertSame(
+            ['sso.link' => $linkId, 'sso.link_provenance' => null],
+            array_intersect_key(AuthenticationContext::of($answer->provenance), array_flip(['sso.link', 'sso.link_provenance'])),
+        );
+    }
+
+    /**
      * A later confirming `link` answers no provenance to overwrite the captured
      * one.
      *
@@ -279,6 +305,26 @@ final class ProvenanceCaptureTest extends LinkingTestCase
         self::assertSame(['2026-11-01T17:30:00.000000Z', '2026-11-01T17:30:00.000000Z'], [$stored['provider_session_deadline'], $stored['session_not_after']]);
         self::assertStringNotContainsString('provider-session-7', (string) json_encode($stored));
         self::assertStringNotContainsString('urn:asserted:class', (string) json_encode($stored));
+    }
+
+    /**
+     * A fractional deadline caps the session at the whole second below it, and
+     * is captured raw.
+     *
+     * @return void
+     */
+    public function testAFractionalDeadlineCapsTheSessionAtTheSecondBelowIt(): void
+    {
+        $this->hold(LinkOrigin::PROVISIONING);
+
+        $this->verifying->claims = $this->claimsWith(new ProviderContext($this->clock->now(), providerSessionDeadline: CarbonImmutable::parse('2026-11-01T17:30:00.750Z')));
+
+        $answer = $this->signIn();
+        $stored = $answer->provenance?->toArray();
+
+        self::assertSame('2026-11-01T17:30:00.000000Z', $answer->sessionNotAfter?->format('Y-m-d\TH:i:s.u\Z'));
+        self::assertIsArray($stored);
+        self::assertSame(['2026-11-01T17:30:00.750000Z', '2026-11-01T17:30:00.000000Z'], [$stored['provider_session_deadline'], $stored['session_not_after']]);
     }
 
     /**

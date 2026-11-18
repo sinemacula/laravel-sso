@@ -78,6 +78,35 @@ final class DomainVerificationTest extends DomainServiceTestCase
     }
 
     /**
+     * A claim is verified at the record name it was made with; only a claim
+     * made again takes a changed setting.
+     *
+     * @return void
+     */
+    public function testVerifiesAtTheRecordNameTheClaimWasMadeWith(): void
+    {
+        config()->set('sso.domains.record_name', '_acme-sso');
+
+        $claimed = self::summaryOf($this->claimDomain());
+        $later   = self::summaryOf($this->claimDomain('example.org'));
+
+        config()->set('sso.domains.record_name', '_other');
+
+        $this->dns->publishes($claimed);
+
+        self::assertSame(DomainStatus::VERIFIED, $this->verifyDomain()->status);
+        self::assertSame(['_acme-sso.example.com'], $this->dns->lookups());
+
+        $this->clock->advance(604800);
+
+        $again = self::summaryOf($this->claimDomain('example.org'));
+
+        self::assertSame('_acme-sso.example.org', $later->recordName);
+        self::assertSame($later->id, $again->id);
+        self::assertSame('_other.example.org', $again->recordName);
+    }
+
+    /**
      * One of several records being the token is enough.
      *
      * @return void
