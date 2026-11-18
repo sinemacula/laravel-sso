@@ -10,6 +10,7 @@ use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
+use SineMacula\Laravel\Sso\Connections\SettingViolation;
 use SineMacula\Laravel\Sso\Connections\SubjectMigration;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
@@ -168,6 +169,70 @@ final class LifecycleEventSequenceTest extends TestCase
         });
 
         $this->assertMigrationSequence();
+    }
+
+    /**
+     * Rows of `[code, relinks, removals, refused]`: a relink refused, with
+     * links named by position among the three links and a twin of the first.
+     *
+     * @return iterable<string, array{0: string, 1: array<int, list<string>>, 2: list<int>, 3: int}>
+     */
+    public static function provideRelinkRefusals(): iterable
+    {
+        yield 'a collision' => ['duplicate', [0 => ['x'], 1 => ['x']], [2, 3], 1];
+        yield 'a link limit' => ['too_many', [0 => ['subject-1-new'], 3 => ['subject-1-twin-new']], [1, 2], 3];
+    }
+
+    /**
+     * A migration refused at a relink inside a caller's transaction rolls back
+     * only its own writes, and the caller commits its writes from before and
+     * after it without a report.
+     *
+     * @param  string  $code
+     * @param  array<int, list<string>>  $relinks
+     * @param  list<int>  $removals
+     * @param  int  $refused
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    #[DataProvider('provideRelinkRefusals')]
+    public function testARelinkRefusedInsideACallersTransactionLeavesItUsable(string $code, array $relinks, array $removals, int $refused): void
+    {
+        $ids      = array_map(static fn (Link $link): string => $link->id, [...$this->links, $this->makeLink($this->connection, 'subject-1-twin', ['identity_id' => '1'])]);
+        $linkAt   = static fn (int $position): string => $ids[$position];
+        $links    = Link::query()->orderBy('id')->get()->map(static fn (Link $link): array => $link->setHidden([])->attributesToArray())->all();
+        $database = DB::connection(StorageConnection::name());
+
+        $database->transaction(function () use ($database, $linkAt, $relinks, $removals, $refused, $code): void {
+
+            Connection::query()->whereKey($this->connection->id)->update(['display_name' => 'Renamed by the caller']);
+
+            $result = $this->migration()->migrate(
+                self::TENANT,
+                $this->connection->id,
+                ['settings' => ['client_id' => 'client-456']],
+                array_combine(array_map($linkAt, array_keys($relinks)), $relinks),
+                array_map($linkAt, $removals),
+                Clients::browser(),
+            );
+
+            $violations = array_map(static fn (SettingViolation $violation): array => [$violation->setting, $violation->code->value], $result->violations);
+
+            self::assertSame([['relinks.' . $linkAt($refused), $code]], $violations);
+            self::assertSame(1, $database->transactionLevel());
+
+            Connection::query()->whereKey($this->connection->id)->update(['enabled' => false]);
+        });
+
+        $connection = Connection::query()->whereKey($this->connection->id)->sole();
+
+        self::assertSame(
+            ['Renamed by the caller', false, 'client-123', $this->connection->trust_version],
+            [$connection->display_name, $connection->enabled, $connection->settings['client_id'], $connection->trust_version],
+        );
+        self::assertSame($links, Link::query()->orderBy('id')->get()->map(static fn (Link $link): array => $link->setHidden([])->attributesToArray())->all());
+        $this->assertNoEvents();
     }
 
     /**

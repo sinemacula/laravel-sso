@@ -212,6 +212,8 @@ read under the lock that decides a write is a locking read (`lockForUpdate()`), 
 - `tests/Integration/Connections/ConcurrentLifecycleTest.php`,
   `tests/Integration/Connections/ConcurrentFlowVoidingTest.php` (a trust change and a deletion under `REPEATABLE READ`
   after a flow inserted since their snapshot; MySQL and PostgreSQL),
+  `tests/Integration/Connections/ConcurrentConnectionDeletionTest.php` (a deletion under `REPEATABLE READ` after a link
+  created since its snapshot; MySQL and PostgreSQL),
   `tests/Integration/Connections/LifecycleRevocationTransactionTest.php`,
   `tests/Integration/Connections/ConnectionDeletionTest.php`.
 - `tests/Performance/ConnectionLifecycleQueryBudgetTest.php`.
