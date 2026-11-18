@@ -138,6 +138,29 @@ final class GuzzleFetcherRedirectsTest extends TestCase
     }
 
     /**
+     * A request's own cap holds on the hop a redirect leads to, in place of the
+     * configured one.
+     *
+     * @return void
+     */
+    public function testARequestsOwnCapHoldsOnARedirectedHop(): void
+    {
+        config()->set('sso.fetcher.max_response_bytes', 1024);
+
+        $redirect = new Response(302, ['Location' => 'https://cdn.example.net/idp/metadata.xml']);
+        $tooLarge = $this->fetcher([$redirect, new Response(200, [], str_repeat('a', 4097))])->fetch(FetchRequest::metadata(self::URL, 4096));
+
+        self::assertSame(FetchStatus::FAILED, $tooLarge->status);
+        self::assertCount(2, $this->sent);
+        self::assertSame(['too_large', 'cdn.example.net'], [$this->loggedContext()['cause'], $this->loggedContext()['host']]);
+
+        $fetched = $this->fetcher([$redirect, new Response(200, [], str_repeat('a', 2048))])->fetch(FetchRequest::metadata(self::URL, 4096));
+
+        self::assertSame(str_repeat('a', 2048), $fetched->body());
+        self::assertCount(2, $this->sent);
+    }
+
+    /**
      * Rows of `[location, resolved]`: relative locations and what they resolve
      * to.
      *
@@ -172,6 +195,27 @@ final class GuzzleFetcherRedirectsTest extends TestCase
 
         self::assertTrue($result->isFetched());
         self::assertSame($resolved, (string) $this->sent[1]['request']->getUri());
+    }
+
+    /**
+     * A relative `Location` on a later hop resolves against that hop's URL, and
+     * is pinned for its host.
+     *
+     * @return void
+     */
+    public function testResolvesARelativeLocationAgainstTheHopThatAnswered(): void
+    {
+        $result = $this->fetcher([
+            new Response(302, ['Location' => 'https://cdn.example.net/a/']),
+            new Response(302, ['Location' => 'v2/metadata']),
+            new Response(200, [], 'ok'),
+        ])->fetch(FetchRequest::metadata(self::URL));
+
+        self::assertTrue($result->isFetched());
+        self::assertCount(3, $this->sent);
+        self::assertSame('https://cdn.example.net/a/v2/metadata', (string) $this->sent[2]['request']->getUri());
+        self::assertSame(['idp.example.com', 'cdn.example.net', 'cdn.example.net'], $this->resolver->lookups());
+        self::assertSame(['cdn.example.net:443:[2606:4700:4700::1111]'], $this->curlOptions(2)[CURLOPT_RESOLVE]);
     }
 
     /**
