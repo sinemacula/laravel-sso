@@ -335,6 +335,59 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
+     * Rows of `[variant, detail]`: each variant that wraps a signed assertion,
+     * and what refuses it once its evil assertion is encrypted.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideAssertionWrappingVariants(): iterable
+    {
+        yield from [
+            'xsw3'           => ['xsw3', 'assertion_location'],
+            'xsw4'           => ['xsw4', 'schema'],
+            'xsw5'           => ['xsw5', 'assertion_location'],
+            'xsw6'           => ['xsw6', 'schema'],
+            'xsw7'           => ['xsw7', 'signature_location'],
+            'xsw8'           => ['xsw8', 'decrypted_structure'],
+            'same_id_before' => ['same_id_before', 'assertion_location'],
+            'same_id_after'  => ['same_id_after', 'assertion_location'],
+        ];
+    }
+
+    /**
+     * Every assertion wrapping variant, its evil assertion encrypted in place
+     * in the unsigned response, is refused where the plain structure is held.
+     *
+     * @param  string  $variant
+     * @param  string  $detail
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    #[DataProvider('provideAssertionWrappingVariants')]
+    public function testEveryWrappedAssertionIsRefusedWhenEncrypted(string $variant, string $detail): void
+    {
+        $document = self::document(self::response()->wrapped($variant)->toXml());
+        $xpath    = new \DOMXPath($document);
+
+        $xpath->registerNamespace('saml', 'urn:oasis:names:tc:SAML:2.0:assertion');
+
+        $nodes     = $xpath->query('/*/saml:Assertion[saml:Subject/saml:NameID = "mallory"]');
+        $evil      = $nodes === false ? null : $nodes->item(0);
+        $plaintext = new \DOMDocument;
+
+        self::assertInstanceOf(\DOMElement::class, $evil);
+
+        $plaintext->appendChild($plaintext->importNode($evil, true));
+
+        $encrypted = self::document((new AssertionEncryptor)->encrypt((string) $plaintext->saveXML($plaintext->documentElement), self::spKeys()[1]));
+
+        self::rootOf($document)->replaceChild($document->importNode(self::rootOf($encrypted), true), $evil);
+
+        self::assertSame(['response_invalid', $detail], $this->refusal(base64_encode((string) $document->saveXML($document->documentElement))));
+    }
+
+    /**
      * Rows of `[changes, profile]`: a response, and the profile it falls under.
      *
      * @return iterable<string, array{0: array<string, mixed>, 1: string}>
@@ -703,7 +756,49 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * A decrypted assertion is held to the structure of a plain one.
+     * Rows of `[offset, read, attempted]`: a decrypted assertion padded to
+     * around the cap, whether it is read, and whether decrypting it was
+     * attempted. AES-GCM adds 28 bytes to the plaintext, inside the 64 allowed.
+     *
+     * @return iterable<string, array{0: int, 1: bool, 2: bool}>
+     */
+    public static function provideDecryptedLengths(): iterable
+    {
+        yield from [
+            'at the cap'                        => [0, true, true],
+            'one over the cap'                  => [1, false, true],
+            'ciphertext at the allowance'       => [36, false, true],
+            'ciphertext one over the allowance' => [37, false, false],
+        ];
+    }
+
+    /**
+     * A decrypted assertion longer than its cap is refused before it is parsed,
+     * and ciphertext too long to fit it before it is decrypted.
+     *
+     * @param  int  $offset
+     * @param  bool  $read
+     * @param  bool  $attempted
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    #[DataProvider('provideDecryptedLengths')]
+    public function testTheDecryptedAssertionIsCappedBeforeItIsParsed(int $offset, bool $read, bool $attempted): void
+    {
+        config()->set('sso.saml2.max_decrypted_bytes', Saml2Limits::MIN_DECRYPTED_BYTES);
+
+        $options   = self::responseOptions();
+        $assertion = (new ResponseWriter)->assertion($options);
+        $padded    = $assertion . str_repeat(' ', Saml2Limits::MIN_DECRYPTED_BYTES - strlen($assertion)) . str_repeat('<', $offset);
+
+        self::assertSame($read ? null : 'decryption', $this->read(self::signedAround($padded, $options))->detail);
+        self::assertSame($attempted ? 1 : 0, $this->keysAsked);
+    }
+
+    /**
+     * A decrypted assertion is held to the structure of a plain one: one
+     * assertion, signed only in its own place.
      *
      * @return void
      *
@@ -711,15 +806,62 @@ final class SamlAdapterTest extends TestCase
      */
     public function testADecryptedAssertionIsHeldToThePlainStructure(): void
     {
-        $options = self::responseOptions();
-        $writer  = new ResponseWriter;
-        $issuer  = '<saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">https://idp.example.test/saml</saml:Issuer>';
-        $sameId  = $writer->assertion([...$options, 'assertion_id' => $options['response_id']]);
-        $invalid = str_replace('<saml:Issuer>', '<saml:Unknown/><saml:Issuer>', $writer->assertion($options));
+        $options   = self::responseOptions();
+        $writer    = new ResponseWriter;
+        $issuer    = '<saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">https://idp.example.test/saml</saml:Issuer>';
+        $sameId    = $writer->assertion([...$options, 'assertion_id' => $options['response_id']]);
+        $invalid   = str_replace('<saml:Issuer>', '<saml:Unknown/><saml:Issuer>', $writer->assertion($options));
+        $advised   = $writer->assertion([...$options, 'advice' => true]);
+        $signed    = self::response()->signed(false, true)->toXml();
+        $start     = (int) strpos($signed, '<ds:Signature');
+        $signature = substr($signed, $start, (int) strpos($signed, '</ds:Signature>') + strlen('</ds:Signature>') - $start);
+        $nested    = str_replace('<saml:AssertionIDRef>_advised</saml:AssertionIDRef>', $writer->assertion([...$options, 'assertion_id' => '_advised']), $advised);
+        $misplaced = str_replace('<saml:AssertionIDRef>_advised</saml:AssertionIDRef>', $signature, $advised);
 
+        self::assertTrue($this->read(self::signedAround($advised, $options))->isRead());
         self::assertSame(['response_invalid', 'decrypted_structure'], $this->refusal(self::signedAround($issuer, $options)));
+        self::assertSame(['response_invalid', 'decrypted_structure'], $this->refusal(self::signedAround($nested, $options)));
+        self::assertSame(['response_invalid', 'decrypted_structure'], $this->refusal(self::signedAround($misplaced, $options)));
         self::assertSame(['response_invalid', 'duplicate_id'], $this->refusal(self::signedAround($sameId, $options)));
         self::assertSame(['response_invalid', 'schema'], $this->refusal(self::signedAround($invalid, $options)));
+    }
+
+    /**
+     * Rows of `[doctype, name]`: a document type a decrypted assertion opens
+     * with, and what stands for its NameID.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideDecryptedDocumentTypes(): iterable
+    {
+        $secret = dirname(__DIR__, 4) . '/Fixtures/Saml/xxe-secret.txt';
+
+        yield from [
+            'an unused document type' => ['<!DOCTYPE saml:Assertion>', 'alice'],
+            'an internal entity'      => ['<!DOCTYPE saml:Assertion [<!ENTITY name "alice">]>', '&name;'],
+            'an external entity'      => ['<!DOCTYPE saml:Assertion [<!ENTITY name SYSTEM "file://' . $secret . '">]>', '&name;'],
+            'entity expansion'        => ['<!DOCTYPE saml:Assertion [<!ENTITY a "alice"><!ENTITY b "&a;&a;&a;&a;"><!ENTITY c "&b;&b;&b;&b;">]>', '&c;'],
+        ];
+    }
+
+    /**
+     * A decrypted assertion with a document type or entity is unparseable, even
+     * in a response the trusted provider signed, and nothing is read.
+     *
+     * @param  string  $doctype
+     * @param  string  $name
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    #[DataProvider('provideDecryptedDocumentTypes')]
+    public function testADecryptedAssertionWithADocumentTypeIsUnparseable(string $doctype, string $name): void
+    {
+        $options   = self::responseOptions();
+        $plaintext = $doctype . str_replace('>alice<', '>' . $name . '<', (new ResponseWriter)->assertion($options));
+        $result    = $this->read(self::signedAround($plaintext, $options));
+
+        self::assertSame(['response_invalid', 'unparseable', null], [$result->reason?->value, $result->detail, $result->response]);
     }
 
     /**

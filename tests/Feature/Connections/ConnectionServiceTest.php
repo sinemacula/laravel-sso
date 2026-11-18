@@ -26,6 +26,7 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\Enums\LinkState;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\Connection;
@@ -837,6 +838,60 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
+     * Rows of `[feature, settings, setting, fix]`: a stored switch whose
+     * feature is later turned off, and the change that turns it off.
+     *
+     * @return iterable<string, array{0: string, 1: array<string, mixed>, 2: string, 3: array<string, mixed>}>
+     */
+    public static function provideSwitchedOffFeatures(): iterable
+    {
+        yield 'idp-initiated sign-in' => [
+            'idp_initiated',
+            ['idp_initiated' => true, 'idp_initiated_start_url' => 'https://app.example.com/start'],
+            'idp_initiated',
+            ['idp_initiated' => false, 'idp_initiated_start_url' => null],
+        ];
+        yield 'encrypted assertions' => [
+            'encrypted_assertions',
+            ['require_encrypted_assertions' => true],
+            'require_encrypted_assertions',
+            ['require_encrypted_assertions' => false],
+        ];
+    }
+
+    /**
+     * A switch whose feature is off blocks any update that leaves it on.
+     *
+     * @param  string  $feature
+     * @param  array<string, mixed>  $settings
+     * @param  string  $setting
+     * @param  array<string, mixed>  $fix
+     * @return void
+     */
+    #[DataProvider('provideSwitchedOffFeatures')]
+    public function testASwitchWhoseFeatureIsOffMustBeTurnedOffToUpdate(string $feature, array $settings, string $setting, array $fix): void
+    {
+        config()->set('sso.features.' . $feature, true);
+
+        $id = $this->createSaml($settings);
+
+        config()->set('sso.features.' . $feature, false);
+
+        $rows   = $this->rows();
+        $result = $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed'], Clients::browser());
+
+        self::assertSame([[$setting, 'unsupported']], self::violationsOf($result));
+        self::assertSame($rows, $this->rows());
+        $this->assertNothingHappened();
+
+        $fixed = $this->service()->update(self::TENANT, $id, ['display_name' => 'Renamed', 'settings' => $fix], Clients::browser());
+
+        self::assertSame(ConnectionStatus::UPDATED, $fixed->status);
+        self::assertSame('Renamed', $this->stored($id)->display_name);
+        self::assertFalse($this->stored($id)->settings[$setting]);
+    }
+
+    /**
      * Foreign, unknown and impossible ids are not found, with nothing asked.
      *
      * @return void
@@ -937,8 +992,8 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
-     * Enabling asks freshness, sets the flag and reports it, even for an
-     * incomplete connection.
+     * Enabling asks freshness, sets the flag, raises the trust version by one
+     * and reports it, even for an incomplete connection.
      *
      * @return void
      */
@@ -946,6 +1001,7 @@ final class ConnectionServiceTest extends TestCase
     {
         $id = (string) $this->service()->create(self::TENANT, 'oidc', 'Acme', Clients::browser())->connection?->id;
 
+        $this->stored($id)->forceFill(['trust_version' => 4])->save();
         $this->freshness->reset();
         $this->startRecordingEvents();
 
@@ -956,6 +1012,7 @@ final class ConnectionServiceTest extends TestCase
         self::assertTrue($result->connection?->enabled);
         self::assertFalse($result->connection->usable);
         self::assertTrue($this->stored($id)->enabled);
+        self::assertSame(5, $this->stored($id)->trust_version);
         self::assertSame([[FreshnessOperation::CONNECTION_ENABLE, 300]], $this->freshness->asked());
         self::assertEventSequence([ConnectionEnabled::class]);
 
@@ -1174,6 +1231,28 @@ final class ConnectionServiceTest extends TestCase
     }
 
     /**
+     * A suspended domain link holds the subjects as an active one does.
+     *
+     * @param  string  $protocol
+     * @param  array<string, mixed>  $settings
+     * @return void
+     */
+    #[DataProvider('provideSubjectChanges')]
+    public function testASuspendedDomainLinkCountsAsALink(string $protocol, array $settings): void
+    {
+        $id = $protocol === 'oidc' ? $this->createOidc() : $this->createSaml();
+
+        $this->makeLink($this->stored($id), attributes: ['provenance' => LinkOrigin::VERIFIED_DOMAIN, 'state' => LinkState::SUSPENDED, 'suspended_at' => $this->clock->now()]);
+
+        $before = $this->rows();
+        $result = $this->service()->update(self::TENANT, $id, ['settings' => $settings], Clients::browser());
+
+        self::assertSame(FailureReason::CONNECTION_HAS_LINKS, $result->reason);
+        self::assertSame($before, $this->rows());
+        $this->assertNoEvents();
+    }
+
+    /**
      * A reservation expiring after now counts as a link; one expired at or
      * before now does not.
      *
@@ -1368,11 +1447,12 @@ final class ConnectionServiceTest extends TestCase
      * Create a complete SAML connection named `Acme`, then forget what was
      * asked and reported.
      *
+     * @param  array<string, mixed>  $settings
      * @return string
      */
-    private function createSaml(): string
+    private function createSaml(array $settings = []): string
     {
-        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), self::SAML);
+        $result = $this->service()->create(self::TENANT, 'saml2', 'Acme', Clients::browser(), $settings + self::SAML);
 
         self::assertSame(ConnectionStatus::CREATED, $result->status);
 
