@@ -12,6 +12,9 @@ use SineMacula\Laravel\Sso\Console\RecheckDomainsCommand;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Domains\DomainRechecker;
 use SineMacula\Laravel\Sso\Domains\Enums\DomainState;
+use SineMacula\Laravel\Sso\Events\DomainLapsed;
+use SineMacula\Laravel\Sso\Events\DomainRecheckFailed;
+use SineMacula\Laravel\Sso\Events\DomainRestored;
 use SineMacula\Laravel\Sso\Models\Domain;
 use Tests\Concerns\CapturesLogs;
 use Tests\Concerns\FailsDatabaseStatements;
@@ -50,7 +53,8 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
     }
 
     /**
-     * Each change is printed in check order, then the summary of outcomes.
+     * Each change is printed in check order, then the summary of outcomes; its
+     * events carry no client.
      *
      * @return void
      */
@@ -78,6 +82,12 @@ final class RecheckDomainsCommandTest extends DomainServiceTestCase
             "[suspended] absent.example.com (connection {$id})",
             'Domains rechecked: confirmed 1, restored 1, suspended 1, still_failing 0, lapsed 1, lookup_failed 0, resolver_threw 0, skipped 0',
         ], $output);
+
+        $this->assertEventSequence([DomainLapsed::class, DomainRestored::class, DomainRecheckFailed::class]);
+
+        foreach ($this->recordedEvents() as $event) {
+            self::assertSame([null, null], [$event->context()->ip, $event->context()->userAgent]);
+        }
     }
 
     /**

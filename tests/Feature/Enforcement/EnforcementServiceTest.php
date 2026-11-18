@@ -423,6 +423,30 @@ final class EnforcementServiceTest extends TestCase
     }
 
     /**
+     * The most connections a rule may name are accepted, counted once each
+     * however often given.
+     *
+     * @return void
+     */
+    public function testTheMostConnectionsAreAcceptedCountedOnceEach(): void
+    {
+        $ids = [$this->completed->id, $this->untried->id];
+
+        while (count($ids) < EnforcementService::MAX_CONNECTIONS) {
+            $ids[] = $this->makeConnection(['enabled' => true])->id;
+        }
+
+        $stored = self::summaryOf($this->turnOn($ids), EnforcementStatus::UPDATED);
+
+        self::assertSame(self::sortedIds($ids), $stored->connectionIds);
+        self::assertCount(EnforcementService::MAX_CONNECTIONS, $this->stored()->connection_ids);
+
+        $again = $this->turnOn([...$ids, $this->completed->id]);
+
+        self::assertEquals($stored, self::summaryOf($again, EnforcementStatus::UNCHANGED));
+    }
+
+    /**
      * Another tenant's connection is answered as an unknown id.
      *
      * @return void
