@@ -37,6 +37,7 @@ use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Concerns\RecordsLockOrder;
 use Tests\Concerns\UsesConnections;
 use Tests\Concerns\UsesFlowTables;
 use Tests\Fixtures\Clients;
@@ -60,7 +61,7 @@ use Tests\TestCase;
 #[CoversClass(CiphertextWrite::class)]
 final class KeyServiceTest extends TestCase
 {
-    use RecordsEventSequences, UsesConnections, UsesFlowTables;
+    use RecordsEventSequences, RecordsLockOrder, UsesConnections, UsesFlowTables;
 
     /** @var string The tenant whose connection the helpers act on. */
     private const string TENANT = 'tenant-1';
@@ -433,6 +434,68 @@ final class KeyServiceTest extends TestCase
         self::assertSame([$this->actor], $this->freshness->callers());
         self::assertSame($before, $this->rows());
         $this->assertNoEvents();
+    }
+
+    /**
+     * An addition fresh up front but stale under the connection's lock is
+     * refused, with nothing written.
+     *
+     * @return void
+     */
+    public function testTheAnswerUnderTheLockDecidesAnAddition(): void
+    {
+        $asked  = [];
+        $record = function () use (&$asked): void {
+            $asked[] = [DB::connection(StorageConnection::name())->transactionLevel(), $this->lockOrder()];
+        };
+
+        $this->recordLockOrder();
+
+        $this->freshness->onCheck = function () use ($record): void {
+
+            $record();
+
+            $this->freshness->onCheck = function () use ($record): void {
+                $record();
+                $this->freshness->answer(FreshnessOutcome::STALE);
+            };
+        };
+
+        $result = $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor);
+
+        self::assertSame(FailureReason::FRESHNESS_REQUIRED, $result->reason);
+        self::assertCount(2, $this->freshness->asked());
+        self::assertSame([[0, []], [1, ['connections ' . $this->connection->id . ', ' . self::TENANT]]], $asked);
+        self::assertSame([], $this->rows());
+        $this->assertNoEvents();
+    }
+
+    /**
+     * Inside the caller's transaction an addition asks freshness once, under
+     * the connection's lock.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAnAdditionInsideATransactionAsksOnceUnderTheLock(): void
+    {
+        $database = DB::connection(StorageConnection::name());
+        $asked    = [];
+
+        $this->recordLockOrder();
+
+        $this->freshness->onCheck = function () use ($database, &$asked): void {
+            $asked[] = [$database->transactionLevel(), $this->lockOrder()];
+        };
+
+        $result = $database->transaction(
+            fn (): KeyResult => $this->keys()->addNext(self::TENANT, $this->connection->id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor),
+        );
+
+        self::assertSame(KeyStatus::ADDED, $result->status);
+        self::assertSame([[FreshnessOperation::KEYS_ROTATE, 300]], $this->freshness->asked());
+        self::assertSame([[2, ['connections ' . $this->connection->id . ', ' . self::TENANT]]], $asked);
     }
 
     /**

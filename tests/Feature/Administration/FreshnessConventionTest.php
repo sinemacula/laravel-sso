@@ -28,8 +28,10 @@ use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Keys\KeySummary;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RecordsEventSequences;
+use Tests\Concerns\RecordsLockOrder;
 use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Freshness\RecordingFreshness;
 use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
@@ -49,7 +51,7 @@ use Tests\TestCase;
 #[CoversClass(FreshnessGate::class)]
 final class FreshnessConventionTest extends TestCase
 {
-    use RecordsEventSequences;
+    use RecordsEventSequences, RecordsLockOrder;
 
     /** @var string The tenant whose connections the helpers act on. */
     private const string TENANT = 'tenant-1';
@@ -209,6 +211,51 @@ final class FreshnessConventionTest extends TestCase
         foreach ($operations as $operation) {
             $freshness->assertAsked($operation, self::MAX_AGES[$operation->configKey()]);
         }
+    }
+
+    /**
+     * Rows of `[mutation, connection, locks]`: a change that locks its
+     * connection, which connection, and the locks it takes after that row.
+     *
+     * @return iterable<string, array{0: string, 1: string, 2: list<string>}>
+     */
+    public static function provideLockedMutations(): iterable
+    {
+        yield 'update of a trust setting' => ['update trust setting', 'oidc', []];
+        yield 'enable' => ['enable', 'oidc', []];
+        yield 'disable' => ['disable', 'oidc', []];
+        yield 'delete' => ['delete', 'oidc', ['sso_domains']];
+        yield 'make current' => ['make current', 'saml', []];
+        yield 'retire' => ['retire', 'saml', []];
+        yield 'trust certificate' => ['trust certificate', 'saml', []];
+        yield 'distrust certificate' => ['distrust certificate', 'saml', []];
+    }
+
+    /**
+     * Freshness is asked inside the change's transaction, once the connection
+     * and every row locked before it are held.
+     *
+     * @param  string  $mutation
+     * @param  string  $connection
+     * @param  list<string>  $locks
+     * @return void
+     */
+    #[DataProvider('provideLockedMutations')]
+    public function testFreshnessIsAskedUnderTheChangesLocks(string $mutation, string $connection, array $locks): void
+    {
+        $freshness = new RecordingFreshness;
+        $asked     = [];
+        $id        = $connection === 'oidc' ? $this->oidc : $this->saml;
+
+        $this->app?->instance(Freshness::class, $freshness);
+        $this->recordLockOrder();
+
+        $freshness->onCheck = function () use (&$asked): void {
+            $asked[] = [DB::connection(StorageConnection::name())->transactionLevel(), $this->lockOrder()];
+        };
+
+        self::assertTrue($this->mutate($mutation)->isSucceeded());
+        self::assertSame([[1, ['connections ' . $id . ', ' . self::TENANT, ...$locks]]], $asked);
     }
 
     /**
