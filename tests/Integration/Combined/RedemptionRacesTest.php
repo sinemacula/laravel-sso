@@ -10,11 +10,14 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\SessionRevocation;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Events\ConnectionDeleted;
+use SineMacula\Laravel\Sso\Events\ConnectionDisabled;
 use SineMacula\Laravel\Sso\Events\FlowFailed;
 use SineMacula\Laravel\Sso\Events\HandoffRedeemed;
 use SineMacula\Laravel\Sso\Events\KeyRetired;
@@ -37,6 +40,7 @@ use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\ConnectionKey;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
+use SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason;
 use SineMacula\Laravel\Sso\Revocation\RevocationScope;
 use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
@@ -47,8 +51,8 @@ use Tests\Fixtures\Keys\Certificates;
 use Tests\Fixtures\Protocols\VerifyingDriver;
 
 /**
- * Integration tests racing a linked `sign_in` redemption against trust and link
- * changes.
+ * Integration tests racing a linked `sign_in` redemption against trust, link
+ * and connection lifecycle changes.
  *
  * The first racer holds the lock until the other waits. Skipped on SQLite and
  * without `pcntl`.
@@ -65,6 +69,7 @@ use Tests\Fixtures\Protocols\VerifyingDriver;
 #[CoversClass(LinkStore::class)]
 #[CoversClass(KeyService::class)]
 #[CoversClass(InFlightVoider::class)]
+#[CoversClass(ConnectionLifecycle::class)]
 final class RedemptionRacesTest extends LinkingTestCase
 {
     use RaceFlows;
@@ -80,6 +85,12 @@ final class RedemptionRacesTest extends LinkingTestCase
 
     /** @var string The link's reassignment to another identity. */
     private const string REASSIGN = 'reassign';
+
+    /** @var string The connection's disable. */
+    private const string DISABLE = 'disable';
+
+    /** @var string The connection's deletion. */
+    private const string DELETE = 'delete';
 
     /** @var string What a redemption that succeeded reports. */
     private const string REDEEMED = 'redeemed';
@@ -125,7 +136,7 @@ final class RedemptionRacesTest extends LinkingTestCase
             $table->string('identity_id');
             $table->string('connection_id');
             $table->string('link_id');
-            $table->boolean('revoked')->default(false);
+            $table->string('revoked_for')->nullable();
         });
 
         $this->certificate = $this->trustedCertificate();
@@ -163,7 +174,7 @@ final class RedemptionRacesTest extends LinkingTestCase
      */
     public static function provideRaces(): iterable
     {
-        foreach ([self::TRUST, self::UNLINK, self::REASSIGN] as $change) {
+        foreach ([self::TRUST, self::UNLINK, self::REASSIGN, self::DISABLE, self::DELETE] as $change) {
             yield "{$change}, both plainly" => [$change, false, false];
             yield "{$change}, the first in its own transaction that read first" => [$change, true, false];
             yield "{$change}, the second in its own transaction that read first" => [$change, false, true];
@@ -171,7 +182,7 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * A redemption that commits first has its session revoked by a link change.
+     * A redemption that commits first has its session revoked by the change.
      *
      * @param  string  $change
      * @param  bool  $firstReads
@@ -197,14 +208,18 @@ final class RedemptionRacesTest extends LinkingTestCase
 
         self::assertFalse(self::assertRacerEnded($reports[0], false));
         self::assertSame(['outcome' => self::REDEEMED, 'events' => [HandoffRedeemed::class]], $reports[0]['result']);
-
-        $code = HandoffCode::query()->sole();
-
-        self::assertNotNull($code->redeemed_at);
-        self::assertNull($code->voided_at);
         self::assertSame(1, $this->sessions()->count());
 
-        if (self::assertRacerEnded($reports[1], $secondReads)) {
+        $failed = self::assertRacerEnded($reports[1], $secondReads);
+
+        self::assertSame($change === self::DELETE && !$failed ? 0 : 1, HandoffCode::query()->count());
+
+        $code = HandoffCode::query()->first();
+
+        self::assertTrue($code === null || $code->redeemed_at !== null);
+        self::assertNull($code?->voided_at);
+
+        if ($failed) {
             $this->assertNothingChanged();
 
             return;
@@ -212,7 +227,7 @@ final class RedemptionRacesTest extends LinkingTestCase
 
         self::assertSame($this->changeReported($change), $reports[1]['result']);
 
-        $this->assertChangeStands($change, $change !== self::TRUST);
+        $this->assertChangeStands($change, self::revocationFor($change));
     }
 
     /**
@@ -244,41 +259,46 @@ final class RedemptionRacesTest extends LinkingTestCase
         self::assertSame($this->changeReported($change), $reports[0]['result']);
         self::assertSame(0, $this->sessions()->count());
 
-        $this->assertChangeStands($change, false);
+        $this->assertChangeStands($change, null);
 
-        $code = HandoffCode::query()->sole();
+        self::assertSame($change === self::DELETE ? 0 : 1, HandoffCode::query()->count());
+
+        $code = HandoffCode::query()->first();
 
         if (self::assertRacerEnded($reports[1], $secondReads)) {
-            self::assertNull($code->redeemed_at);
+            self::assertNull($code?->redeemed_at);
 
             return;
         }
 
-        self::assertSame(['outcome' => 'refused:' . ($change === self::TRUST ? 'handoff_unknown' : 'link_changed'), 'events' => [FlowFailed::class]], $reports[1]['result']);
+        self::assertSame(['outcome' => 'refused:' . self::refusalAfter($change), 'events' => [FlowFailed::class]], $reports[1]['result']);
 
-        self::assertSame($change !== self::TRUST, $code->redeemed_at !== null);
-        self::assertSame($change === self::TRUST, $code->voided_at !== null);
+        self::assertSame(in_array($change, [self::UNLINK, self::REASSIGN], true), $code?->redeemed_at !== null);
+        self::assertSame(in_array($change, [self::TRUST, self::DISABLE], true), $code?->voided_at !== null);
     }
 
     /**
-     * Assert the change committed and the session was revoked as given.
+     * Assert the change committed and the session was revoked for the reason
+     * given, or not at all.
      *
      * @param  string  $change
-     * @param  bool  $revoked
+     * @param  ?\SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason  $reason
      * @return void
      *
      * @throws \LogicException
      */
-    private function assertChangeStands(string $change, bool $revoked): void
+    private function assertChangeStands(string $change, ?RevocationReason $reason): void
     {
         match ($change) {
             self::TRUST    => $this->assertTrustChanged(),
             self::UNLINK   => self::assertSame(0, Link::query()->count()),
             self::REASSIGN => $this->assertReassigned(),
+            self::DISABLE  => $this->assertDisabled(),
+            self::DELETE   => $this->assertDeleted(),
             default        => throw new \LogicException(sprintf('No change is named [%s].', $change)),
         };
 
-        self::assertSame($revoked ? 1 : 0, $this->sessions()->where('revoked', true)->count());
+        self::assertSame($reason === null ? [] : [$reason->value], $this->sessions()->whereNotNull('revoked_for')->pluck('revoked_for')->all());
     }
 
     /**
@@ -291,6 +311,29 @@ final class RedemptionRacesTest extends LinkingTestCase
         self::assertSame(1, Connection::query()->whereKey($this->connection->id)->sole()->trust_version);
         self::assertSame(0, ConnectionKey::query()->whereKey($this->certificate)->count());
         self::assertSame($this->link->id, Link::query()->sole()->id);
+    }
+
+    /**
+     * Assert the connection is disabled, and the link stands.
+     *
+     * @return void
+     */
+    private function assertDisabled(): void
+    {
+        self::assertFalse(Connection::query()->whereKey($this->connection->id)->sole()->enabled);
+        self::assertSame($this->link->id, Link::query()->sole()->id);
+    }
+
+    /**
+     * Assert the connection is gone with its link and code.
+     *
+     * @return void
+     */
+    private function assertDeleted(): void
+    {
+        self::assertSame(0, Connection::query()->whereKey($this->connection->id)->count());
+        self::assertSame(0, Link::query()->count());
+        self::assertSame(0, HandoffCode::query()->count());
     }
 
     /**
@@ -313,11 +356,14 @@ final class RedemptionRacesTest extends LinkingTestCase
      */
     private function assertNothingChanged(): void
     {
-        self::assertSame(0, Connection::query()->whereKey($this->connection->id)->sole()->trust_version);
+        $connection = Connection::query()->whereKey($this->connection->id)->sole();
+
+        self::assertSame(0, $connection->trust_version);
+        self::assertTrue($connection->enabled);
         self::assertSame(1, ConnectionKey::query()->whereKey($this->certificate)->count());
         self::assertSame($this->link->id, Link::query()->sole()->id);
         self::assertSame($this->person->id, Link::query()->sole()->identity_id);
-        self::assertSame(0, $this->sessions()->where('revoked', true)->count());
+        self::assertSame(0, $this->sessions()->whereNotNull('revoked_for')->count());
     }
 
     /**
@@ -334,7 +380,41 @@ final class RedemptionRacesTest extends LinkingTestCase
             self::TRUST    => ['outcome' => 'distrusted', 'events' => [KeyRetired::class]],
             self::UNLINK   => ['outcome' => 'removed', 'events' => [LinkRemoved::class]],
             self::REASSIGN => ['outcome' => 'reassigned', 'events' => [LinkRemoved::class, LinkCreated::class]],
+            self::DISABLE  => ['outcome' => 'disabled', 'events' => [ConnectionDisabled::class]],
+            self::DELETE   => ['outcome' => 'deleted', 'events' => [ConnectionDeleted::class]],
             default        => throw new \LogicException(sprintf('No change is named [%s].', $change)),
+        };
+    }
+
+    /**
+     * Why a session redeemed before the change is revoked by it, `null` when it
+     * is not.
+     *
+     * @param  string  $change
+     * @return ?\SineMacula\Laravel\Sso\Revocation\Enums\RevocationReason
+     */
+    private static function revocationFor(string $change): ?RevocationReason
+    {
+        return match ($change) {
+            self::UNLINK, self::REASSIGN => RevocationReason::LINK_REMOVED,
+            self::DISABLE                => RevocationReason::CONNECTION_DISABLED,
+            self::DELETE                 => RevocationReason::CONNECTION_DELETED,
+            default                      => null,
+        };
+    }
+
+    /**
+     * Why a redemption after the change is refused.
+     *
+     * @param  string  $change
+     * @return string
+     */
+    private static function refusalAfter(string $change): string
+    {
+        return match ($change) {
+            self::TRUST, self::DISABLE   => 'handoff_unknown',
+            self::UNLINK, self::REASSIGN => 'link_changed',
+            default                      => 'connection_unavailable',
         };
     }
 
@@ -393,6 +473,8 @@ final class RedemptionRacesTest extends LinkingTestCase
             self::TRUST    => app(KeyService::class)->distrustCertificate('tenant-1', $this->connection->id, $this->certificate, Clients::browser())->status->value,
             self::UNLINK   => $this->removal(),
             self::REASSIGN => $this->reassignment(),
+            self::DISABLE  => app(ConnectionLifecycle::class)->disable($this->connection->tenant_id, $this->connection->id, Clients::browser())->status->value,
+            self::DELETE   => app(ConnectionLifecycle::class)->delete($this->connection->tenant_id, $this->connection->id, Clients::browser())->status->value,
             default        => throw new \LogicException(sprintf('No change is named [%s].', $change)),
         };
     }
@@ -500,8 +582,8 @@ final class RedemptionRacesTest extends LinkingTestCase
     }
 
     /**
-     * A revocation that marks the identity's sessions in the change's
-     * transaction.
+     * A revocation that marks the scope's sessions with its reason, in the
+     * change's transaction.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\SessionRevocation
      */
@@ -520,7 +602,8 @@ final class RedemptionRacesTest extends LinkingTestCase
             ) {}
 
             /**
-             * Mark the identity's sessions through the connection.
+             * Mark the connection's sessions, only the identity's when one is
+             * named.
              *
              * @param  \SineMacula\Laravel\Sso\Revocation\RevocationScope  $scope
              * @return void
@@ -528,10 +611,13 @@ final class RedemptionRacesTest extends LinkingTestCase
             #[\Override]
             public function revoke(RevocationScope $scope): void
             {
-                DB::connection(StorageConnection::name())->table($this->table)
-                    ->where('connection_id', (string) $scope->connectionId)
-                    ->where('identity_id', (string) $scope->identity?->id)
-                    ->update(['revoked' => true]);
+                $sessions = DB::connection(StorageConnection::name())->table($this->table)->where('connection_id', (string) $scope->connectionId);
+
+                if ($scope->identity !== null) {
+                    $sessions->where('identity_id', $scope->identity->id);
+                }
+
+                $sessions->update(['revoked_for' => $scope->reason->value]);
             }
         };
     }
