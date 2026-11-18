@@ -44,6 +44,7 @@ use SineMacula\Laravel\Sso\Secrets\MaskedKey;
 use SineMacula\Laravel\Sso\Secrets\Secret;
 use SineMacula\Laravel\Sso\Testing\FakeFetcher;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
+use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\Saml\FakeSamlMetadata;
 use Tests\Concerns\CapturesLogs;
@@ -175,8 +176,8 @@ final class MetadataRefresherTest extends TestCase
     }
 
     /**
-     * Only an enabled SAML connection with an `https` URL, due and unclaimed,
-     * is refreshed.
+     * Only a SAML connection with an `https` URL, due and unclaimed, is listed
+     * and refreshed.
      *
      * @param  array<string, mixed>  $attributes
      * @param  array<string, mixed>  $settings
@@ -186,8 +187,9 @@ final class MetadataRefresherTest extends TestCase
     #[DataProvider('provideDueness')]
     public function testOnlyADueConnectionThatRefreshesIsRefreshed(array $attributes, array $settings, bool $due): void
     {
-        $this->saml($settings, $attributes);
+        $connection = $this->saml($settings, $attributes);
 
+        self::assertSame($due ? [$connection->id] : [], $this->refresher()->dueConnectionIds());
         self::assertCount($due ? 1 : 0, $this->refresher()->refreshDue(Clients::browser()));
         self::assertCount($due ? 1 : 0, $this->fetcher->requests());
     }
@@ -271,6 +273,59 @@ final class MetadataRefresherTest extends TestCase
 
         self::assertSame($ids, array_map(static fn (RefreshResult $result): ?string => $result->connectionId, $results));
         self::assertSame(['refreshed'], array_values(array_unique(array_map(static fn (RefreshResult $result): string => $result->outcome->value, $results))));
+    }
+
+    /**
+     * A full chunk of connections that never refresh pages on to the due one
+     * after it.
+     *
+     * @return void
+     */
+    public function testTheListingPagesPastAChunkThatNeverRefreshes(): void
+    {
+        foreach (range(1, MetadataRefresher::CHUNK_SIZE) as $index) {
+            $this->saml(['metadata_refresh' => null], ['id' => sprintf('01jb%022d', $index)]);
+        }
+
+        $due = $this->saml([], ['id' => sprintf('01jb%022d', MetadataRefresher::CHUNK_SIZE + 1)]);
+
+        self::assertSame([$due->id], $this->refresher()->dueConnectionIds());
+        self::assertSame([[RefreshOutcome::REFRESHED, $due->id, [], 1, false]], self::summaries($this->refresher()->refreshDue(Clients::browser())));
+    }
+
+    /**
+     * One run lists and refreshes the due SAML and OIDC connections together,
+     * in id order.
+     *
+     * @return void
+     */
+    public function testOneRunRefreshesBothProtocolsInIdOrder(): void
+    {
+        config()->set('sso.features.oidc', true);
+
+        (new FakeOpenIdProvider)->serve($this->fetcher);
+
+        $oidc = fn (string $id, bool $refresh): Connection => $this->makeConnection([
+            'id'       => $id,
+            'protocol' => 'oidc',
+            'enabled'  => true,
+            'settings' => ['issuer' => FakeOpenIdProvider::ISSUER, 'client_id' => FakeOpenIdProvider::CLIENT_ID, 'metadata_refresh' => $refresh],
+        ]);
+
+        $this->saml([], ['id' => '01jb0000000000000000000006']);
+        $oidc('01jb0000000000000000000005', false);
+        $oidc('01jb0000000000000000000004', true);
+        $this->saml(['metadata_refresh' => false], ['id' => '01jb0000000000000000000003']);
+        $oidc('01jb0000000000000000000002', true);
+        $this->saml([], ['id' => '01jb0000000000000000000001']);
+
+        $due = ['01jb0000000000000000000001', '01jb0000000000000000000002', '01jb0000000000000000000004', '01jb0000000000000000000006'];
+
+        self::assertSame($due, $this->refresher()->dueConnectionIds());
+        self::assertSame(
+            array_map(static fn (string $id): array => [RefreshOutcome::REFRESHED, $id], $due),
+            array_map(static fn (RefreshResult $result): array => [$result->outcome, $result->connectionId], $this->refresher()->refreshDue(Clients::browser())),
+        );
     }
 
     /**
@@ -1182,6 +1237,33 @@ final class MetadataRefresherTest extends TestCase
         $this->clock->advance(1);
 
         self::assertSame(FailureReason::METADATA_EXPIRED, $this->startReason($connection));
+    }
+
+    /**
+     * A connection past its stale limit stays due, and the schedule's next
+     * successful refresh recovers it.
+     *
+     * @return void
+     */
+    public function testTheScheduleRecoversAConnectionPastItsStaleLimit(): void
+    {
+        $connection = $this->saml();
+
+        $this->refresher()->refreshDue(Clients::browser());
+        $this->fetcher->respond(self::URL, FetchResult::failed());
+        $this->clock->advance(2592000);
+
+        $results = $this->refresher()->refreshDue(Clients::browser());
+
+        self::assertSame([[RefreshOutcome::FAILED, $connection->id]], array_map(static fn (RefreshResult $result): array => [$result->outcome, $result->connectionId], $results));
+        self::assertSame(FailureReason::METADATA_EXPIRED, $this->startReason($connection));
+
+        $this->serve(self::metadata());
+        $this->clock->advance(300);
+
+        self::assertSame([$connection->id], $this->refresher()->dueConnectionIds());
+        self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, [], 2, false]], self::summaries($this->refresher()->refreshDue(Clients::browser())));
+        self::assertNull($this->startReason($connection));
     }
 
     /**

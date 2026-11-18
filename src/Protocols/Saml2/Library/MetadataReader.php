@@ -103,7 +103,9 @@ final readonly class MetadataReader
             $entity   = self::entity($document, $entityId);
             $path     = self::path($entity);
 
-            $this->parser->validateElement($entity, MessageKind::METADATA, FailureReason::METADATA_INVALID);
+            // Nothing reads a RoleDescriptor, and no bundled schema defines the
+            // WS-Federation types Entra ID and AD FS give one
+            $this->parser->validateElement($entity, MessageKind::METADATA, FailureReason::METADATA_INVALID, ['RoleDescriptor']);
 
             if ($anchors !== []) {
                 $path = $this->verifiedPath($path, $anchors);

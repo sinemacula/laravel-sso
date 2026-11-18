@@ -111,7 +111,9 @@ same settings renews it, on the record, as `ConnectionUpdated` naming `metadata_
 
 Only the HTTP-Redirect and HTTP-POST bindings are used, the connection's current one preferred; only RSA certificates of
 at least 2048 bits are proposed, since SAML is RSA only until the package's PHP floor moves to 8.5 (see
-[Setting up a SAML connection](saml-connections.md#saml-is-rsa-only)). An import reports no event.
+[Setting up a SAML connection](saml-connections.md#saml-is-rsa-only)). Only the entity's `IDPSSODescriptor` is read:
+its `md:RoleDescriptor` elements, such as the WS-Federation roles Microsoft Entra ID and AD FS publish beside it, are of
+types the metadata schema does not define and are left out of its validation. An import reports no event.
 
 ## A metadata signing anchor
 

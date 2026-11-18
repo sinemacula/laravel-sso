@@ -478,6 +478,43 @@ final class OidcAdversarialCallbackTest extends TestCase
     }
 
     /**
+     * Rows of `[auth_time, reason]`; the request starts 0.8 seconds into its
+     * second, with no skew.
+     *
+     * @return iterable<string, array{0: int, 1: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideAuthenticationsAroundTheStartingSecond(): iterable
+    {
+        yield from [
+            'in the second it started' => [0, null],
+            'the second before it'     => [-1, FailureReason::AUTHENTICATION_EXPIRED],
+        ];
+    }
+
+    /**
+     * An `auth_time` in the whole second the request started is fresh with no
+     * skew, though the request started part way through it.
+     *
+     * @param  int  $authenticatedAgo
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    #[DataProvider('provideAuthenticationsAroundTheStartingSecond')]
+    public function testAnAuthenticationInTheSecondTheRequestStartedIsFresh(int $authenticatedAgo, ?FailureReason $reason): void
+    {
+        $this->clock    = new FixedClock('2026-11-01T09:30:00.800000Z');
+        $this->provider = (new FakeOpenIdProvider(FakeOpenIdProvider::ISSUER, self::hostile()->rsa, $this->clock))->serve($this->fetcher);
+
+        $this->app?->instance(Clock::class, $this->clock);
+
+        config()->set('sso.clock.skew_seconds', 0);
+
+        $this->assertReauthentication(0, $authenticatedAgo, $reason);
+    }
+
+    /**
      * Expired keys refuse a callback until an administrator refreshes them.
      *
      * @return void
