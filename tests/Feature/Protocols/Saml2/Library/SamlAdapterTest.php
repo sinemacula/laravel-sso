@@ -1301,10 +1301,14 @@ final class SamlAdapterTest extends TestCase
             Response::fromXML($document->documentElement ?? self::fail('No root.'));
         } catch (\Throwable $exception) {
             $regex = (new \ReflectionClass(XmlAssert::class))->getStaticPropertyValue('string_regex');
-            $match = preg_match(is_string($regex) ? $regex : '//', 'Ålice');
-            $trace = implode(' | ', array_slice(explode("\n", $exception->getTraceAsString()), 0, 8));
+            $regex = is_string($regex) ? $regex : '//';
+            $match = [preg_match($regex, "\u{100}"), preg_match($regex, '名'), preg_match('/^[\x{A0}-\x{D7FF}]*$/u', '名'), preg_match("/^[\n \\x{A0}-\\x{D7FF}]*$/xu", '名')];
+            ini_set('pcre.jit', '0');
+            $match[] = preg_match(str_replace('^', '^(?:)', $regex), '名');
+            $match[] = preg_match(str_replace(["\n", ' '], '', $regex), '名');
+            $trace   = implode(' | ', array_slice(explode("\n", $exception->getTraceAsString()), 0, 2));
 
-            $pcre = var_export($match, true) . '/' . preg_last_error_msg() . ' pcre=' . PCRE_VERSION . ' jit=' . ini_get('pcre.jit');
+            $pcre = json_encode($match) . '/' . preg_last_error_msg() . ' pcre=' . PCRE_VERSION . ' jit=' . ini_get('pcre.jit');
 
             return $exception->getMessage() . ' preg=' . $pcre . ' trace=' . $trace;
         }
