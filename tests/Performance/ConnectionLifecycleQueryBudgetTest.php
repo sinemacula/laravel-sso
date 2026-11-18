@@ -10,6 +10,7 @@ use SineMacula\Laravel\Sso\Connections\ConnectionResult;
 use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Connections\Enums\ConnectionStatus;
 use SineMacula\Laravel\Sso\Connections\InFlightVoider;
+use SineMacula\Laravel\Sso\Connections\SubjectMigration;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
@@ -30,6 +31,7 @@ use Tests\Fixtures\Freshness\RecordingFreshness;
 #[CoversClass(ConnectionLifecycle::class)]
 #[CoversClass(ConnectionService::class)]
 #[CoversClass(InFlightVoider::class)]
+#[CoversClass(SubjectMigration::class)]
 final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCase
 {
     /** @var string The tenant the connection belongs to. */
@@ -144,6 +146,27 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     }
 
     /**
+     * A migration locks the connection and its links, makes the trust change
+     * and deletes the links, then creates each relink; a removal costs nothing
+     * more. Links left unaccounted for stop at the locks.
+     *
+     * @return void
+     */
+    public function testASubjectMigrationIsEightReadsAndTenWrites(): void
+    {
+        $this->makeLinks();
+
+        $links = array_map(static fn (Link $link): string => $link->id, Link::query()->orderBy('identity_id')->get()->all());
+
+        $unaccounted = $this->assertQueryBudget(2, 0, fn (): ConnectionResult => $this->migrate([$links[0] => ['subject-4']], []));
+        $migrated    = $this->assertQueryBudget(8, 10, fn (): ConnectionResult => $this->migrate([$links[0] => ['subject-4'], $links[1] => ['subject-5']], [$links[2]]));
+
+        self::assertSame(FailureReason::LINKS_UNACCOUNTED, $unaccounted->reason);
+        self::assertSame(ConnectionStatus::MIGRATED, $migrated->status);
+        self::assertSame(['subject-4', 'subject-5'], Link::query()->orderBy('subject')->pluck('subject')->all());
+    }
+
+    /**
      * A change that asks no trust voids nothing: the read and one write.
      *
      * @return void
@@ -165,6 +188,24 @@ final class ConnectionLifecycleQueryBudgetTest extends PerformanceContractTestCa
     private function updateSettings(array $settings): ConnectionResult
     {
         return $this->connections()->update(self::TENANT, $this->connection->id, ['settings' => $settings], Clients::browser());
+    }
+
+    /**
+     * Move the connection to another client id, relinking and removing its
+     * links.
+     *
+     * @param  array<string, array{0: string}>  $relinks
+     * @param  list<string>  $removals
+     * @return \SineMacula\Laravel\Sso\Connections\ConnectionResult
+     */
+    private function migrate(array $relinks, array $removals): ConnectionResult
+    {
+        /** @var \Illuminate\Foundation\Application $app */
+        $app = $this->app;
+
+        $changes = ['settings' => ['client_id' => 'client-456']];
+
+        return $app->make(SubjectMigration::class)->migrate(self::TENANT, $this->connection->id, $changes, $relinks, $removals, Clients::browser());
     }
 
     /**
