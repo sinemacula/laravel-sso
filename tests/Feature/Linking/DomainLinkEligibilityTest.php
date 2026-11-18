@@ -123,11 +123,7 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     {
         [$start, $completion] = $this->reserved();
 
-        $answer = $this->admit($completion, $start);
-
-        self::assertTrue($answer->isRedeemed());
-        self::assertSame($this->person->id, $answer->linkedIdentity?->id);
-        self::assertSame(LinkState::ACTIVE, Link::query()->sole()->state);
+        $this->assertRedemption($completion, $start, true);
     }
 
     /**
@@ -1309,6 +1305,28 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
         self::assertSame(
             ['identity guard', 'connections ' . $this->connection->id . ', tenant-1', StorageConnection::table('domains.table'), 'code', 'link', 'link', 'link'],
             array_slice($this->lockOrder(), $from),
+        );
+    }
+
+    /**
+     * Under enforcement, an activation takes its identity's guard before the
+     * enforcement rows.
+     *
+     * @return void
+     */
+    public function testAnActivationUnderEnforcementTakesTheGuardBeforeTheEnforcement(): void
+    {
+        config()->set('sso.features.enforcement', true);
+
+        $start      = $this->start();
+        $completion = $this->complete();
+
+        $this->recordLockOrder();
+
+        self::assertTrue($this->admit($completion, $start)->isRedeemed());
+        self::assertSame(
+            ['identity guard', 'enforcement upsert', 'enforcement', 'connections ' . $this->connection->id, StorageConnection::table('domains.table'), 'code'],
+            array_slice($this->lockOrder(), 0, 6),
         );
     }
 
@@ -2544,8 +2562,9 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
     }
 
     /**
-     * Redeem the code and assert it activated exactly the reservation, or that
-     * it was `reservation_invalid` with no link left.
+     * Redeem the code and assert it activated exactly the reservation and
+     * acknowledged the sign-in, or that it was `reservation_invalid` with no
+     * link left and nothing acknowledged.
      *
      * @param  \SineMacula\Laravel\Sso\Completion\CompletionResult  $completion
      * @param  \SineMacula\Laravel\Sso\Flows\StartResult  $start
@@ -2554,7 +2573,10 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
      */
     private function assertRedemption(CompletionResult $completion, StartResult $start, bool $activates): void
     {
+        $before = $this->hasCompletedSignIn();
         $answer = $this->admit($completion, $start);
+
+        self::assertSame([false, $activates], [$before, $this->hasCompletedSignIn()]);
 
         if ($activates) {
             self::assertTrue($answer->isRedeemed());
@@ -2567,6 +2589,16 @@ final class DomainLinkEligibilityTest extends LinkingTestCase
         self::assertSame(FailureReason::RESERVATION_INVALID, $answer->reason);
         self::assertNull($answer->linkedIdentity);
         self::assertSame(0, Link::query()->count());
+    }
+
+    /**
+     * Whether the connection has acknowledged a completed sign-in.
+     *
+     * @return bool
+     */
+    private function hasCompletedSignIn(): bool
+    {
+        return Connection::query()->whereKey($this->connection->id)->sole()->has_completed_sign_in;
     }
 
     /**

@@ -402,6 +402,68 @@ final class DatabaseEnforcementTest extends TestCase
     }
 
     /**
+     * A policy reads a guard row as no rule, and a stored off rule as the
+     * tenant's own.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAPolicyReadsAGuardRowAsNoRuleAndAnOffRuleAsTheTenantsOwn(): void
+    {
+        $connection = $this->enabledConnection('root-1');
+        $rule       = $this->makeEnforcement(['tenant_id' => 'root-1', 'enabled' => true, 'connection_ids' => [$connection->id]]);
+
+        $this->app?->instance(EnforcementInheritance::class, new NearestRuleInheritance(['child-1' => 'root-1']));
+        $this->locked('child-1');
+
+        self::assertNull(TenantEnforcement::query()->where('tenant_id', 'child-1')->sole()->version);
+
+        $inherited = $this->enforcement()->policy('child-1', self::APPLICATION);
+
+        self::assertTrue($inherited->isRequired());
+        self::assertSame('root-1', $inherited->enforcingTenantId);
+        self::assertSame([$connection->id], $inherited->connectionIds);
+        self::assertSame(self::policyVersion($rule->version, [$connection->id]), $inherited->version);
+
+        $off = $this->service()->update('child-1', false, [], Clients::browser());
+        $own = $this->enforcement()->policy('child-1', self::APPLICATION);
+
+        self::assertTrue($off->isChanged(), (string) json_encode($off));
+        self::assertFalse($own->isRequired());
+        self::assertSame('child-1', $own->enforcingTenantId);
+        self::assertSame([], $own->connectionIds);
+        self::assertSame(self::policyVersion($off->enforcement?->version), $own->version);
+    }
+
+    /**
+     * An inheritance contract that throws stops a policy and a lock with its
+     * own exception.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAnInheritanceContractThatThrowsPropagates(): void
+    {
+        $thrown = new \RuntimeException('The tenant tree is unavailable.');
+
+        $this->app?->instance(EnforcementInheritance::class, new NearestRuleInheritance(static fn (): never => throw $thrown));
+
+        foreach ([fn () => $this->enforcement()->policy(self::TENANT, self::APPLICATION), fn () => $this->locked(self::TENANT)] as $ask) {
+            $caught = null;
+
+            try {
+                $ask();
+            } catch (\RuntimeException $exception) {
+                $caught = $exception;
+            }
+
+            self::assertSame($thrown, $caught);
+        }
+    }
+
+    /**
      * A path of the most tenants, the last of the longest id, is a path.
      *
      * @return void

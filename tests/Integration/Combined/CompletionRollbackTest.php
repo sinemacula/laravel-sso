@@ -12,8 +12,10 @@ use SineMacula\Laravel\Sso\Completion\CompletionPipeline;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Contracts\HandoffIssuer;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
+use SineMacula\Laravel\Sso\Events\HandoffIssued;
 use SineMacula\Laravel\Sso\Events\LinkCreated;
 use SineMacula\Laravel\Sso\Events\ResultUnlinked;
 use SineMacula\Laravel\Sso\Events\ResultVerified;
@@ -29,6 +31,7 @@ use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\AuthorizationRequest;
 use SineMacula\Laravel\Sso\Models\HandoffCode;
 use SineMacula\Laravel\Sso\Models\Link;
+use SineMacula\Laravel\Sso\Models\SingleUseKey;
 use SineMacula\Laravel\Sso\Protocols\ReplayRecord;
 use SineMacula\Laravel\Sso\Provisioning\ProvisioningHelper;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
@@ -431,6 +434,59 @@ final class CompletionRollbackTest extends LinkingTestCase
         self::assertNotNull($this->storedRequest()->verified_at);
         $this->assertEventSequence([ResultVerified::class, ResultUnlinked::class]);
         $this->assertNoFailure();
+    }
+
+    /**
+     * Rows of `[whether in T3 rather than T2, whether a serialisation failure
+     * rather than a deadlock]`.
+     *
+     * @return iterable<string, array{0: bool, 1: bool}>
+     */
+    public static function provideTransientFailures(): iterable
+    {
+        yield 'a deadlock in the preparation' => [false, false];
+        yield 'a serialisation failure in the preparation' => [false, true];
+        yield 'a deadlock in the final continuation' => [true, false];
+        yield 'a serialisation failure in the final continuation' => [true, true];
+    }
+
+    /**
+     * A transient failure at the code is tried again, with one code and each
+     * event reported once.
+     *
+     * @param  bool  $continuation
+     * @param  bool  $serialisation
+     * @return void
+     */
+    #[DataProvider('provideTransientFailures')]
+    public function testATransientFailureAtTheCodeIsTriedAgain(bool $continuation, bool $serialisation): void
+    {
+        $arm = function () use ($serialisation): void {
+
+            $pattern = self::onTable('insert', StorageConnection::table('handoff_codes.table'));
+
+            $serialisation ? $this->failToSerialiseStatement($pattern) : $this->deadlockStatement($pattern);
+        };
+
+        if ($continuation) {
+            $this->provisionedThen($arm);
+        } else {
+            $this->hold($this->person);
+            $this->start();
+            $this->startRecordingEvents();
+
+            $this->verifying->onComplete = $arm;
+        }
+
+        self::assertTrue($this->complete()->isCompleted());
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertSame(1, HandoffCode::query()->count());
+        self::assertSame(1, SingleUseKey::query()->where('namespace', ReplayRecord::SAML_ASSERTION)->count());
+        self::assertNotNull($this->storedRequest()->completed_at);
+
+        $this->assertEventSequence($continuation
+            ? [ResultVerified::class, ResultUnlinked::class, LinkCreated::class, HandoffIssued::class]
+            : [ResultVerified::class, HandoffIssued::class]);
     }
 
     /**

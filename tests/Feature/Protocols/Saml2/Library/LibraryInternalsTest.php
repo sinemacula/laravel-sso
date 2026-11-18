@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Feature\Protocols\Saml2\Library;
 
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\Enums\MessageKind;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\HardenedParser;
@@ -141,21 +142,37 @@ final class LibraryInternalsTest extends TestCase
     }
 
     /**
-     * Loading for later validation checks no schema but still refuses an `ID`
-     * repeated, with the reason given.
+     * Rows of `[xml]`: a document repeating an identifier, through the same or
+     * another identity attribute.
      *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideRepeatedIds(): iterable
+    {
+        yield 'ID twice' => ['<x ID="a"><y ID="a"/></x>'];
+        yield 'ID and Id' => ['<x ID="a"><y Id="a"/></x>'];
+        yield 'ID and id' => ['<x ID="a"><y id="a"/></x>'];
+        yield 'ID and xml:id' => ['<x ID="a"><y xml:id="a"/></x>'];
+    }
+
+    /**
+     * Loading for later validation checks no schema but still refuses an
+     * identifier repeated, with the reason given.
+     *
+     * @param  string  $xml
      * @return void
      *
      * @throws \SineMacula\Laravel\Sso\Protocols\Saml2\Library\ReadFailure
      */
-    public function testLoadingUniqueSkipsTheSchemaButRefusesARepeatedId(): void
+    #[DataProvider('provideRepeatedIds')]
+    public function testLoadingUniqueSkipsTheSchemaButRefusesARepeatedId(string $xml): void
     {
         $parser = new HardenedParser;
 
         self::assertSame('x', $parser->loadUnique('<x ID="a"><y ID="b"/></x>', 100)->documentElement?->localName);
 
         try {
-            $parser->loadUnique('<x ID="a"><y ID="a"/></x>', 100, FailureReason::METADATA_INVALID);
+            $parser->loadUnique($xml, 100, FailureReason::METADATA_INVALID);
             self::fail('A repeated ID was loaded.');
         } catch (ReadFailure $failure) {
             self::assertSame([FailureReason::METADATA_INVALID, 'duplicate_id'], [$failure->reason, $failure->detail]);

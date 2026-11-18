@@ -189,6 +189,35 @@ final class DiscoveryTimingTest extends TestCase
     }
 
     /**
+     * A driver's exception, thrown once the pacer has started, is not held.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testADriversExceptionIsNotHeld(): void
+    {
+        config()->set('sso.discovery.minimum_duration_milliseconds', 2000);
+
+        $this->driver->onStart = static function (): void {
+            throw new \RuntimeException('The driver could not start.');
+        };
+
+        $startedAt = (int) hrtime(true);
+
+        try {
+            $this->service()->start('discovering', Purpose::SIGN_IN, 'someone@example.com', Clients::browser());
+            self::fail('A driver that threw started a flow.');
+        } catch (\RuntimeException $exception) {
+            self::assertSame('The driver could not start.', $exception->getMessage());
+        }
+
+        self::assertLessThan(1000 * self::NANOSECONDS_PER_MILLISECOND, (int) hrtime(true) - $startedAt);
+        self::assertCount(1, $this->driver->starts());
+        self::assertSame(0, AuthorizationRequest::query()->count());
+    }
+
+    /**
      * A floor below 50 ms fails closed before anything is counted.
      *
      * @return void

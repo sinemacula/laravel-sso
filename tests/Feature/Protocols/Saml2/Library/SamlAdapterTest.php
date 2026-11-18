@@ -7,6 +7,7 @@ namespace Tests\Feature\Protocols\Saml2\Library;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
+use SimpleSAML\XML\Assert\Assert as XmlAssert;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\AssertionDecryptor;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\AssertionMapper;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\HardenedParser;
@@ -58,6 +59,12 @@ final class SamlAdapterTest extends TestCase
 
     /** @var string AES-128-CBC. */
     private const string AES128_CBC = 'http://www.w3.org/2001/04/xmlenc#aes128-cbc';
+
+    /** @var string The XML Schema namespace. */
+    private const string NS_XS = 'http://www.w3.org/2001/XMLSchema';
+
+    /** @var string The exclusive canonicalisation namespace. */
+    private const string NS_EC = 'http://www.w3.org/2001/10/xml-exc-c14n#';
 
     /** @var ?\SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider The trusted identity provider, made once. */
     private static ?FakeSamlIdentityProvider $idp = null;
@@ -168,6 +175,41 @@ final class SamlAdapterTest extends TestCase
             ['email', 'urn:oasis:names:tc:SAML:2.0:attrname-format:basic', null, ['alice@example.test']],
             ['groups', 'urn:oasis:names:tc:SAML:2.0:attrname-format:basic', null, ['admins', 'staff']],
         ], array_map(static fn ($attribute): array => [$attribute->name(), $attribute->nameFormat(), $attribute->friendlyName(), $attribute->values()], $assertion->attributes()));
+    }
+
+    /**
+     * Rows of `[value]`: a subject as an identity provider may send it.
+     *
+     * @return iterable<string, array{0: string}>
+     */
+    public static function provideExactSubjects(): iterable
+    {
+        yield 'a leading space' => [' alice'];
+        yield 'a trailing space' => ['alice '];
+        yield 'capitals' => ['ALICE'];
+        yield 'tabs and new lines' => ["\talice\n"];
+        yield 'multi-byte text' => ['Ålice 名前'];
+        yield 'a decomposed accent' => ["Ame\u{301}lie"];
+    }
+
+    /**
+     * A NameID and an attribute are read byte for byte, never trimmed, folded
+     * or normalised.
+     *
+     * @param  string  $value
+     * @return void
+     */
+    #[DataProvider('provideExactSubjects')]
+    public function testTheSubjectIsReadExactlyAsSent(string $value): void
+    {
+        if (preg_match('/[^\x{0}-\x{FF}]/u', $value) === 1 && preg_match(self::xmlStringPattern(), "\u{100}") !== 1) {
+            self::markTestSkipped('This PCRE rejects characters above U+00FF in the SAML library\'s string pattern.');
+        }
+
+        $result    = $this->read(self::response()->with(['name_id' => $value, 'attributes' => ['employeeNumber' => [$value]]])->encoded());
+        $assertion = self::assertionOf($result->response ?? self::fail(sprintf('The response was refused: %s/%s.', $result->reason?->value, $result->detail)));
+
+        self::assertSame([$value, [$value]], [$assertion->subject()?->nameId()?->value(), $assertion->attributes()[0]->values()]);
     }
 
     /**
@@ -307,6 +349,56 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
+     * A signature with a second reference or an object is refused as a
+     * structure the library will not read, and one with an HMAC output length
+     * by policy before it is verified.
+     *
+     * @return void
+     */
+    public function testASignatureOfAnotherShapeIsRefused(): void
+    {
+        $signed = self::response()->toXml();
+        $twice  = (string) preg_replace('#<ds:Reference .*?</ds:Reference>#s', '$0$0', $signed);
+        $object = str_replace('</ds:Signature>', '<ds:Object/></ds:Signature>', $signed);
+        $hmac   = str_replace('rsa-sha256"/>', 'rsa-sha256"><ds:HMACOutputLength>256</ds:HMACOutputLength></ds:SignatureMethod>', $signed);
+
+        self::assertSame(['response_invalid', 'structure'], $this->refusal(base64_encode($twice)));
+        self::assertSame(['response_invalid', 'structure'], $this->refusal(base64_encode($object)));
+        self::assertSame(['signature_invalid', 'signature_policy'], $this->refusal(base64_encode($hmac)));
+    }
+
+    /**
+     * A response whose issuer and assertion are in the default namespace, as
+     * ADFS writes them, is verified and read.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    public function testAResponseInTheDefaultNamespaceIsRead(): void
+    {
+        $assertion = self::assertionOf($this->read(self::defaultNamespaced())->response ?? self::fail('The response was refused.'));
+
+        self::assertSame([true, 'alice', ['alice@example.test']], [$assertion->isSigned(), $assertion->subject()?->nameId()?->value(), $assertion->attributes()[0]->values()]);
+    }
+
+    /**
+     * A signature whose canonicalisation keeps `xs` by `InclusiveNamespaces`,
+     * as Okta and Shibboleth sign, verifies once the assertion is re-rooted,
+     * and its typed values are read.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    public function testASignatureKeepingInclusiveNamespacesIsRead(): void
+    {
+        $assertion = self::assertionOf($this->read(self::inclusivelySigned())->response ?? self::fail('The response was refused.'));
+
+        self::assertSame([true, ['alice@example.test']], [$assertion->isSigned(), $assertion->attributes()[0]->values()]);
+    }
+
+    /**
      * Rows of `[variant]`: each signature wrapping variant.
      *
      * @return iterable<string, array{0: string}>
@@ -332,6 +424,59 @@ final class SamlAdapterTest extends TestCase
 
         self::assertFalse($result->isRead());
         self::assertContains($result->reason?->value, ['response_invalid', 'signature_invalid']);
+    }
+
+    /**
+     * Rows of `[variant, detail]`: each variant that wraps a signed assertion,
+     * and what refuses it once its evil assertion is encrypted.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideAssertionWrappingVariants(): iterable
+    {
+        yield from [
+            'xsw3'           => ['xsw3', 'assertion_location'],
+            'xsw4'           => ['xsw4', 'schema'],
+            'xsw5'           => ['xsw5', 'assertion_location'],
+            'xsw6'           => ['xsw6', 'schema'],
+            'xsw7'           => ['xsw7', 'signature_location'],
+            'xsw8'           => ['xsw8', 'decrypted_structure'],
+            'same_id_before' => ['same_id_before', 'assertion_location'],
+            'same_id_after'  => ['same_id_after', 'assertion_location'],
+        ];
+    }
+
+    /**
+     * Every assertion wrapping variant, its evil assertion encrypted in place
+     * in the unsigned response, is refused where the plain structure is held.
+     *
+     * @param  string  $variant
+     * @param  string  $detail
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    #[DataProvider('provideAssertionWrappingVariants')]
+    public function testEveryWrappedAssertionIsRefusedWhenEncrypted(string $variant, string $detail): void
+    {
+        $document = self::document(self::response()->wrapped($variant)->toXml());
+        $xpath    = new \DOMXPath($document);
+
+        $xpath->registerNamespace('saml', 'urn:oasis:names:tc:SAML:2.0:assertion');
+
+        $nodes     = $xpath->query('/*/saml:Assertion[saml:Subject/saml:NameID = "mallory"]');
+        $evil      = $nodes === false ? null : $nodes->item(0);
+        $plaintext = new \DOMDocument;
+
+        self::assertInstanceOf(\DOMElement::class, $evil);
+
+        $plaintext->appendChild($plaintext->importNode($evil, true));
+
+        $encrypted = self::document((new AssertionEncryptor)->encrypt((string) $plaintext->saveXML($plaintext->documentElement), self::spKeys()[1]));
+
+        self::rootOf($document)->replaceChild($document->importNode(self::rootOf($encrypted), true), $evil);
+
+        self::assertSame(['response_invalid', $detail], $this->refusal(base64_encode((string) $document->saveXML($document->documentElement))));
     }
 
     /**
@@ -703,7 +848,49 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * A decrypted assertion is held to the structure of a plain one.
+     * Rows of `[offset, read, attempted]`: a decrypted assertion padded to
+     * around the cap, whether it is read, and whether decrypting it was
+     * attempted. AES-GCM adds 28 bytes to the plaintext, inside the 64 allowed.
+     *
+     * @return iterable<string, array{0: int, 1: bool, 2: bool}>
+     */
+    public static function provideDecryptedLengths(): iterable
+    {
+        yield from [
+            'at the cap'                        => [0, true, true],
+            'one over the cap'                  => [1, false, true],
+            'ciphertext at the allowance'       => [36, false, true],
+            'ciphertext one over the allowance' => [37, false, false],
+        ];
+    }
+
+    /**
+     * A decrypted assertion longer than its cap is refused before it is parsed,
+     * and ciphertext too long to fit it before it is decrypted.
+     *
+     * @param  int  $offset
+     * @param  bool  $read
+     * @param  bool  $attempted
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    #[DataProvider('provideDecryptedLengths')]
+    public function testTheDecryptedAssertionIsCappedBeforeItIsParsed(int $offset, bool $read, bool $attempted): void
+    {
+        config()->set('sso.saml2.max_decrypted_bytes', Saml2Limits::MIN_DECRYPTED_BYTES);
+
+        $options   = self::responseOptions();
+        $assertion = (new ResponseWriter)->assertion($options);
+        $padded    = $assertion . str_repeat(' ', Saml2Limits::MIN_DECRYPTED_BYTES - strlen($assertion)) . str_repeat('<', $offset);
+
+        self::assertSame($read ? null : 'decryption', $this->read(self::signedAround($padded, $options))->detail);
+        self::assertSame($attempted ? 1 : 0, $this->keysAsked);
+    }
+
+    /**
+     * A decrypted assertion is held to the structure of a plain one: one
+     * assertion, signed only in its own place.
      *
      * @return void
      *
@@ -711,15 +898,62 @@ final class SamlAdapterTest extends TestCase
      */
     public function testADecryptedAssertionIsHeldToThePlainStructure(): void
     {
-        $options = self::responseOptions();
-        $writer  = new ResponseWriter;
-        $issuer  = '<saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">https://idp.example.test/saml</saml:Issuer>';
-        $sameId  = $writer->assertion([...$options, 'assertion_id' => $options['response_id']]);
-        $invalid = str_replace('<saml:Issuer>', '<saml:Unknown/><saml:Issuer>', $writer->assertion($options));
+        $options   = self::responseOptions();
+        $writer    = new ResponseWriter;
+        $issuer    = '<saml:Issuer xmlns:saml="urn:oasis:names:tc:SAML:2.0:assertion">https://idp.example.test/saml</saml:Issuer>';
+        $sameId    = $writer->assertion([...$options, 'assertion_id' => $options['response_id']]);
+        $invalid   = str_replace('<saml:Issuer>', '<saml:Unknown/><saml:Issuer>', $writer->assertion($options));
+        $advised   = $writer->assertion([...$options, 'advice' => true]);
+        $signed    = self::response()->signed(false, true)->toXml();
+        $start     = (int) strpos($signed, '<ds:Signature');
+        $signature = substr($signed, $start, (int) strpos($signed, '</ds:Signature>') + strlen('</ds:Signature>') - $start);
+        $nested    = str_replace('<saml:AssertionIDRef>_advised</saml:AssertionIDRef>', $writer->assertion([...$options, 'assertion_id' => '_advised']), $advised);
+        $misplaced = str_replace('<saml:AssertionIDRef>_advised</saml:AssertionIDRef>', $signature, $advised);
 
+        self::assertTrue($this->read(self::signedAround($advised, $options))->isRead());
         self::assertSame(['response_invalid', 'decrypted_structure'], $this->refusal(self::signedAround($issuer, $options)));
+        self::assertSame(['response_invalid', 'decrypted_structure'], $this->refusal(self::signedAround($nested, $options)));
+        self::assertSame(['response_invalid', 'decrypted_structure'], $this->refusal(self::signedAround($misplaced, $options)));
         self::assertSame(['response_invalid', 'duplicate_id'], $this->refusal(self::signedAround($sameId, $options)));
         self::assertSame(['response_invalid', 'schema'], $this->refusal(self::signedAround($invalid, $options)));
+    }
+
+    /**
+     * Rows of `[doctype, name]`: a document type a decrypted assertion opens
+     * with, and what stands for its NameID.
+     *
+     * @return iterable<string, array{0: string, 1: string}>
+     */
+    public static function provideDecryptedDocumentTypes(): iterable
+    {
+        $secret = dirname(__DIR__, 4) . '/Fixtures/Saml/xxe-secret.txt';
+
+        yield from [
+            'an unused document type' => ['<!DOCTYPE saml:Assertion>', 'alice'],
+            'an internal entity'      => ['<!DOCTYPE saml:Assertion [<!ENTITY name "alice">]>', '&name;'],
+            'an external entity'      => ['<!DOCTYPE saml:Assertion [<!ENTITY name SYSTEM "file://' . $secret . '">]>', '&name;'],
+            'entity expansion'        => ['<!DOCTYPE saml:Assertion [<!ENTITY a "alice"><!ENTITY b "&a;&a;&a;&a;"><!ENTITY c "&b;&b;&b;&b;">]>', '&c;'],
+        ];
+    }
+
+    /**
+     * A decrypted assertion with a document type or entity is unparseable, even
+     * in a response the trusted provider signed, and nothing is read.
+     *
+     * @param  string  $doctype
+     * @param  string  $name
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    #[DataProvider('provideDecryptedDocumentTypes')]
+    public function testADecryptedAssertionWithADocumentTypeIsUnparseable(string $doctype, string $name): void
+    {
+        $options   = self::responseOptions();
+        $plaintext = $doctype . str_replace('>alice<', '>' . $name . '<', (new ResponseWriter)->assertion($options));
+        $result    = $this->read(self::signedAround($plaintext, $options));
+
+        self::assertSame(['response_invalid', 'unparseable', null], [$result->reason?->value, $result->detail, $result->response]);
     }
 
     /**
@@ -929,6 +1163,56 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
+     * A response as ADFS writes one, its issuer and assertion each in the
+     * default namespace, encoded.
+     *
+     * @return string
+     *
+     * @throws \DOMException
+     */
+    private static function defaultNamespaced(): string
+    {
+        $options   = self::responseOptions();
+        $writer    = new ResponseWriter;
+        $assertion = self::document((string) preg_replace(['#<(/?)saml:#', '#xmlns:saml=#'], ['<$1', 'xmlns='], $writer->assertion($options)));
+
+        self::idp()->signer()->sign(self::rootOf($assertion));
+
+        $signed = (string) $assertion->saveXML(self::rootOf($assertion));
+        $issuer = '<Issuer xmlns="' . ResponseWriter::NS_SAML . '">$1</Issuer>';
+
+        return base64_encode((string) preg_replace('#<saml:Issuer>([^<]*)</saml:Issuer>#', $issuer, $writer->response($options, $signed)));
+    }
+
+    /**
+     * A response whose assertion declares `xs` and is signed, as Okta and
+     * Shibboleth sign, with exclusive canonicalisation keeping `xs`, encoded.
+     *
+     * @return string
+     *
+     * @throws \DOMException
+     */
+    private static function inclusivelySigned(): string
+    {
+        $options   = self::responseOptions();
+        $writer    = new ResponseWriter;
+        $xs        = ' xmlns:xs="' . self::NS_XS . '"';
+        $document  = self::document(str_replace([$xs, '<saml:Assertion '], ['', '<saml:Assertion' . $xs . ' '], $writer->assertion($options)));
+        $root      = self::rootOf($document);
+        $digest    = base64_encode(hash('sha256', (string) $root->C14N(true, false, null, ['xs']), true));
+        $signature = self::idp()->signer()->sign($root);
+        $part      = static fn (string $name, int $index = 0): \DOMElement => $signature->getElementsByTagNameNS(ResponseReader::NS_DS, $name)->item($index)
+            ?? self::fail("The signature has no {$name}.");
+
+        $part('Transform', 1)->appendChild($document->createElementNS(self::NS_EC, 'ec:InclusiveNamespaces'))->setAttribute('PrefixList', 'xs');
+
+        $part('DigestValue')->textContent    = $digest;
+        $part('SignatureValue')->textContent = self::idp()->signer()->signatureValue((string) $part('SignedInfo')->C14N(true));
+
+        return base64_encode($writer->response($options, (string) $document->saveXML($root)));
+    }
+
+    /**
      * The XML parsed into a document.
      *
      * @param  string  $xml
@@ -1001,5 +1285,17 @@ final class SamlAdapterTest extends TestCase
         $result = $this->read($encoded, $policy);
 
         return [$result->reason?->value, $result->detail];
+    }
+
+    /**
+     * The pattern the SAML library holds every string value to.
+     *
+     * @return string
+     */
+    private static function xmlStringPattern(): string
+    {
+        $pattern = (new \ReflectionClass(XmlAssert::class))->getStaticPropertyValue('string_regex');
+
+        return is_string($pattern) ? $pattern : self::fail('The SAML library has no string pattern.');
     }
 }
