@@ -164,39 +164,44 @@ final class AuthenticationRulesTest extends TestCase
     }
 
     /**
-     * Rows of `[purpose, instant, reason]`, the instant in seconds from a start
-     * ten minutes ago.
+     * Rows of `[purpose, instant, reason, forced]`, the instant in seconds from
+     * a start ten minutes ago, and whether the connection forces
+     * authentication.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason, 3: bool}>
      */
     public static function provideReauthentication(): iterable
     {
         yield from [
-            'reauthenticate, at the start less the skew' => [Purpose::REAUTHENTICATE, -60, null],
-            'reauthenticate, one second earlier'         => [Purpose::REAUTHENTICATE, -61, FailureReason::AUTHENTICATION_EXPIRED],
-            'reauthenticate, one second later'           => [Purpose::REAUTHENTICATE, -59, null],
-            'reauthenticate, after the start'            => [Purpose::REAUTHENTICATE, 300, null],
-            'sign in, long before the start'             => [Purpose::SIGN_IN, -86400, null],
-            'link, long before the start'                => [Purpose::LINK, -86400, null],
+            'reauthenticate, at the start less the skew' => [Purpose::REAUTHENTICATE, -60, null, false],
+            'reauthenticate, one second earlier'         => [Purpose::REAUTHENTICATE, -61, FailureReason::AUTHENTICATION_EXPIRED, false],
+            'reauthenticate, one second later'           => [Purpose::REAUTHENTICATE, -59, null, false],
+            'reauthenticate, after the start'            => [Purpose::REAUTHENTICATE, 300, null, false],
+            'sign in, long before the start'             => [Purpose::SIGN_IN, -86400, null, false],
+            'link, long before the start'                => [Purpose::LINK, -86400, null, false],
+            'forced sign in, long before the start'      => [Purpose::SIGN_IN, -86400, null, true],
+            'forced reauthenticate, one second earlier'  => [Purpose::REAUTHENTICATE, -61, FailureReason::AUTHENTICATION_EXPIRED, true],
         ];
     }
 
     /**
      * A `reauthenticate` request needs an authentication no earlier than its
-     * start less the skew; any other purpose does not.
+     * start less the skew; any other purpose does not, even with `force_authn`
+     * on.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  int  $instant
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @param  bool  $forced
      * @return void
      */
     #[DataProvider('provideReauthentication')]
-    public function testAReauthenticationMustFollowTheRequestsStart(Purpose $purpose, int $instant, ?FailureReason $reason): void
+    public function testAReauthenticationMustFollowTheRequestsStart(Purpose $purpose, int $instant, ?FailureReason $reason, bool $forced): void
     {
         $started   = self::now()->subMinutes(10);
         $consumed  = new ConsumedRequest($purpose, 'web', RequestReference::fromString('Bq8tVv3w0kLmNoPqRsTuVwXyZ0123456'), $started, samlRequestId: '_request-1');
         $statement = new AuthnStatement($started->addSeconds($instant));
-        $context   = AuthenticationRules::context(self::assertion([$statement]), self::context([], $consumed));
+        $context   = AuthenticationRules::context(self::assertion([$statement]), self::context(['force_authn' => $forced], $consumed));
 
         self::assertSame($reason, $context instanceof FailureReason ? $context : null);
         self::assertInstanceOf(AuthenticationContext::class, AuthenticationRules::context(self::assertion([$statement]), self::context()));
