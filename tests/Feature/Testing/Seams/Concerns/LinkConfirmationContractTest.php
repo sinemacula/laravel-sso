@@ -72,6 +72,23 @@ final class LinkConfirmationContractTest extends TestCase
     }
 
     /**
+     * The kit fails a binding that finds a caller with no session independent.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testCatchesABindingThatFindsASessionlessCallerIndependent(): void
+    {
+        $this->flaw = 'sessionless';
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('A caller with no session must be dependent.');
+
+        $this->testLinkConfirmationFindsOnlyTheIdentitysOwnSessionIndependent();
+    }
+
+    /**
      * A binding over two independent sessions, broken as the test says.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\LinkConfirmation
@@ -103,6 +120,10 @@ final class LinkConfirmationContractTest extends TestCase
             public function judge(Caller $caller, SsoConnection $connection, array $domainLinkIds): LinkConfirmationVerdict
             {
                 unset($connection, $domainLinkIds);
+
+                if ($caller->sessionId === null && $this->flaw === 'sessionless') {
+                    return LinkConfirmationVerdict::INDEPENDENT;
+                }
 
                 $trusted = LinkConfirmationContractTest::SESSIONS;
 

@@ -35,28 +35,33 @@ final class LinkEmailMatcherContractTest extends TestCase
     private ?string $flaw = null;
 
     /**
-     * Rows of `[flaw]`: matchers the kit fails.
+     * Rows of `[flaw, email]`: matchers the kit fails, and the email each
+     * matches that must match nobody.
      *
-     * @return iterable<string, array{0: string}>
+     * @return iterable<string, array{0: string, 1: string}>
      */
     public static function provideFlaws(): iterable
     {
-        yield 'counting an unverified email' => ['unverified'];
-        yield 'dropping a subaddress' => ['subaddress'];
+        yield 'counting an unverified email' => ['unverified', 'kit.unverified@kit.example.com'];
+        yield 'dropping a subaddress' => ['subaddress', 'kit.person+x@kit.example.com'];
+        yield 'folding dots' => ['dots', 'kitperson@kit.example.com'];
+        yield 'finding an unknown email ambiguous' => ['ambiguous', 'kit.nobody@kit.example.com'];
     }
 
     /**
      * The kit fails a matcher that loosens the match.
      *
      * @param  string  $flaw
+     * @param  string  $email
      * @return void
      */
     #[DataProvider('provideFlaws')]
-    public function testCatchesALooseMatcher(string $flaw): void
+    public function testCatchesALooseMatcher(string $flaw, string $email): void
     {
         $this->flaw = $flaw;
 
         $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage("[{$email}] must match nobody.");
 
         $this->testLinkEmailMatcherMatchesOnlyAVerifiedEmail();
     }
@@ -96,9 +101,16 @@ final class LinkEmailMatcherContractTest extends TestCase
             {
                 $email = $this->flaw === 'subaddress' ? (string) preg_replace('/\+[^@]*@/', '@', $query->email()) : $query->email();
 
-                $held = array_filter($this->emails, fn (array $row): bool => $row[0] === $email && ($row[1] || $this->flaw === 'unverified'));
+                $fold = fn (string $address): string => $this->flaw === 'dots' ? (string) preg_replace('/\.(?=[^@]*@)/', '', $address) : $address;
+                $held = array_filter($this->emails, fn (array $row): bool => $fold($row[0]) === $fold($email) && ($row[1] || $this->flaw === 'unverified'));
 
-                return $held === [] ? LinkEmailMatch::none() : LinkEmailMatch::exactlyOne(array_values($held)[0][2]);
+                if ($held === []) {
+                    $unknown = !in_array($email, array_column($this->emails, 0), true);
+
+                    return $unknown && $this->flaw === 'ambiguous' ? LinkEmailMatch::ambiguous() : LinkEmailMatch::none();
+                }
+
+                return LinkEmailMatch::exactlyOne(array_values($held)[0][2]);
             }
         };
     }
