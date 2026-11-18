@@ -9,6 +9,7 @@ use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\CoversTrait;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Identities\Caller;
@@ -32,6 +33,9 @@ final class FreshnessContractTest extends TestCase
         judgesSessions as private judgesSessionsByDefault;
     }
 
+    /** @var string A second connection to the same database. */
+    private const string STORE = 'kit_store';
+
     /** @var array<string, array{0: \SineMacula\Laravel\Sso\Identities\IdentityReference, 1: \Carbon\CarbonImmutable}> Each session's identity and authentication time. */
     private array $sessions = [];
 
@@ -40,6 +44,21 @@ final class FreshnessContractTest extends TestCase
 
     /** @var ?bool Whether the binding judges sessions, or null for the kit's default. */
     private ?bool $judges = null;
+
+    /**
+     * The kit fails a binding that finds no caller fresh.
+     *
+     * @return void
+     */
+    public function testCatchesABindingThatFindsNoCallerFresh(): void
+    {
+        $this->flaw = 'no-caller';
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('No caller must be stale.');
+
+        $this->testFreshnessFindsAnUnjudgeableCallerStale();
+    }
 
     /**
      * The kit fails a binding that judges the session without its identity.
@@ -114,6 +133,26 @@ final class FreshnessContractTest extends TestCase
     }
 
     /**
+     * The kit asks inside a transaction on the storage connection when that is
+     * not the default one.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testAsksInsideATransactionOnTheStorageConnection(): void
+    {
+        config()->set('sso.storage.connection', self::STORE);
+
+        $this->flaw = 'transaction';
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('Inside the transaction each caller must get the same answer.');
+
+        $this->testFreshnessAnswersTheSameInsideATransaction();
+    }
+
+    /**
      * A binding judging the sessions held, broken as the test says.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\Freshness
@@ -150,14 +189,18 @@ final class FreshnessContractTest extends TestCase
             {
                 unset($operation);
 
+                if ($caller === null && $this->flaw === 'no-caller') {
+                    return FreshnessOutcome::FRESH;
+                }
+
                 [$identity, $at] = $this->flaw === 'sessionless' && $caller !== null && $caller->sessionId === null
                     ? [$caller->identity, CarbonImmutable::now()]
                     : ($this->sessions)()[$caller->sessionId ?? ''] ?? [null, null];
 
                 $maxAge = match (true) {
-                    $this->flaw === 'age'                                                     => 300,
-                    $this->flaw === 'transaction' && DB::connection()->transactionLevel() > 0 => 0,
-                    default                                                                   => $maxAgeSeconds,
+                    $this->flaw === 'age'                                                                              => 300,
+                    $this->flaw === 'transaction' && DB::connection(StorageConnection::name())->transactionLevel() > 0 => 0,
+                    default                                                                                            => $maxAgeSeconds,
                 };
 
                 $owned = $identity !== null && ($this->flaw === 'identity' || $caller?->identity->is($identity) === true);
@@ -165,6 +208,21 @@ final class FreshnessContractTest extends TestCase
                 return $owned && $at !== null && $at->diffInSeconds(CarbonImmutable::now()) <= $maxAge ? FreshnessOutcome::FRESH : FreshnessOutcome::STALE;
             }
         };
+    }
+
+    /**
+     * Add the second connection: the storage connection's configuration under
+     * another name.
+     *
+     * @param  mixed  $app
+     * @return void
+     */
+    #[\Override]
+    protected function defineEnvironment(mixed $app): void
+    {
+        parent::defineEnvironment($app);
+
+        config()->set('database.connections.' . self::STORE, config('database.connections.testing'));
     }
 
     /**

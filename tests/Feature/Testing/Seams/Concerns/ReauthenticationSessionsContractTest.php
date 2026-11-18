@@ -5,10 +5,15 @@ declare(strict_types = 1);
 namespace Tests\Feature\Testing\Seams\Concerns;
 
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Events\TransactionBeginning;
+use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Event;
 use PHPUnit\Framework\AssertionFailedError;
 use PHPUnit\Framework\Attributes\CoversTrait;
 use SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions;
 use SineMacula\Laravel\Sso\Contracts\SsoConnection;
+use SineMacula\Laravel\Sso\Database\StorageConnection;
 use SineMacula\Laravel\Sso\Evidence\AcceptedEvidence;
 use SineMacula\Laravel\Sso\Flows\Enums\SessionStanding;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
@@ -29,10 +34,24 @@ use Tests\TestCase;
 #[CoversTrait(ReauthenticationSessionsContract::class)]
 final class ReauthenticationSessionsContractTest extends TestCase
 {
-    use ReauthenticationSessionsContract;
+    use ReauthenticationSessionsContract {
+        completeRenewal as private writtenAtOnce;
+    }
 
     /** @var ?string How the binding breaks the contract, if it does. */
     private ?string $flaw = null;
+
+    /** @var bool Whether the binding records each renewal for the caller to write. */
+    private bool $defers = false;
+
+    /** @var array<string, array{0: string, 1: int}> Each renewal recorded and not yet written, and the transactions begun by then, by session. */
+    private array $recorded = [];
+
+    /** @var list<array{0: int, 1: int}> The storage connection's transaction level as each recorded renewal was written, and the transactions begun since it was recorded. */
+    private array $writtenAt = [];
+
+    /** @var int The transactions begun on the storage connection. */
+    private int $began = 0;
 
     /**
      * Create the sessions table.
@@ -72,6 +91,38 @@ final class ReauthenticationSessionsContractTest extends TestCase
         $this->expectException(AssertionFailedError::class);
 
         $this->testReauthenticationSessionsStandOnlyForTheIdentitysLiveSession();
+    }
+
+    /**
+     * The kit fails a binding that stands a revoked session.
+     *
+     * @return void
+     */
+    public function testCatchesABindingThatStandsARevokedSession(): void
+    {
+        $this->flaw = 'revoked';
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('A revoked session must not be signed in.');
+
+        $this->testReauthenticationSessionsStandOnlyForTheIdentitysLiveSession();
+    }
+
+    /**
+     * The kit fails a binding that locks a revoked session as standing.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testCatchesABindingThatLocksARevokedSession(): void
+    {
+        $this->flaw = 'revoked';
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('A revoked session must not stand.');
+
+        $this->testReauthenticationSessionsLockASessionUnderItsExactLink();
     }
 
     /**
@@ -124,6 +175,29 @@ final class ReauthenticationSessionsContractTest extends TestCase
     }
 
     /**
+     * The kit writes a renewal the binding recorded through
+     * `completeRenewal()`, inside the transaction that asked for it.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testWritesARecordedRenewalInsideItsTransaction(): void
+    {
+        $this->defers = true;
+
+        $storage = DB::connection(StorageConnection::name())->getName();
+
+        Event::listen(TransactionBeginning::class, function (TransactionBeginning $event) use ($storage): void {
+            $this->began += (int) ($event->connectionName === $storage);
+        });
+
+        $this->testReauthenticationSessionsRenewOnlyTheSessionNamedForward();
+
+        self::assertSame([[1, 0], [1, 0]], $this->writtenAt);
+    }
+
+    /**
      * A binding over the sessions table, broken as the test says.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\ReauthenticationSessions
@@ -131,16 +205,28 @@ final class ReauthenticationSessionsContractTest extends TestCase
     #[\Override]
     protected function reauthenticationSessions(): ReauthenticationSessions
     {
-        return new readonly class ($this->flaw) implements ReauthenticationSessions {
+        $record = function (string $sessionId, string $authenticatedAt): void {
+            $this->recorded[$sessionId] = [$authenticatedAt, $this->began];
+        };
+
+        return new readonly class ($this->flaw, $this->defers, $record) implements ReauthenticationSessions {
             /**
              * Constructor.
              *
              * @param  ?string  $flaw
+             * @param  bool  $defers
+             * @param  \Closure(string, string): void  $record
              */
             public function __construct(
 
                 /** How the binding breaks the contract, if it does. */
                 private ?string $flaw,
+
+                /** Whether the binding records each renewal for the caller to write. */
+                private bool $defers,
+
+                /** Record a renewal for the caller to write. */
+                private \Closure $record,
             ) {}
 
             /**
@@ -199,9 +285,17 @@ final class ReauthenticationSessionsContractTest extends TestCase
                 $current = KitSessions::authenticatedAt($sessionId);
                 $renewed = $this->flaw === 'backwards' ? $authenticatedAt : $current->max($authenticatedAt);
 
+                $stored = $renewed->utc()->format('Y-m-d H:i:s');
+
+                if ($this->defers) {
+                    ($this->record)($sessionId, $stored);
+
+                    return;
+                }
+
                 $sessions = $this->flaw === 'all' ? KitSessions::query()->where('identity_id', $identity->id) : KitSessions::query()->where('id', $sessionId);
 
-                $sessions->update(['authenticated_at' => $renewed->utc()->format('Y-m-d H:i:s')]);
+                $sessions->update(['authenticated_at' => $stored]);
             }
 
             /**
@@ -221,7 +315,7 @@ final class ReauthenticationSessionsContractTest extends TestCase
                     ->where('id', $sessionId)
                     ->where('application', $application)
                     ->where('connection_id', $connection->getConnectionId())
-                    ->where('revoked', false);
+                    ->when($this->flaw !== 'revoked', static fn (Builder $query): Builder => $query->where('revoked', false));
 
                 if ($this->flaw !== 'identity') {
                     $query->where('identity_type', $identity->type)->where('identity_id', $identity->id);
@@ -234,6 +328,29 @@ final class ReauthenticationSessionsContractTest extends TestCase
                 return ($lock ? $query->lockForUpdate() : $query)->exists() ? SessionStanding::SIGNED_IN : SessionStanding::NOT_SIGNED_IN;
             }
         };
+    }
+
+    /**
+     * Write the renewal the binding recorded, if it recorded one.
+     *
+     * @param  string  $sessionId
+     * @return void
+     */
+    protected function completeRenewal(string $sessionId): void
+    {
+        if (!isset($this->recorded[$sessionId])) {
+            $this->writtenAtOnce($sessionId);
+
+            return;
+        }
+
+        [$authenticatedAt, $began] = $this->recorded[$sessionId];
+
+        unset($this->recorded[$sessionId]);
+
+        $this->writtenAt[] = [DB::connection(StorageConnection::name())->transactionLevel(), $this->began - $began];
+
+        KitSessions::query()->where('id', $sessionId)->update(['authenticated_at' => $authenticatedAt]);
     }
 
     /**

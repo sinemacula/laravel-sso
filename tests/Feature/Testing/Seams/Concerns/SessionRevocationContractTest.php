@@ -35,6 +35,9 @@ final class SessionRevocationContractTest extends TestCase
     /** @var ?string How the binding breaks the contract, if it does. */
     private ?string $flaw = null;
 
+    /** @var list<mixed> The integer ids of the sessions ended outside the database, as in a cache. */
+    private array $endedElsewhere = [];
+
     /**
      * Create the sessions table.
      *
@@ -73,6 +76,23 @@ final class SessionRevocationContractTest extends TestCase
         $this->flaw = 'tenant';
 
         $this->expectException(AssertionFailedError::class);
+
+        $this->testSessionRevocationEndsOnlyTheSessionsATenantsRuleNoLongerAllows();
+    }
+
+    /**
+     * The kit fails a binding that ends an exempt identity's sessions.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testCatchesABindingThatIgnoresExemptions(): void
+    {
+        $this->flaw = 'exemption';
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('After revocation 1, the exempt session must stand.');
 
         $this->testSessionRevocationEndsOnlyTheSessionsATenantsRuleNoLongerAllows();
     }
@@ -128,6 +148,41 @@ final class SessionRevocationContractTest extends TestCase
     }
 
     /**
+     * The kit fails a binding whose revocation outlives the transaction that
+     * rolled it back.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testCatchesABindingThatRevokesOutsideTheTransaction(): void
+    {
+        $this->flaw = 'outside';
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('A revocation rolled back must end nothing.');
+
+        $this->testSessionRevocationRollsBackWithItsTransaction();
+    }
+
+    /**
+     * The kit fails a binding that throws instead of revoking.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testCatchesABindingThatThrows(): void
+    {
+        $this->flaw = 'throws';
+
+        $this->expectException(AssertionFailedError::class);
+        $this->expectExceptionMessage('The revocation must not throw.');
+
+        $this->testSessionRevocationRollsBackWithItsTransaction();
+    }
+
+    /**
      * A binding over the sessions table, broken as the test says.
      *
      * @return \SineMacula\Laravel\Sso\Contracts\SessionRevocation
@@ -135,16 +190,20 @@ final class SessionRevocationContractTest extends TestCase
     #[\Override]
     protected function sessionRevocation(): SessionRevocation
     {
-        return new readonly class ($this->flaw) implements SessionRevocation {
+        return new readonly class ($this->flaw, $this->endSessions(...)) implements SessionRevocation {
             /**
              * Constructor.
              *
              * @param  ?string  $flaw
+             * @param  \Closure(\Illuminate\Database\Query\Builder): void  $end
              */
             public function __construct(
 
                 /** How the binding breaks the contract, if it does. */
                 private ?string $flaw,
+
+                /** End the sessions the query finds. */
+                private \Closure $end,
             ) {}
 
             /**
@@ -162,7 +221,7 @@ final class SessionRevocationContractTest extends TestCase
                     default                         => $this->flaw === 'link' ? $this->ofConnection($scope) : KitSessions::query()->where('link_id', $scope->linkId),
                 };
 
-                $sessions->update(['revoked' => true]);
+                ($this->end)($sessions);
             }
 
             /**
@@ -180,7 +239,7 @@ final class SessionRevocationContractTest extends TestCase
 
                 return KitSessions::query()
                     ->whereIn('tenant_id', $this->flaw === 'inheritance' ? [$scope->tenantId] : [$scope->tenantId, $scope->tenantId . '-child'])
-                    ->where('identity_id', '!=', SessionRevocationContractTest::EXEMPT)
+                    ->when($this->flaw !== 'exemption', static fn (Builder $query): Builder => $query->where('identity_id', '!=', SessionRevocationContractTest::EXEMPT))
                     ->where(static fn (Builder $query): Builder => $query->whereNull('connection_id')->orWhereNotIn('connection_id', $scope->policy->connectionIds ?? []));
             }
 
@@ -247,6 +306,29 @@ final class SessionRevocationContractTest extends TestCase
     #[\Override]
     protected function isSessionActive(string $sessionId): bool
     {
-        return KitSessions::query()->where('id', $sessionId)->where('revoked', false)->exists();
+        return !in_array((int) $sessionId, $this->endedElsewhere, true) && KitSessions::query()->where('id', $sessionId)->where('revoked', false)->exists();
+    }
+
+    /**
+     * End the sessions as the binding does, broken as the test says.
+     *
+     * @param  \Illuminate\Database\Query\Builder  $sessions
+     * @return void
+     *
+     * @throws \RuntimeException
+     */
+    private function endSessions(Builder $sessions): void
+    {
+        if ($this->flaw === 'throws') {
+            throw new \RuntimeException('The sessions could not be revoked.');
+        }
+
+        if ($this->flaw === 'outside') {
+            array_push($this->endedElsewhere, ...$sessions->pluck('id')->all());
+
+            return;
+        }
+
+        $sessions->update(['revoked' => true]);
     }
 }

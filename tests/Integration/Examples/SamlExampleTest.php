@@ -8,9 +8,13 @@ use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Completion\CompletionService;
 use SineMacula\Laravel\Sso\Completion\Enums\CompletionEndpoint;
+use SineMacula\Laravel\Sso\Connections\ConnectionService;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
+use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
@@ -98,6 +102,42 @@ final class SamlExampleTest extends ExampleTestCase
         self::assertTrue($replayed->isRefused());
         self::assertSame(FailureReason::REPLAYED, $replayed->reason);
         // @snippet-end saml-link-replayed
+    }
+
+    /**
+     * The provider reads and answers a signed request the start posted.
+     *
+     * @return void
+     *
+     * @throws \Random\RandomException
+     */
+    public function testAnsweringASignedPostedRequest(): void
+    {
+        $connectionId = $this->makeSamlConnection($this->idp, ['sso_binding' => 'http_post']);
+        $caller       = new Caller($this->person, 'session-1');
+        $client       = Clients::browser();
+
+        self::assertTrue(app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, $client, caller: $caller)->isSucceeded());
+        self::assertTrue(app(ConnectionService::class)->update(self::TENANT, $connectionId, ['settings' => ['sign_authn_requests' => true]], $client, $caller)->isChanged());
+
+        $start   = $this->startFlow(Purpose::LINK, $connectionId, $this->person);
+        $request = $this->idp->receive($start);
+        $signed  = new \DOMDocument;
+
+        $signed->loadXML($request->xml);
+
+        self::assertTrue((bool) $start->navigation?->isPost());
+        self::assertSame(1, $signed->getElementsByTagNameNS('http://www.w3.org/2000/09/xmldsig#', 'Signature')->length);
+        self::assertSame(FakeSamlIdentityProvider::SSO_URL, $request->destination);
+
+        $redirect = $this->respondAtProvider($this->idp, $connectionId, $start);
+
+        self::assertSame($start->reference?->value, $redirect->reference);
+
+        $linked = $this->redeemLink($connectionId, $redirect, $start, $this->person);
+
+        self::assertTrue($linked->isRedeemed());
+        self::assertEquals($this->person, $linked->identity);
     }
 
     /**
