@@ -88,9 +88,9 @@ with the flow and the same reason; a link helper's refusal reports nothing.
   (`application_not_allowed`), the challenge (`challenge_invalid`), the connection (`connection_unavailable`), then
   the freshness of a `link` (`freshness_required`) and the session of a `reauthenticate` (`session_ineligible`), and
   last the driver, whose refusal keeps its own reason. Discovery checks that the application offers it
-  (`feature_disabled`) before the challenge, and answers a miss (`discovery_no_match`, reported) as `started`, in
-  the same shape as a match. A start called inside a transaction open on the storage connection is a
-  `LogicException`. See `authorization-requests.md`, `discovery.md` and `flows.md`.
+  (`feature_disabled`) before the challenge, and answers a miss (`discovery_no_match`, reported) as `started`, with
+  a match's keys. A start called inside a transaction open on the storage connection is a `LogicException`. See
+  `authorization-requests.md`, `discovery.md` and `flows.md`.
 - Consuming a request (`Flows\RequestConsumption`, `@internal`, the completion's only way to consume one) answers a
   `Flows\ConsumptionResult`, status `Flows\Enums\ConsumptionStatus`: `consumed`, `refused` (`application_not_allowed`,
   `request_unknown`, `connection_unavailable`, `connection_mismatch` or `request_expired`), `unknown` or `replayed`
