@@ -50,6 +50,10 @@ registers its settings and its check without editing another's.
   `config:*`, `cache:*` and `optimize*` commands, `package:discover`, `list`, `help`, `about` and `tinker`.
 - `sso:check` runs the same checks and prints `[subject] OK`, `[subject] not enabled` or one line per problem, exiting
   `1` on a problem. It opens no database connection and prints no secret.
+- While `saml2` is on, or its switch is malformed, `sso:check` alone also reports under `[saml2]` when the SAML
+  library's string type refuses U+0100, as it does under PCRE2 10.45 to 10.47, probing through the library's own
+  validation. The boot check leaves it out, since it would stop every request over a fault that affects only values
+  above U+00FF.
 - An application (`sso.applications.<name>`) has exactly one redirect URI, compared later as an exact string:
   `https`, `http` on `127.0.0.1` or `[::1]`, or a private-use scheme with a dot (RFC 8252). It may set
   `external_sign_in` (off unless set), `delivery` (`fragment` or `query`), `discovery` (`enabled`, and the
@@ -113,6 +117,7 @@ registers its settings and its check without editing another's.
 - `src/Contracts/ConfigurationCheck.php`, `src/Config/ConfigurationChecker.php`, `src/Config/ConfigurationChecks.php`,
   `src/Exceptions/InvalidConfigurationException.php`, `src/Exceptions/MissingExtensionException.php`.
 - `src/Protocols/Saml2/Library/ElementRegistries.php`: the directory the XML library loads its registries from.
+- `src/Protocols/Saml2/Library/SamlString.php`: the library's string validation `sso:check` probes.
 - `src/Config/Checks/FeaturesCheck.php`, `ExtensionsCheck.php`, `StorageCheck.php`, `EndpointsCheck.php`,
   `ApplicationsCheck.php`.
 - The other checks, each beside the settings it reads: `src/Clock/ClockCheck.php` (`[clock]`),
@@ -134,7 +139,7 @@ registers its settings and its check without editing another's.
   `tests/Unit/Config/IntegerSettingTest.php`, `tests/Unit/Config/UrlSettingTest.php`,
   `tests/Unit/Config/Enums/FeatureTest.php`.
 - `tests/Feature/Config/FeaturesTest.php` and every test under `tests/Feature/Config/Checks/`;
-  `tests/Unit/Protocols/Saml2/Library/ElementRegistriesTest.php`.
+  `tests/Unit/Protocols/Saml2/Library/ElementRegistriesTest.php` and `SamlStringTest.php`.
 - `tests/Feature/Console/CheckConfigurationCommandTest.php`.
 - `tests/Feature/SsoServiceProviderTest.php` `testBootingOutsideTheConsoleFailsOnAProblem`,
   `testBootingInTheConsoleLeavesTheCheckToTheCommand`, `testAWorkerCommandFailsToStartOnAProblem`,
