@@ -299,7 +299,7 @@ final readonly class HardenedParser
         $probe = new \DOMDocument;
         $probe->loadXML('<r xmlns:p="&amp;"/>');
 
-        return htmlspecialchars($uri, ENT_XML1 | ENT_QUOTES, 'UTF-8', $probe->documentElement?->lookupNamespaceURI('p') === '&');
+        return htmlspecialchars($uri, ENT_XML1 | ENT_QUOTES, 'UTF-8', $probe->lookupNamespaceURI('p') === '&');
     }
 
     /**
@@ -346,7 +346,7 @@ final readonly class HardenedParser
         $users  = [];
         $listed = [];
 
-        foreach ([$element, ...iterator_to_array($element->getElementsByTagName('*'), false)] as $node) {
+        foreach ([$element, ...$element->getElementsByTagName('*')] as $node) {
             foreach ([$node->prefix, ...self::attributePrefixes($node)] as $prefix) {
                 $users[$prefix][] = $node;
             }
@@ -369,7 +369,7 @@ final readonly class HardenedParser
     {
         return array_map(
             static fn (string $prefix): string => $prefix === '#default' ? '' : $prefix,
-            preg_split('/\s+/', $list, -1, PREG_SPLIT_NO_EMPTY) ?: [],
+            preg_split('/\s+/', $list, flags: PREG_SPLIT_NO_EMPTY) ?: [],
         );
     }
 
@@ -382,10 +382,16 @@ final readonly class HardenedParser
      */
     private static function attributePrefixes(\DOMElement $node): array
     {
-        $prefixes = array_values(array_filter(
-            array_map(static fn (\DOMAttr $attribute): string => $attribute->prefix, iterator_to_array($node->attributes, false)),
-            static fn (string $prefix): bool => $prefix !== '',
-        ));
+        $prefixes = [];
+
+        foreach ($node->attributes as $attribute) {
+            if ($attribute->prefix === '') {
+                continue;
+            }
+
+            $prefixes[] = $attribute->prefix;
+        }
+
         $type = $node->getAttributeNS(self::NS_XSI, 'type');
 
         if ($type !== '') {

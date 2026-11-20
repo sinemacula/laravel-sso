@@ -32,8 +32,8 @@ final class HardenedParserTest extends TestCase
     /**
      * A re-rooted element is the root of a document of its own, keeps each
      * nested declaration where it was, and declares what it inherits only where
-     * a name, an `xsi:type` or an `InclusiveNamespaces` within it relies on it; a root
-     * inherits nothing.
+     * a name, an `xsi:type` or any `InclusiveNamespaces` within it relies on
+     * it; a root inherits nothing.
      *
      * @return void
      *
@@ -41,10 +41,12 @@ final class HardenedParserTest extends TestCase
      */
     public function testAReRootedElementKeepsTheDeclarationsItReliesOn(): void
     {
-        $xml = '<p:Response xmlns:p="urn:p" xmlns:xs="urn:xs" xmlns="urn:d" xmlns:q="urn:a&amp;b" xmlns:u="urn:unused" xmlns:xsi="' . self::NS_XSI . '" xml:lang="en">'
+        $xml = '<p:Response xmlns:p="urn:p" xmlns:xs="urn:xs" xmlns="urn:d" xmlns:q="urn:a&amp;b" xmlns:u="urn:unused" xmlns:w="urn:w"'
+            . ' xmlns:xsi="' . self::NS_XSI . '" xml:lang="en">'
             . '<Assertion ID="_a" xsi:type="xs:string"><!-- kept --><Signature xmlns="urn:ds"><SignedInfo>'
             . '<ec:InclusiveNamespaces xmlns:ec="' . self::NS_EC . '" PrefixList="q"/></SignedInfo></Signature>'
-            . '<p:Used/><Value xmlns:y="urn:y" type="y:z"/><Plain xmlns=""/><Rebound xmlns:xs="urn:other" type="xs:t"/></Assertion>'
+            . '<p:Used/><Value xmlns:y="urn:y" type="y:z"/><Plain xmlns=""/><Rebound xmlns:xs="urn:other" type="xs:t"/>'
+            . '<ec:InclusiveNamespaces xmlns:ec="' . self::NS_EC . '" PrefixList="w"/></Assertion>'
             . '<p:Typed xsi:type="Local"/></p:Response>';
         $root = (new HardenedParser)->load($xml, strlen($xml))->documentElement;
 
@@ -58,10 +60,11 @@ final class HardenedParserTest extends TestCase
         self::assertSame($copy, $copy->ownerDocument?->documentElement);
         self::assertNotSame($root->ownerDocument, $copy->ownerDocument);
         self::assertSame(
-            '<Assertion xmlns="urn:d" xmlns:p="urn:p"' . $q[0] . ' xmlns:xs="urn:xs" xmlns:xsi="' . self::NS_XSI . '" ID="_a" xsi:type="xs:string">'
+            '<Assertion xmlns="urn:d" xmlns:p="urn:p"' . $q[0] . ' xmlns:w="urn:w" xmlns:xs="urn:xs" xmlns:xsi="' . self::NS_XSI . '" ID="_a" xsi:type="xs:string">'
             . '<!-- kept --><Signature xmlns="urn:ds"><SignedInfo>'
             . '<ec:InclusiveNamespaces xmlns:ec="' . self::NS_EC . '" PrefixList="q"></ec:InclusiveNamespaces></SignedInfo></Signature>'
-            . '<p:Used></p:Used><Value xmlns:y="urn:y" type="y:z"></Value><Plain xmlns=""></Plain><Rebound xmlns:xs="urn:other" type="xs:t"></Rebound></Assertion>',
+            . '<p:Used></p:Used><Value xmlns:y="urn:y" type="y:z"></Value><Plain xmlns=""></Plain><Rebound xmlns:xs="urn:other" type="xs:t"></Rebound>'
+            . '<ec:InclusiveNamespaces xmlns:ec="' . self::NS_EC . '" PrefixList="w"></ec:InclusiveNamespaces></Assertion>',
             $copy->C14N(false, true),
         );
         self::assertSame($root->firstChild->C14N(true, false, null, ['q']), $copy->C14N(true, false, null, ['q']));
@@ -77,6 +80,45 @@ final class HardenedParserTest extends TestCase
 
         self::assertInstanceOf(\DOMElement::class, $referenced);
         self::assertSame($referenced->lookupNamespaceURI('p'), HardenedParser::reRooted($referenced)->lookupNamespaceURI('p'));
+    }
+
+    /**
+     * Rows of `[element]`: one in no document, and one whose serialisation does
+     * not parse again.
+     *
+     * @return iterable<string, array{0: \Closure(): \DOMElement}>
+     */
+    public static function provideUnrootableElements(): iterable
+    {
+        yield from [
+            'in no document'         => [static fn (): \DOMElement => new \DOMElement('a')],
+            'with a malformed child' => [static function (): \DOMElement {
+                $document = new \DOMDocument;
+                $element  = $document->createElement('a');
+
+                $document->appendChild($element)->appendChild($document->createComment('x--y'));
+
+                return $element;
+            }],
+        ];
+    }
+
+    /**
+     * An element that cannot be re-rooted is refused as `structure` under the
+     * reason given.
+     *
+     * @param  \Closure(): \DOMElement  $element
+     * @return void
+     */
+    #[DataProvider('provideUnrootableElements')]
+    public function testAnElementThatCannotBeReRootedIsRefused(\Closure $element): void
+    {
+        try {
+            HardenedParser::reRooted($element(), FailureReason::METADATA_INVALID);
+            self::fail('The element was re-rooted.');
+        } catch (ReadFailure $failure) {
+            self::assertSame([FailureReason::METADATA_INVALID, 'structure'], [$failure->reason, $failure->detail]);
+        }
     }
 
     /**
