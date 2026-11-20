@@ -4,6 +4,7 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\SingleUse;
 
+use Illuminate\Database\Connection;
 use Illuminate\Database\DeadlockException;
 use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Database\Migrations\Migration;
@@ -140,7 +141,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
 
         $row = DB::table(self::TABLE)->sole();
 
-        self::assertNotEquals($first, $row->id);
+        self::assertEquals($first, $row->id);
         self::assertSame('2026-10-31 12:03:00', $row->expires_at);
         self::assertSame(SingleUseOutcome::SEEN, $store->record('saml_assertion', self::KEY, $this->clock->now()->addMinute()));
     }
@@ -206,11 +207,11 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * A record never deletes a row still held.
+     * A record never changes a row still held, nor another key's row.
      *
      * @return void
      */
-    public function testNeverDeletesARowStillHeld(): void
+    public function testNeverChangesARowStillHeld(): void
     {
         $store = $this->store();
 
@@ -275,31 +276,54 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * A key another server records between the release and the retry is `seen`.
+     * A key pruned just before its renewal is recorded by the insert after it.
      *
      * @return void
      */
-    public function testAKeyRecordedBetweenTheReleaseAndTheRetryIsSeen(): void
+    public function testAKeyPrunedBeforeItsRenewalIsRecorded(): void
     {
-        $digest = hash('sha256', self::KEY);
+        $raced = $this->beforeTheRenewal(static function (Connection $connection): void {
+            $connection->table(self::TABLE)->delete();
+        });
 
-        DB::table(self::TABLE)->insert(['namespace' => 'handoff_code', 'key_digest' => $digest, 'expires_at' => '2026-10-31 11:59:00']);
+        self::assertSame(SingleUseOutcome::RECORDED, $this->store()->record('handoff_code', self::KEY, $this->clock->now()->addMinute()));
+        self::assertSame(1, $raced->count);
+        self::assertSame(['2026-10-31 12:01:00'], DB::table(self::TABLE)->pluck('expires_at')->all());
+    }
 
-        $raced = false;
-
-        DB::listen(static function (QueryExecuted $query) use (&$raced, $digest): void {
-            if ($raced || !str_starts_with(strtolower(ltrim($query->sql)), 'delete')) {
-                return;
-            }
-
-            $raced = true;
-
-            $query->connection->table(self::TABLE)->insert(['namespace' => 'handoff_code', 'key_digest' => $digest, 'expires_at' => '2026-10-31 12:05:00']);
+    /**
+     * A key pruned and recorded by another server just before the renewal is
+     * `seen`, and the other server's row kept.
+     *
+     * @return void
+     */
+    public function testAKeyRecordedByAnotherServerBeforeTheRenewalIsSeen(): void
+    {
+        $raced = $this->beforeTheRenewal(static function (Connection $connection): void {
+            $connection->table(self::TABLE)->delete();
+            $connection->table(self::TABLE)->insert(['namespace' => 'handoff_code', 'key_digest' => hash('sha256', self::KEY), 'expires_at' => '2026-10-31 12:05:00']);
         });
 
         self::assertSame(SingleUseOutcome::SEEN, $this->store()->record('handoff_code', self::KEY, $this->clock->now()->addMinute()));
-        self::assertTrue($raced);
+        self::assertSame(1, $raced->count);
         self::assertSame(['2026-10-31 12:05:00'], DB::table(self::TABLE)->pluck('expires_at')->all());
+    }
+
+    /**
+     * A renewal rolled back as a deadlock is tried again in the store's own
+     * transaction.
+     *
+     * @return void
+     */
+    public function testTriesARenewalAgainAfterADeadlock(): void
+    {
+        $this->expiredRow();
+
+        $deadlocks = $this->deadlock('update', 2);
+
+        self::assertSame(SingleUseOutcome::RECORDED, $this->store()->record('handoff_code', self::KEY, $this->clock->now()->addMinute()));
+        self::assertSame(2, $deadlocks->count);
+        self::assertSame(['2026-10-31 12:01:00'], DB::table(self::TABLE)->pluck('expires_at')->all());
     }
 
     /**
@@ -310,7 +334,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
      */
     public function testTriesAnInsertAgainAfterADeadlock(): void
     {
-        $deadlocks = $this->deadlockInserts(2);
+        $deadlocks = $this->deadlock('insert', 2);
 
         self::assertSame(SingleUseOutcome::RECORDED, $this->store()->record('handoff_code', self::KEY, $this->clock->now()->addMinute()));
         self::assertSame(2, $deadlocks->count);
@@ -326,7 +350,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
      */
     public function testThrowsADeadlockThatPersists(): void
     {
-        $deadlocks = $this->deadlockInserts(PHP_INT_MAX);
+        $deadlocks = $this->deadlock('insert', PHP_INT_MAX);
 
         try {
             $this->store()->record('handoff_code', self::KEY, $this->clock->now()->addMinute());
@@ -349,7 +373,7 @@ final class DatabaseSingleUseStoreTest extends TestCase
      */
     public function testThrowsADeadlockInsideTheCallersTransaction(): void
     {
-        $deadlocks = $this->deadlockInserts(1);
+        $deadlocks = $this->deadlock('insert', 1);
 
         try {
             DB::transaction(fn (): SingleUseOutcome => $this->store()->record('handoff_code', self::KEY, $this->clock->now()->addMinute()));
@@ -433,18 +457,19 @@ final class DatabaseSingleUseStoreTest extends TestCase
     }
 
     /**
-     * Have the next inserts run and then fail as deadlocks, returning the count
-     * so far.
+     * Have the next statements of the kind run and then fail as deadlocks,
+     * returning the count so far.
      *
+     * @param  string  $kind
      * @param  int  $times
      * @return \stdClass
      */
-    private function deadlockInserts(int $times): \stdClass
+    private function deadlock(string $kind, int $times): \stdClass
     {
         $deadlocks = (object) ['count' => 0];
 
-        DB::listen(static function (QueryExecuted $query) use ($deadlocks, $times): void {
-            if ($deadlocks->count >= $times || !str_starts_with(strtolower(ltrim($query->sql)), 'insert')) {
+        DB::listen(static function (QueryExecuted $query) use ($deadlocks, $kind, $times): void {
+            if ($deadlocks->count >= $times || !str_starts_with(strtolower(ltrim($query->sql)), $kind)) {
                 return;
             }
 
@@ -454,6 +479,42 @@ final class DatabaseSingleUseStoreTest extends TestCase
         });
 
         return $deadlocks;
+    }
+
+    /**
+     * Hold an expired row for the key, and run the race just before each
+     * renewal, returning the count so far.
+     *
+     * @param  \Closure(\Illuminate\Database\Connection): void  $race
+     * @return \stdClass
+     */
+    private function beforeTheRenewal(\Closure $race): \stdClass
+    {
+        $this->expiredRow();
+
+        $raced = (object) ['count' => 0];
+
+        DB::connection()->beforeExecuting(static function (string $query, array $bindings, Connection $connection) use ($race, $raced): void {
+            if (!str_starts_with(strtolower(ltrim($query)), 'update')) {
+                return;
+            }
+
+            $raced->count++;
+
+            $race($connection);
+        });
+
+        return $raced;
+    }
+
+    /**
+     * Hold a row for the key whose expiry has passed.
+     *
+     * @return void
+     */
+    private function expiredRow(): void
+    {
+        DB::table(self::TABLE)->insert(['namespace' => 'handoff_code', 'key_digest' => hash('sha256', self::KEY), 'expires_at' => '2026-10-31 11:59:00']);
     }
 
     /**
