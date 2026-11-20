@@ -120,8 +120,8 @@ final class KeyRingTest extends TestCase
     }
 
     /**
-     * Decryption accepts the current key, then retiring keys newest first until
-     * each overlap ends.
+     * Decryption accepts the current key, the next key, then retiring keys
+     * newest first until each overlap ends.
      *
      * @return void
      */
@@ -130,25 +130,26 @@ final class KeyRingTest extends TestCase
         $current = $this->row($this->connection, KeyUse::SP_ENCRYPTION, KeyState::CURRENT, ['made_current_at' => self::at('09:30:00')]);
         $older   = $this->row($this->connection, KeyUse::SP_ENCRYPTION, KeyState::RETIRING, ['made_current_at' => self::at('08:00:00'), 'retiring_until' => self::at('10:30:00')]);
         $newer   = $this->row($this->connection, KeyUse::SP_ENCRYPTION, KeyState::RETIRING, ['made_current_at' => self::at('09:00:00'), 'retiring_until' => self::at('10:00:00')]);
+        $next    = $this->row($this->connection, KeyUse::SP_ENCRYPTION, KeyState::NEXT);
 
         $this->row($this->connection, KeyUse::SP_ENCRYPTION, KeyState::RETIRING, ['made_current_at' => self::at('07:00:00'), 'retiring_until' => self::at('09:30:00')]);
-        $this->row($this->connection, KeyUse::SP_ENCRYPTION, KeyState::NEXT);
+        $this->row($this->connection, KeyUse::SP_SIGNING, KeyState::NEXT);
         $this->row($this->connection, KeyUse::SP_SIGNING, KeyState::RETIRING, ['retiring_until' => self::at('11:00:00')]);
         $this->row($this->other, KeyUse::SP_ENCRYPTION, KeyState::RETIRING, ['retiring_until' => self::at('11:00:00')]);
 
-        self::assertSame([$current->id, $newer->id, $older->id], self::ids($this->ring()->decryption($this->connection->id)));
+        self::assertSame([$current->id, $next->id, $newer->id, $older->id], self::ids($this->ring()->decryption($this->connection->id)));
 
         $this->clock->advance(1799);
 
-        self::assertSame([$current->id, $newer->id, $older->id], self::ids($this->ring()->decryption($this->connection->id)));
+        self::assertSame([$current->id, $next->id, $newer->id, $older->id], self::ids($this->ring()->decryption($this->connection->id)));
 
         $this->clock->advance(1);
 
-        self::assertSame([$current->id, $older->id], self::ids($this->ring()->decryption($this->connection->id)));
+        self::assertSame([$current->id, $next->id, $older->id], self::ids($this->ring()->decryption($this->connection->id)));
 
         $this->clock->advance(1800);
 
-        self::assertSame([$current->id], self::ids($this->ring()->decryption($this->connection->id)));
+        self::assertSame([$current->id, $next->id], self::ids($this->ring()->decryption($this->connection->id)));
     }
 
     /**
