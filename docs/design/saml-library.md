@@ -271,9 +271,11 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    from a copy without its `md:RoleDescriptor` elements, whose extension types (WS-Federation's, in Entra ID and AD FS
    metadata) no bundled schema defines and nothing reads; values are read from the digested bytes.
 4. **The package owns the algorithm policy.** Check `SignatureMethod`, `DigestMethod`, a single `Reference` and its
-   transforms on the parsed `SignedInfo`. Build the decryptor for RSA-OAEP only, check `EncryptionMethod` before
-   `decrypt()`, and verify a trusted Response signature before decrypting AES-CBC. The ordering must be enforceable, and
-   v6 lets the caller control it.
+   transforms on the parsed `SignedInfo`. saml2 itself refuses a second `Reference` or a `ds:Object` as it reads the
+   signature, before this check runs, so a message with either is refused with the detail `structure`, not
+   `signature_policy`; the package's own check stays as a defence. Build the decryptor for RSA-OAEP only, check
+   `EncryptionMethod` before `decrypt()`, and verify a trusted Response signature before decrypting AES-CBC. The
+   ordering must be enforceable, and v6 lets the caller control it.
 5. **AES-256-GCM is out until v7.** The package's SP metadata advertises AES-128-GCM and AES-192-GCM only, and the
    documentation states the limit.
 6. **Guzzle is held at 7.** The package requires `guzzlehttp/guzzle` `^7.9` and documents why. Guzzle 8 returns when
