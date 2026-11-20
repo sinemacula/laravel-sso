@@ -238,6 +238,30 @@ final class SamlCompletionTest extends TestCase
     }
 
     /**
+     * An assertion encrypted to the next key completes before it is made
+     * current.
+     *
+     * @return void
+     */
+    public function testAnAssertionEncryptedToTheNextKeyCompletes(): void
+    {
+        $this->app?->instance(Freshness::class, new RecordingFreshness);
+
+        $keys = app(KeyService::class);
+
+        $keys->addNext('tenant-saml', $this->connection->id, KeyUse::SP_ENCRYPTION, Clients::browser());
+
+        $next = $keys->addNext('tenant-saml', $this->connection->id, KeyUse::SP_ENCRYPTION, Clients::browser())->key;
+
+        $this->settings(['require_encrypted_assertions' => true]);
+        $this->request();
+
+        $result = $this->complete($this->response()->with(['assertion_id' => '_assertion-next'])->encryptedFor((string) $next?->key->certificate));
+
+        self::assertSame([KeyState::NEXT, 'completed', 1], [$next?->state, $result->status->value, count($this->issuer->grants())]);
+    }
+
+    /**
      * A subject taken from an attribute completes with no `NameID` format.
      *
      * @return void
