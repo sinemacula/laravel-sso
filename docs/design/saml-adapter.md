@@ -34,8 +34,10 @@ response it is given (correlation, audience, times, subject, replay) is the driv
 - Structure is checked by absolute path before any signature is verified or anything decrypted: the root is a
   `samlp:Response`; every `ds:Signature` is a child of the root or of `/samlp:Response/saml:Assertion`; every
   `Assertion` or `EncryptedAssertion` is a child of the root, and there is at most one.
-- A signed assertion is copied into a document of its own before `verify()` (the re-rooting upstream PR #424 makes),
-  and every value is read from the object `verify()` returns and the element parsed from the bytes it digested.
+- A signed assertion is re-parsed into a document of its own before `verify()` (the re-rooting upstream PR #424 makes),
+  with the inherited namespaces it relies on declared on it, and every value is read from the object `verify()` returns
+  and the element parsed from the bytes it digested. A binding the signature does not cover, such as a prefix only the
+  response declares and only an attribute value uses, is absent from those bytes, so a value that needs it is refused.
 - The package owns the signature algorithm policy on the parsed `SignedInfo`: the `SignatureMethod` in the connection's
   allow-list (RSA-SHA256, RSA-SHA384 or RSA-SHA512), the `DigestMethod` SHA-256, SHA-384 or SHA-512, exactly one
   `Reference` to the signed element, and only the enveloped-signature and exclusive canonicalisation transforms. saml2
@@ -107,7 +109,8 @@ response it is given (correlation, audience, times, subject, replay) is the driv
   comparison, with the outcome `tests/Fixtures/Saml/manifest.json` pins for the package, and
   `tests/Feature/Completion/SamlFixtureCompletionTest.php`: the same fixtures through the public completion path.
 - `tests/Feature/Protocols/Saml2/Library/SamlAdapterTest.php`
-- `tests/Feature/Protocols/Saml2/Library/LibraryContainerTest.php` and `LibraryInternalsTest.php`
+- `tests/Feature/Protocols/Saml2/Library/LibraryContainerTest.php`, `LibraryInternalsTest.php` and
+  `HardenedParserTest.php`
 - `tests/Feature/Protocols/Saml2/Library/PinnedVerifierTest.php`
 - `tests/Feature/Protocols/Saml2/Library/AuthnRequestWriterTest.php`, `MetadataReaderTest.php`,
   `SignedDescriptorTest.php` and `MetadataWriterTest.php`

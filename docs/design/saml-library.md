@@ -130,8 +130,8 @@ one assertion, schema).
   every child into a clean document; `xml-common` 2.0 removed that.
   - Upstream fixed it in saml2 PR #424 (merged 2026-08-18) on master only, which is the v7 line and needs PHP 8.5.
     Neither `release-6.2` nor `release-6.x` has the fix.
-  - The workaround is the same three lines as the upstream fix: `importNode` the signed assertion into a document of
-    its own before `verify()`. With it, v6 passes 02, 03 and 41.
+  - The workaround is the upstream fix's: re-root the signed assertion in a document of its own before `verify()`.
+    With it, v6 passes 02, 03 and 41.
 - **Defect 2: AES-256-GCM is unusable.** `xml-security` 2.x defines `BLOCK_ENC_AES256_GCM` as
   `http://www.w3.org/2009xmlenc11#aes256-gcm` (a slash is missing), so the real URI is refused as an unsupported
   algorithm (fixture 04). The fix is `xml-security` issue #91 and is only in 3.x (PHP 8.5). AES-128-GCM and AES-192-GCM
@@ -262,9 +262,15 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    chain.
 2. **Always a pinned verifier.** `verify()` always receives a verifier built from the connection's trusted
    certificates, and an architecture test forbids calling it without one.
-3. **Re-root every signed assertion.** Copy it into a document of its own before `verify()`, the same change as upstream
-   PR #424, and read every value only from the object `verify()` returned. Before decrypting or verifying, check by
-   absolute path that the signed element is the root `Response` or the single `/samlp:Response/saml:Assertion`. Metadata
+3. **Re-root every signed assertion.** Re-parse it into a document of its own before `verify()`, the same change as
+   upstream PR #424, and read every value only from the object `verify()` returned. The copy is the element serialised
+   in place, so each nested declaration stays where it was, with the inherited declarations it relies on added: those a
+   name or an `xsi:type` within it resolves through its parent, and those an exclusive canonicalisation's
+   `InclusiveNamespaces` within it lists. An `importNode` copy gives a nested default namespace a generated `default:`
+   prefix and drops a declaration only an ancestor makes, and the signature no longer matches. The added declarations
+   follow the element's own, except that of its own prefix, which leads, and no unused one is added: the library's own
+   copy names each element by the first declaration of its namespace. Before decrypting or verifying, check by absolute
+   path that the signed element is the root `Response` or the single `/samlp:Response/saml:Assertion`. Metadata
    descriptors are re-rooted the same way and verified as the package's `Library\SignedDescriptor`, which models the
    signature and the `ID` alone: the library's `EntitiesDescriptor` would model every member of an aggregate and refuse
    the whole when one member holds a value its stricter rules refuse. Only the pinned entity is schema-validated,
@@ -272,6 +278,17 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    of any type, since nothing reads one and no bundled schema defines the extension types they carry (WS-Federation's,
    in Entra ID and AD FS metadata). With trust anchors they stay under the signature, which is verified over the
    entity as published; values are read from the digested bytes.
+
+   Two signature shapes stay refused on v6. An `ec:InclusiveNamespaces` list on the `SignedInfo`'s own
+   `CanonicalizationMethod` is refused `response_invalid` (`schema`): no exclusive canonicalisation schema is loaded,
+   and `xml-security` would drop the list anyway. And `xml-security` 2.x digests its own `importNode` copy of the
+   document, so a signature over an element holding a nested default namespace declaration outside its own `Signature`
+   fails inside the library: a response signature over an assertion in its own default namespace, as Entra ID writes
+   one, and signed metadata whose `KeyInfo` or role descriptor declares its own default namespace, as Entra ID's
+   federation metadata does. The assertion's own signature is unaffected, since its nested `Signature` is removed before
+   the digest. The same copy names every element by the first declaration of its namespace, so a signed element whose
+   names use two prefixes for one namespace fails as well. `xml-security` 3.x, on PHP 8.4's DOM classes, keeps the
+   declarations.
 4. **The package owns the algorithm policy.** Check `SignatureMethod`, `DigestMethod`, a single `Reference` and its
    transforms on the parsed `SignedInfo`. saml2 itself refuses a second `Reference` or a `ds:Object` as it reads the
    signature, before this check runs, so a message with either is refused with the detail `structure`, not

@@ -253,7 +253,7 @@ final readonly class MetadataReader
     }
 
     /**
-     * The descriptor copied into its own document, so the library digests it
+     * The descriptor re-rooted in its own document, so the library digests it
      * rather than the document that held it.
      *
      * @param  \DOMElement  $element
@@ -264,18 +264,7 @@ final readonly class MetadataReader
     private static function reRooted(\DOMElement $element): SignedDescriptor
     {
         try {
-            $document = new \DOMDocument('1.0', 'UTF-8');
-            $copy     = $document->importNode($element, true);
-
-            if (!$copy instanceof \DOMElement) {
-                // @codeCoverageIgnoreStart
-                throw new ReadFailure(FailureReason::METADATA_INVALID, 'structure');
-                // @codeCoverageIgnoreEnd
-            }
-
-            $document->appendChild($copy);
-
-            return SignedDescriptor::fromXML($copy);
+            return SignedDescriptor::fromXML(HardenedParser::reRooted($element, FailureReason::METADATA_INVALID));
         } catch (\Throwable) {
             throw new ReadFailure(FailureReason::METADATA_INVALID, 'structure');
         }
