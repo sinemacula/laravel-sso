@@ -58,12 +58,13 @@ commit with the package follows.
   life of a process.
 - Every transaction the package tries again on a concurrency failure (a deadlock, MySQL's lock wait timeout or a
   serialisation failure) and that opens a savepoint runs through `Database\RetriedTransaction::run()`, at most three
-  times in all; the pruning delete is one statement and uses Laravel's `transaction()` directly. Laravel throws
-  a failure in a savepoint inside it as a `DeadlockException`, and does not recognise a PostgreSQL serialisation
-  failure (SQLSTATE `40001`) in that form, so the work's `DeadlockException` whose chain ends in one is rethrown as that
-  failure and retried. Anything else propagates as it is, a PostgreSQL `lock_timeout` (SQLSTATE `55P03`) included, and
-  an exception after the commit never runs the work again. The package sets no `lock_timeout`. Inside a caller's
-  transaction nothing is retried: the failure propagates for a retry of the whole.
+  times in all, each retry after a random pause of 1 to 10 milliseconds; the pruning delete is one statement and uses
+  Laravel's `transaction()` directly. Laravel throws a failure in a savepoint inside it as a `DeadlockException`, and
+  does not recognise a PostgreSQL serialisation failure (SQLSTATE `40001`) in that form, so the work's
+  `DeadlockException` whose chain ends in one is rethrown as that failure and retried. Anything else propagates as it
+  is, a PostgreSQL `lock_timeout` (SQLSTATE `55P03`) included, and an exception after the commit never runs the work
+  again. The package sets no `lock_timeout`. Inside a caller's transaction nothing is retried: the failure propagates
+  for a retry of the whole.
 
 ## Success Path
 
