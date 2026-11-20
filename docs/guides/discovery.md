@@ -2,9 +2,9 @@
 
 Discovery lets a person type their email address instead of choosing their organisation's identity provider. The
 package takes the address's domain, finds the enabled connection that domain is verified for, and starts the flow
-through it. A domain that routes nowhere leads to your application's own sign-in page instead, in an answer your client
-cannot tell apart from a match by its shape or status, and that is padded to a minimum duration so its timing does not
-give it away either, as long as the match finishes within that duration. The helper is `Discovery\DiscoveryService`:
+through it. A domain that routes nowhere leads to your application's own sign-in page instead, in an answer with a
+match's status and keys, padded to a minimum duration so its timing does not give it away either, as long as the match
+finishes within that duration. The helper is `Discovery\DiscoveryService`:
 
 <!-- snippet: tests/Integration/Examples/Discovery/DiscoveryExampleTest.php#discovery-service -->
 ```php
@@ -90,7 +90,7 @@ own authentication, never from the request body.
 
 ## The answer
 
-A match and a miss answer alike:
+A match and a miss answer in the same form:
 
 ```json
 {
@@ -102,8 +102,9 @@ A match and a miss answer alike:
 
 - Both are `started`, with the same keys: `reference`, `navigation`, and `verifier` exactly when your client sent no
   `code_challenge`.
-- Both navigations are a `redirect`. A match's leads to the identity provider; a miss's leads to the application's
-  `fallback_url`.
+- A miss's navigation is a `redirect` to the application's `fallback_url`. A match's leads to the identity provider:
+  a `redirect`, or a `post` with `fields` when the connection is SAML with an `sso_binding` of `http_post`
+  ([Starting a Flow](starting-a-flow.md#the-answer) says how to follow each).
 - A miss's reference names no request, and its verifier redeems nothing. Your client treats both answers the same way:
   keep the verifier with the reference, and navigate.
 
@@ -113,9 +114,9 @@ its record went has ended, a disabled or incomplete connection, and an address w
 
 > [!IMPORTANT]
 > Discovery never reveals whether a person has an account: it reads only the domain, never a user. But where the answer
-> leads still shows whether a domain routes to an identity provider, as any discovery does. Anyone can learn that
-> `example.com` signs in through single sign-on by trying an address at it. Do not offer discovery where that fact is
-> itself sensitive.
+> leads still shows whether a domain routes to an identity provider, as any discovery does, and a `post` navigation
+> shows that its provider takes SAML requests over HTTP-POST. Anyone can learn that `example.com` signs in through
+> single sign-on by trying an address at it. Do not offer discovery where that fact is itself sensitive.
 
 ### The minimum duration
 

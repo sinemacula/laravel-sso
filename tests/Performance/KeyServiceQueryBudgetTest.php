@@ -61,15 +61,15 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * The connection and the use's states, twice, and the insert; the same for
-     * the first key and the next.
+     * The connection and the use's states, twice, the insert and the children
+     * version; the same for the first key and the next.
      *
      * @return void
      */
-    public function testAddingAKeyIsFourReadsAndAnInsert(): void
+    public function testAddingAKeyIsFourReadsAndTwoWrites(): void
     {
-        $first = $this->assertQueryBudget(4, 1, fn (): KeyResult => $this->add());
-        $next  = $this->assertQueryBudget(4, 1, fn (): KeyResult => $this->add());
+        $first = $this->assertQueryBudget(4, 2, fn (): KeyResult => $this->add());
+        $next  = $this->assertQueryBudget(4, 2, fn (): KeyResult => $this->add());
 
         self::assertSame(KeyState::CURRENT, $first->key?->state);
         self::assertSame(KeyState::NEXT, $next->key?->state);
@@ -107,16 +107,16 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * The connection and the trusted fingerprints, twice, and the insert; an
-     * additive certificate voids nothing.
+     * The connection and the trusted fingerprints, twice, the insert and the
+     * children version; an additive certificate voids nothing.
      *
      * @return void
      */
-    public function testTrustingASigningCertificateIsFourReadsAndOneWrite(): void
+    public function testTrustingASigningCertificateIsFourReadsAndTwoWrites(): void
     {
         $result = $this->assertQueryBudget(
             4,
-            1,
+            2,
             fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, Certificates::distinct(0), Clients::browser()),
         );
 
@@ -124,17 +124,18 @@ final class KeyServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A metadata signing anchor adds the voiding's four writes to the insert:
-     * requests, codes, trust version and reservations.
+     * A metadata signing anchor adds the voiding's four writes to the insert
+     * and the children version: requests, codes, trust version and
+     * reservations.
      *
      * @return void
      */
-    public function testTrustingAnAnchorIsFourReadsAndFiveWrites(): void
+    public function testTrustingAnAnchorIsFourReadsAndSixWrites(): void
     {
         $anchor = Certificates::distinct(0);
         $result = $this->assertQueryBudget(
             4,
-            5,
+            6,
             fn (): KeyResult => $this->keys()->trustCertificate(self::TENANT, $this->connection->id, $anchor, Clients::browser(), null, KeyUse::METADATA_SIGNING),
         );
 

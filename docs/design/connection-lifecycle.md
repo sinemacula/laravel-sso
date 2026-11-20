@@ -85,6 +85,11 @@ code issued before a disable is never redeemed after the enable. A refused or un
   handoff codes, links and keys, in the lock order, then the connection; revokes; and reports one `ConnectionDeleted`,
   with the connection as it was read, and no event per link removed: the removals are reported by the connection's own
   event.
+- A deletion's deletes do not see a row inserted since its snapshot under PostgreSQL's `REPEATABLE READ`, so every
+  insert of a row it deletes also writes the connection's row: a link raises `links_version`, a request or code
+  `flows_version`, and a key, a certificate or a domain claim `children_version`. A deletion whose snapshot predates
+  any of them fails to serialise (SQLSTATE `40001`, which propagates) when it locks the connection, and none commits
+  with a row of the connection left behind.
 - A connection whose protocol is no longer registered can be disabled and deleted: either leaves less access.
 - The result is a `ConnectionResult`: `disabled` (with the summary), `deleted` (with none, since the connection is
   gone), `unchanged`, or `refused` (`connection_not_found`, `freshness_required`).
@@ -212,8 +217,8 @@ read under the lock that decides a write is a locking read (`lockForUpdate()`), 
 - `tests/Integration/Connections/ConcurrentLifecycleTest.php`,
   `tests/Integration/Connections/ConcurrentFlowVoidingTest.php` (a trust change and a deletion under `REPEATABLE READ`
   after a flow inserted since their snapshot; MySQL and PostgreSQL),
-  `tests/Integration/Connections/ConcurrentConnectionDeletionTest.php` (a deletion under `REPEATABLE READ` after a link
-  created since its snapshot; MySQL and PostgreSQL),
+  `tests/Integration/Connections/ConcurrentConnectionDeletionTest.php` (a deletion under `REPEATABLE READ` after a
+  link, a key or a domain claim created since its snapshot; MySQL and PostgreSQL),
   `tests/Integration/Connections/LifecycleRevocationTransactionTest.php`,
   `tests/Integration/Connections/ConnectionDeletionTest.php`.
 - `tests/Performance/ConnectionLifecycleQueryBudgetTest.php`.

@@ -11,7 +11,8 @@ allow, and the frozen clock a test binds in its place, so skew, expiry and maxim
   `Carbon\CarbonImmutable`. Every time check of the package (SAML `NotBefore`, `NotOnOrAfter` and `IssueInstant`, OIDC
   `exp`, `iat` and `auth_time`, and every stored expiry: single-use keys, authorisation requests, handoff codes, rate
   limit windows, pending claims) reads it from the container. Nothing in the package calls `Carbon::now()`,
-  `CarbonImmutable::now()`, `Date::now()`, `now()`, `time()` or `new \DateTime` for a time check.
+  `CarbonImmutable::now()`, `Date::now()`, `now()`, `time()` or `new \DateTime` for a time check, nor leaves `date()`,
+  `gmdate()`, `mktime()`, `gmmktime()` or `strtotime()` to read the time for a timestamp or date part it omits.
 - The default, `Clock\SystemClock`, answers `CarbonImmutable::instance(Date::now())` on every call. It follows
   Laravel's test clock (`Carbon::setTestNow()`, `Date::setTestNow()`, `travelTo()`, `freezeTime()`), so freezing
   Laravel's clock freezes the package's. It is a `CarbonImmutable` itself whatever class the application's date factory

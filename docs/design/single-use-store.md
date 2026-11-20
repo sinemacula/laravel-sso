@@ -25,12 +25,15 @@ authorisation requests and handoff codes.
   expires_at)` in `sso.single_use.table` (default `sso_single_use_keys`) on the storage connection, under a unique index
   on `(namespace, key_digest)`.
 - The unique index answers, never a read: the store inserts the row, and an insert that goes in is `recorded`. After
-  an insert the index refuses (`UniqueConstraintViolationException`), the row it collided with is deleted if it has
-  expired (`namespace`, `key_digest` and `expires_at <= now`, in one statement) and the insert is tried once more,
-  `recorded` if it goes in and `seen` if the index refuses it again. The insert is tried whatever the delete removed: a
-  prune or another record may have deleted the expired row just before it, and `seen` must name a holder that exists.
-  Two concurrent records of one key therefore give exactly one `recorded`, on any number of servers, and a key still
-  held costs three statements.
+  an insert the index refuses (`UniqueConstraintViolationException`), one conditional update moves the row it collided
+  with to the new expiry if its own has passed (`namespace`, `key_digest` and `expires_at <= now`), and exactly one row
+  changed is `recorded`. The new expiry is always after now, so MySQL counts the row as changed whether or not the
+  connection reports found rows. When the update changes nothing, the insert is tried once more, `recorded` if it goes
+  in and `seen` if the index refuses it again: a prune may have deleted the expired row just before the update, and
+  `seen` must name a holder that exists. Concurrent updates of one row wait for each other, and each later one finds
+  the expiry already moved; on PostgreSQL under `REPEATABLE READ` a later one fails to serialise instead and is tried
+  again. Two concurrent records of one key therefore give exactly one `recorded`, on any number of servers; an expired
+  key costs two statements and a key still held three.
 - Every statement is a write, on the write connection, so a lagging replica can neither fail a valid record nor pass a
   replay.
 - Each statement runs in a transaction of its own, which Laravel turns into a savepoint when the caller already has a
@@ -38,10 +41,12 @@ authorisation requests and handoff codes.
   PostgreSQL refuses every statement after a failed one until the transaction or a savepoint is rolled back. Inside a
   transaction, Laravel also throws a lost connection rather than reconnecting and running the insert again, so an
   insert that went in before the connection dropped is never answered `seen`.
-- A statement the database rolls back as a deadlock or a serialisation failure wrote nothing, so it is tried again, at
-  most three times in all, when the store opened the transaction itself: two inserts racing for a key whose expired
-  row was just deleted can deadlock on MySQL. Inside the caller's transaction it is thrown at once
-  (`DeadlockException`), since the database has rolled that transaction back too.
+- A statement the database rolls back as a deadlock or a serialisation failure wrote nothing, so it is tried again,
+  after a random pause of 1 to 10 milliseconds, at most three times in all, when the store opened the transaction
+  itself. A failure on the last attempt is thrown, never answered. Inside the caller's transaction it is thrown at once
+  (`DeadlockException`), since the database has rolled that transaction back too: the refused insert's shared lock on
+  MySQL is held until that transaction ends, so racing records inside callers' transactions can deadlock on the
+  update.
 - Every other database error (`QueryException`, `PDOException`, a lost connection) propagates unchanged. The store
   catches nothing else, and never answers `recorded` or `seen` on an error.
 - Times are whole seconds in UTC, whatever the application timezone, written and read through
@@ -55,7 +60,7 @@ authorisation requests and handoff codes.
 
 - A first record of a key in a namespace inserts its row and answers `recorded`.
 - A record of the same key in another namespace is a separate key, and is `recorded` too.
-- Once the expiry has passed, the next record deletes the expired row, inserts the new one and answers `recorded`.
+- Once the expiry has passed, the next record moves the row to its new expiry and answers `recorded`.
 - `sso:prune` (`operations.md`), and `model:prune` on `Models\SingleUseKey`, delete the rows whose expiry has passed,
   by the package's clock; the store would release them anyway, so pruning only keeps the table small.
 
@@ -63,13 +68,13 @@ authorisation requests and handoff codes.
 
 - A record of a key held and unexpired answers `seen`, and leaves its row untouched: a record never deletes a row still
   held, nor another key's row, expired or not.
-- A key recorded by another server between the deletion of its expired row and the second insert is `seen`, and the
-  other server's row is kept.
+- A key pruned just before the update is `recorded` by the second insert. One pruned and recorded by another server
+  before the second insert is `seen`, and the other server's row is kept.
 - A missing table, a dropped connection, a timeout or any other database error is thrown, and the flow is refused as a
   server error.
 - Transactions:
   - A record made inside a caller's transaction is undone if that transaction rolls back: the key can be recorded again
-    afterwards, and a deletion of an expired row is undone with it. A record inside a transaction that commits is held.
+    afterwards, and an expired row's renewal is undone with it. A record inside a transaction that commits is held.
   - A caller that must keep a consumption whatever happens to the rest of its work (the completion consumes its
     authorisation request) records outside the transaction it may roll back, so a later failure cannot make the
     request usable again.
@@ -87,7 +92,7 @@ authorisation requests and handoff codes.
 ## Implementation Anchors
 
 - `src/Contracts/SingleUseStore.php`; `src/SingleUse/Enums/SingleUseOutcome.php`.
-- `src/SingleUse/DatabaseSingleUseStore.php`: `record()`, `assertValid()`, `store()`, `deleteExpired()`.
+- `src/SingleUse/DatabaseSingleUseStore.php`: `record()`, `assertValid()`, `store()`, `renewExpired()`.
 - `src/Models/SingleUseKey.php`: `prunable()`; `src/Models/Casts/UtcDateTime.php`.
 - `database/migrations/2026_10_31_000000_create_sso_single_use_keys_table.php`.
 - `src/Support/PackageDefaults.php`: the scoped default of `SingleUseStore`; `src/SsoServiceProvider.php`: how it is

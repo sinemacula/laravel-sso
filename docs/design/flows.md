@@ -196,9 +196,11 @@ connection's `links_version` (`Links\LinkStore::create()`), so a subject migrati
 fails to serialise rather than miss the link; a stored authorisation request and an issued handoff code each raise their
 connection's `flows_version` (`Flows\AuthorizationRequestService`, `Handoffs\DatabaseHandoffStore`), so a change that
 voids the connection's flows (`Connections\InFlightVoider`) and locks the connection after either fails to serialise
-rather than leave the new request or code unvoided; and the identity's guard is written by every locker, so one whose
-snapshot predates another's commit fails to serialise rather than miss what that one did. The failure propagates, and a
-caller retries its whole transaction, never a part of it.
+rather than leave the new request or code unvoided; a key or certificate inserted and a domain claim written each raise
+their connection's `children_version` (`Keys\KeyService`, `Domains\DomainService`), so a deletion that locks the
+connection after either fails to serialise rather than leave the new row behind; and the identity's guard is written by
+every locker, so one whose snapshot predates another's commit fails to serialise rather than miss what that one did. The
+failure propagates, and a caller retries its whole transaction, never a part of it.
 
 ### Start
 

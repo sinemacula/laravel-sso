@@ -62,9 +62,10 @@ Every signature in a response must verify with a certificate the connection trus
 only selects among those. The assertion must be covered by a verified signature, its own or the response's, and, with
 `want_assertions_signed` on, by its own.
 
-Encrypted assertions are decrypted with the connection's current encryption key, or a retiring one still within its
-overlap, by RSA-OAEP only. Content encryption is AES-128-GCM or AES-192-GCM. AES-256-GCM cannot be accepted: the SAML
-library the package uses cannot decrypt it until a later major version, so it is neither accepted nor advertised.
+Encrypted assertions are decrypted with the connection's current encryption key, its next one, or a retiring one still
+within its overlap, by RSA-OAEP only. Content encryption is AES-128-GCM or AES-192-GCM. AES-256-GCM cannot be
+accepted: the SAML library the package uses cannot decrypt it until a later major version, so it is neither accepted
+nor advertised.
 AES-CBC is accepted only when you list it in `encryption_algorithms`, for an identity provider that offers nothing
 else, and then only inside a response whose own signature verifies before anything is decrypted. The assertion must
 carry exactly one `EncryptedKey`: one encrypted to several certificates is refused. Every decryption failure is the same
