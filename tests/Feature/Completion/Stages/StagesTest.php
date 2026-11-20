@@ -278,7 +278,7 @@ final class StagesTest extends TestCase
      */
     public function testARefusedConsumptionKeepsItsTargetButNoSecret(): void
     {
-        $request = $this->request(['expires_at' => $this->clock->now(), 'expected_issuer' => VerifyingDriver::ISSUER, 'issuer_required' => true]);
+        $request = $this->request(['expires_at' => $this->clock->now(), 'expected_issuer' => VerifyingDriver::ISSUER, 'issuer_required' => true, 'force_authn' => true]);
         $outcome = $this->stage(ConsumeRequest::class)->run($this->correlated());
 
         self::assertSame(FailureReason::REQUEST_EXPIRED, $outcome->reason);
@@ -296,6 +296,7 @@ final class StagesTest extends TestCase
         self::assertSame(VerifyingDriver::ISSUER, $consumed->expectedIssuer);
         self::assertTrue($consumed->issuerRequired);
         self::assertSame('_request-1', $consumed->samlRequestId);
+        self::assertTrue($consumed->forceAuthn);
         self::assertNull($consumed->codeVerifier());
         self::assertFalse($consumed->isNonce(self::NONCE));
     }

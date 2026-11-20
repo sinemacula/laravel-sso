@@ -103,7 +103,8 @@ The metadata follows the key ring (see [Keys and certificates](keys.md)):
 
 1. While a key is only `current`, its certificate is the only one of its use.
 2. Add the next key with `KeyService::addNext()`: the metadata now lists the current certificate, then the next one.
-   Have the identity provider refetch (or reupload) the metadata, so it knows the new key before it is used.
+   Have the identity provider refetch (or reupload) the metadata, so it knows the new key before it is used. A next
+   encryption key already decrypts, so the provider can encrypt to it at once.
 3. Make the next key current with `KeyService::makeCurrent()`: the metadata lists only the new certificate. The
    replaced key is `retiring` and still decrypts until the overlap ends, but is no longer advertised.
 4. Retire the old key with `KeyService::retire()`: the metadata is unchanged.

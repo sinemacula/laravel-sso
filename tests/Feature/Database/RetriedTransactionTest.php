@@ -4,11 +4,13 @@ declare(strict_types = 1);
 
 namespace Tests\Feature\Database;
 
+use Carbon\CarbonInterval;
 use Illuminate\Database\Connection;
 use Illuminate\Database\DeadlockException;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Sleep;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Database\RetriedTransaction;
@@ -38,6 +40,9 @@ final class RetriedTransactionTest extends TestCase
 
     /** @var string The table the work writes to. */
     private const string TABLE = 'retried_rows';
+
+    /** @var int Retries enough to see every pause length. */
+    private const int RETRIES = 300;
 
     /** @var int How many times the work ran. */
     private int $runs = 0;
@@ -167,6 +172,41 @@ final class RetriedTransactionTest extends TestCase
         }, 3);
 
         self::assertSame(2, $answer);
+    }
+
+    /**
+     * Each retry first pauses a random 1 to 10 milliseconds; the first attempt
+     * never does.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testEachRetryFirstPausesOneToTenMilliseconds(): void
+    {
+        $failure = self::failure(self::DEADLOCK, 'HY000');
+        $pauses  = [];
+
+        Sleep::fake();
+        Sleep::whenFakingSleep(static function (CarbonInterval $pause) use (&$pauses): void {
+            $pauses[] = (int) $pause->totalMilliseconds;
+        });
+
+        $answer = RetriedTransaction::run($this->database(), function () use ($failure): int {
+            if (++$this->runs <= self::RETRIES) {
+                throw $failure;
+            }
+
+            return $this->runs;
+        }, self::RETRIES + 1);
+
+        $lengths = array_unique($pauses);
+
+        sort($lengths);
+
+        self::assertSame(self::RETRIES + 1, $answer);
+        self::assertCount(self::RETRIES, $pauses);
+        self::assertSame(range(1, 10), $lengths);
     }
 
     /**

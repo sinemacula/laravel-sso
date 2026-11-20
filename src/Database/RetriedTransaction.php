@@ -6,10 +6,11 @@ namespace SineMacula\Laravel\Sso\Database;
 
 use Illuminate\Database\Connection;
 use Illuminate\Database\DeadlockException;
+use Illuminate\Support\Sleep;
 
 /**
  * Runs work in a transaction Laravel retries on any concurrency failure,
- * including one raised in a nested savepoint.
+ * including one raised in a nested savepoint, after a random pause.
  *
  * Laravel wraps a savepoint's failure in a `DeadlockException` with no
  * SQLSTATE, hiding PostgreSQL's `40001`, so the cause is unwrapped to retry.
@@ -38,7 +39,16 @@ final class RetriedTransaction
      */
     public static function run(Connection $connection, \Closure $work, int $attempts): mixed
     {
-        return $connection->transaction(static function (Connection $connection) use ($work): mixed {
+        $retry = false;
+
+        return $connection->transaction(static function (Connection $connection) use ($work, &$retry): mixed {
+            // Racing transactions that failed together fall out of step.
+            if ($retry) {
+                Sleep::for(random_int(1, 10))->milliseconds();
+            }
+
+            $retry = true;
+
             // Inside the callback, so an after-commit failure never reruns it.
             try {
                 return $work($connection);

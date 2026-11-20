@@ -39,12 +39,12 @@ final class SingleUseStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * A held key is the refused insert, a delete that removes nothing and the
-     * refused insert again, which tells a live key from a just-pruned one.
+     * A held key is the refused insert, a renewal that changes nothing and the
+     * refused insert again, which tells a held key from a just-pruned one.
      *
      * @return void
      */
-    public function testAHeldKeyIsAnInsertADeleteAndAnInsert(): void
+    public function testAHeldKeyIsAnInsertAnUpdateAndAnInsert(): void
     {
         $this->record();
 
@@ -54,17 +54,16 @@ final class SingleUseStoreQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * An expired key is the refused insert, the expired row's delete and the
-     * insert again.
+     * An expired key is the refused insert and the expired row's renewal.
      *
      * @return void
      */
-    public function testAnExpiredKeyIsAnInsertADeleteAndAnInsert(): void
+    public function testAnExpiredKeyIsAnInsertAndAnUpdate(): void
     {
         $this->record();
         $this->clock->advance(60);
 
-        $outcome = $this->assertQueryBudget(0, 3, fn (): SingleUseOutcome => $this->record());
+        $outcome = $this->assertQueryBudget(0, 2, fn (): SingleUseOutcome => $this->record());
 
         self::assertSame(SingleUseOutcome::RECORDED, $outcome);
     }

@@ -80,10 +80,10 @@ refuses, when an event is dispatched, and how a refused operation is reported. A
 
   No package event implements `ShouldDispatchAfterCommit`, which would wait for the last transaction of any connection.
   The events dispatcher, the transactions manager and the database manager are resolved on each call, never held.
-- Laravel 12 does not tell its transactions manager when the outermost commit of `transaction()` fails
+- Laravel 12 and 13 before 13.39 do not tell the transactions manager when the outermost commit of `transaction()` fails
   (`ManagesTransactions::handleCommitTransactionException()`), so the records of that transaction, its savepoints'
   included, stay in the manager with their callbacks, and run on the next outermost commit on the connection, which on a
-  long-running worker can be another request's. Laravel 13 drops them. The package does not rely on either: a
+  long-running worker can be another request's. 13.39 and later drop them. The package does not rely on either: a
   `TransactionBeginning` listener the service provider registers once hands each outermost begin, with the transactions
   manager of the current container, an Octane sandbox's while one serves, to `Events\StrandedTransactions`, which marks
   every record the manager still holds for the connection, pending or staged, as stranded, but for the record just begun
@@ -161,10 +161,12 @@ refuses, when an event is dispatched, and how a refused operation is reported. A
 - Under the transactions manager of Laravel's testing traits, the transaction wrapping each test never commits, so it
   does not defer an event; one opened inside it does.
 - With no transactions manager bound, nothing can be deferred and the event is dispatched at once.
-- A commit that fails drops the events waiting on it, those of a savepoint that committed inside it included, on Laravel
-  12 as on Laravel 13; the next transaction to commit on the connection delivers its own events alone.
+- A commit that fails drops the events waiting on it, those of a savepoint that committed inside it included, on every
+  supported Laravel release; the next transaction to commit on the connection delivers its own events alone. A commit
+  that fails with a concurrency error under `Database\RetriedTransaction` runs the work again, and only the attempt that
+  commits delivers its events, each once.
 - A connection whose events dispatcher does not deliver `TransactionBeginning` keeps its count, and a callback a failed
-  commit left on it runs as Laravel 12 runs it.
+  commit left on it runs where the Laravel release keeps it.
 - A malformed `sso.storage.connection` fails closed with `StorageConnection`'s `InvalidArgumentException` before any
   event is dispatched; a database error propagates.
 - A listener's exception propagates as it does from Laravel's dispatcher: from the dispatch, or from the commit that ran
@@ -225,7 +227,8 @@ refuses, when an event is dispatched, and how a refused operation is reported. A
 - `tests/Integration/Events/AfterCommitDispatchTest.php`
   `testAnEventIsDeliveredWhenItsWriteCommits`, `testAnEventIsDroppedWhenItsWriteRollsBack`,
   `testAChangeWhoseCommitFailsIsNeverReported`, `testTheApplicationsFailedCommitTakesThePackagesEventsWithIt`,
-  `testAChangeIsReportedWhenAnEarlierCallbackWritesInATransaction`, `testAQueuedListenerReceivesTheFailureIntact`.
+  `testAChangeIsReportedWhenAnEarlierCallbackWritesInATransaction`, `testAQueuedListenerReceivesTheFailureIntact`,
+  `testACommitThatFailsToSerialiseRerunsTheWorkAndReportsItOnce`.
 - `tests/Unit/Events/AdministrationEventClassesTest.php`
   `testEachIsAPackageEventReturningItsContext`, `testEachSurvivesASerializeRoundTrip`,
   `testEachHoldsExactlyItsDeclaredProperties`, `testConnectionUpdatedHoldsAListOfNamesOnly`.

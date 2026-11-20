@@ -19,9 +19,11 @@ use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
 use SineMacula\Laravel\Sso\Http\ClientContext;
 use SineMacula\Laravel\Sso\Identities\Caller;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Models\Connection;
 
 /**
- * Feature tests for the client context the domain helpers report.
+ * Feature tests for the domain service: the client context it reports and the
+ * connection version a claim raises.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -243,6 +245,34 @@ final class DomainServiceTest extends DomainServiceTestCase
 
         self::assertTrue($limited->isRateLimited());
         $this->dns->assertLookedUp(self::RECORD, 1);
+    }
+
+    /**
+     * Each claim written raises its connection's children version by one, a
+     * claim again of an expired one included; a refused claim raises nothing.
+     *
+     * @return void
+     */
+    public function testEachClaimWrittenRaisesTheChildrenVersionOfItsConnection(): void
+    {
+        $other   = $this->makeConnection();
+        $version = fn (): array => [
+            Connection::query()->findOrFail($this->connection->id)->children_version,
+            Connection::query()->findOrFail($other->id)->children_version,
+        ];
+
+        $this->claimDomain();
+        $this->claimDomain('example.org');
+
+        self::assertSame([2, 0], $version());
+
+        self::assertTrue($this->claimDomain()->isInvalid());
+        self::assertSame([2, 0], $version());
+
+        $this->clock->advance(604800);
+        $this->claimDomain();
+
+        self::assertSame([3, 0], $version());
     }
 
     /**

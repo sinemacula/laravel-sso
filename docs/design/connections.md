@@ -24,6 +24,7 @@ enforcement, links, the flows) reads a connection through what is described here
   | `has_completed_sign_in` | Whether a `sign_in` through it has been redeemed (default `false`)                             |
   | `links_version`         | Raised by one for each write of a link or reservation through it (default `0`; see `links.md`) |
   | `flows_version`         | Raised by one for each request stored and code issued through it (default `0`)                 |
+  | `children_version`      | Raised by one for each key or certificate added and domain claimed (default `0`)               |
   | `trust_version`         | Raised by one for each change that voids its flows, and on enabling (default `0`)              |
   | `linking_*`             | The linking settings and their version (`linking.md`)                                          |
   | `evidence_policy`       | JSON: the evidence policy, or `null` (`evidence.md`)                                           |
@@ -57,6 +58,11 @@ enforcement, links, the flows) reads a connection through what is described here
   each handoff code it issues. It means nothing on its own; it makes either insert also write the connection's row, so
   a PostgreSQL `REPEATABLE READ` change that locks the row after the insert commits fails to serialise rather than void
   the connection's flows without the new request or code (see `connection-lifecycle.md`).
+- `children_version` is raised by one, under the connection's lock, for each key or certificate inserted
+  (`Keys\KeyService`, by `addNext()`, `trustCertificate()` and the replacement of trusted certificates) and each domain
+  claim written (`Domains\DomainService::claim()`). It means nothing on its own; it makes either write also write the
+  connection's row, so a PostgreSQL `REPEATABLE READ` deletion that locks the row after the write commits fails to
+  serialise rather than leave the new key or claim behind (see `connection-lifecycle.md`).
 - Each model of a record (connections, keys and certificates) is keyed and stamped by
   `SsoModel::identifiedAndStamped()`: a lower-case ULID unless one is set, and `created_at` and `updated_at` from
   `Contracts\Clock`, stored in UTC through `Casts\UtcDateTime`. Laravel's own timestamps are off, so a write through the

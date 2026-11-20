@@ -71,6 +71,7 @@ final class ConnectionsMigrationTest extends TestCase
 
         self::assertSame([
             'attribute_mapping'             => false,
+            'children_version'              => false,
             'created_at'                    => false,
             'display_name'                  => false,
             'enabled'                       => false,
@@ -157,6 +158,7 @@ final class ConnectionsMigrationTest extends TestCase
         self::assertFalse((bool) $row->has_completed_sign_in);
         self::assertSame(0, (int) $row->links_version);
         self::assertSame(0, (int) $row->flows_version);
+        self::assertSame(0, (int) $row->children_version);
         self::assertSame([0, 0, 0], [(int) $row->trust_version, (int) $row->metadata_version, (int) $row->metadata_refresh_failures]);
         self::assertSame([null, null, null, null], [$row->metadata_fetched_at, $row->metadata_valid_until, $row->metadata_refresh_at, $row->metadata_claimed_until]);
         self::assertSame([null, 0, null, null, null], [$row->jwks, (int) $row->jwks_version, $row->jwks_fetched_at, $row->jwks_refetch_at, $row->jwks_claim_token]);

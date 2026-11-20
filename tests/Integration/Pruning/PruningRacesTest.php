@@ -579,13 +579,13 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * A key replaced while held stands with exactly one holder.
+     * A key renewed while held stands with exactly one holder.
      *
      * @param  bool  $reads
      * @return void
      */
     #[DataProvider('provideCallers')]
-    public function testAKeyReplacedWhileHeldStands(bool $reads): void
+    public function testAKeyRenewedWhileHeldStands(bool $reads): void
     {
         $expired = $this->heldKey($this->clock->now()->subSecond());
 
@@ -604,7 +604,7 @@ final class PruningRacesTest extends LinkingTestCase
         self::assertSame(SingleUseOutcome::RECORDED->value, $reports[0]['result']);
         self::assertSame(0, $reports[1]['result'][PruneKind::SINGLE_USE_KEYS->value]);
 
-        $this->assertOneLiveHolder($expired);
+        $this->assertOneLiveHolder($expired, true);
     }
 
     /**
@@ -643,23 +643,23 @@ final class PruningRacesTest extends LinkingTestCase
 
         self::assertSame(SingleUseOutcome::RECORDED->value, $reports[1]['result']);
 
-        $this->assertOneLiveHolder($expired);
+        $this->assertOneLiveHolder($expired, false);
     }
 
     /**
-     * A prune between a refused insert and its delete still leaves the key
+     * A prune between a refused insert and its renewal still leaves the key
      * recorded once.
      *
      * @return void
      */
-    public function testAPruneBetweenARefusedInsertAndItsDeleteStillRecords(): void
+    public function testAPruneBetweenARefusedInsertAndItsRenewalStillRecords(): void
     {
         $expired = $this->heldKey($this->clock->now()->subSecond());
 
         $reports = $this->race([
             function (): string {
 
-                $this->pauseBeforeDeletingTheKey();
+                $this->pauseBeforeRenewingTheKey();
 
                 return $this->recorded();
             },
@@ -680,7 +680,7 @@ final class PruningRacesTest extends LinkingTestCase
         self::assertFalse(self::assertRacerEnded($reports[0], false));
         self::assertSame(SingleUseOutcome::RECORDED->value, $reports[0]['result']);
 
-        $this->assertOneLiveHolder($expired);
+        $this->assertOneLiveHolder($expired, false);
     }
 
     /**
@@ -737,17 +737,18 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Assert the key is held once, by a row other than the expired one, until a
-     * later moment.
+     * Assert the key is held once until a later moment, by the expired row
+     * renewed or by a new one.
      *
      * @param  int  $expired
+     * @param  bool  $renewed
      * @return void
      */
-    private function assertOneLiveHolder(int $expired): void
+    private function assertOneLiveHolder(int $expired, bool $renewed): void
     {
         $holder = SingleUseKey::query()->where('namespace', self::SINGLE_USE_NAMESPACE)->where('key_digest', hash('sha256', self::SINGLE_USE_KEY))->sole();
 
-        self::assertNotSame($expired, $holder->id);
+        self::assertSame($renewed, $expired === $holder->id);
         self::assertSame($this->keyExpiry()->getTimestamp(), $holder->expires_at->getTimestamp());
     }
 
@@ -889,14 +890,14 @@ final class PruningRacesTest extends LinkingTestCase
     }
 
     /**
-     * Hold a record whose insert was refused just before it deletes the row in
+     * Hold a record whose insert was refused just before it renews the row in
      * the way.
      *
      * @return void
      */
-    private function pauseBeforeDeletingTheKey(): void
+    private function pauseBeforeRenewingTheKey(): void
     {
-        $pattern = self::onTable('delete', StorageConnection::table('single_use.table'));
+        $pattern = self::onTable('update', StorageConnection::table('single_use.table'));
         $done    = false;
 
         self::storageDatabase()->beforeExecuting(function (string $query) use ($pattern, &$done): void {

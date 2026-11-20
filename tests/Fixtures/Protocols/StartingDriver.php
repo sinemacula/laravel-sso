@@ -50,6 +50,9 @@ final class StartingDriver implements ProtocolDriver
     /** @var ?string The SAML request id the driver answers. */
     public ?string $samlRequestId = null;
 
+    /** @var bool Whether the driver answers that its SAML request sent `ForceAuthn`. */
+    public bool $forceAuthn = false;
+
     /** @var ?string The issuer the driver answers the response must come from. */
     public ?string $expectedIssuer = 'https://idp.example.com';
 
@@ -119,7 +122,7 @@ final class StartingDriver implements ProtocolDriver
             ? Navigation::post(self::URL, ['SAMLRequest' => 'PHNhbWxwOkF1dGhuUmVxdWVzdC8+', 'RelayState' => $request->state->reveal()])
             : Navigation::redirect(self::URL . '?client_id=client-123');
 
-        return Start::navigate($navigation, $this->samlRequestId, $this->expectedIssuer, $this->issuerRequired);
+        return Start::navigate($navigation, $this->samlRequestId, $this->expectedIssuer, $this->issuerRequired, $this->forceAuthn);
     }
 
     /**

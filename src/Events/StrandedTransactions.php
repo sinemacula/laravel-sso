@@ -12,8 +12,8 @@ use Illuminate\Database\Events\TransactionBeginning;
  * Marks the transaction records a failed commit left behind, so
  * `AfterCommitDispatcher` drops the events queued on them.
  *
- * Laravel 12 keeps a failed outermost commit's records, callbacks and all, for
- * the next commit on the connection; Laravel 13 drops them itself.
+ * Before 13.39, Laravel keeps a failed outermost commit's records, callbacks
+ * and all, for the next commit on the connection; 13.39 and later drop them.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited

@@ -944,7 +944,7 @@ final class IdTokenValidatorTest extends TestCase
     ): ConsumedRequest {
         $reference = RequestReference::fromString(self::REFERENCE);
 
-        return new ConsumedRequest($purpose, 'web', $reference, $startedAt ?? self::instant(), $expectedIssuer, false, null, hash('sha256', $nonce));
+        return new ConsumedRequest($purpose, 'web', $reference, $startedAt ?? self::instant(), $expectedIssuer, false, null, false, hash('sha256', $nonce));
     }
 
     /**

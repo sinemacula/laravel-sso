@@ -38,7 +38,9 @@ response it is given (correlation, audience, times, subject, replay) is the driv
   and every value is read from the object `verify()` returns and the element parsed from the bytes it digested.
 - The package owns the signature algorithm policy on the parsed `SignedInfo`: the `SignatureMethod` in the connection's
   allow-list (RSA-SHA256, RSA-SHA384 or RSA-SHA512), the `DigestMethod` SHA-256, SHA-384 or SHA-512, exactly one
-  `Reference` to the signed element, and only the enveloped-signature and exclusive canonicalisation transforms.
+  `Reference` to the signed element, and only the enveloped-signature and exclusive canonicalisation transforms. saml2
+  refuses a second `Reference` or a `ds:Object` itself as it reads the signature, before this check, so a response with
+  either is `response_invalid` with the detail `structure`; the package's own check stays as a defence.
 - Decryption is RSA-OAEP key transport only; the `EncryptionMethod` is checked against the connection's allow-list
   before `decrypt()`. An assertion may carry up to `AssertionDecryptor::MAX_ENCRYPTED_KEYS` (4) `EncryptedKey`s, in its
   `KeyInfo` or beside its `EncryptedData`, as an identity provider encrypting to every published certificate sends.

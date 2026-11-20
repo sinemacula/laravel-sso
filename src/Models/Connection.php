@@ -29,6 +29,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property bool $has_completed_sign_in
  * @property int $links_version
  * @property int $flows_version
+ * @property int $children_version
  * @property int $trust_version
  * @property bool $linking_enabled
  * @property ?string $linking_issuer_class
@@ -242,6 +243,7 @@ final class Connection extends SsoModel implements SsoConnection
             'has_completed_sign_in'     => 'boolean',
             'links_version'             => 'integer',
             'flows_version'             => 'integer',
+            'children_version'          => 'integer',
             'trust_version'             => 'integer',
             'linking_enabled'           => 'boolean',
             'linking_version'           => 'integer',

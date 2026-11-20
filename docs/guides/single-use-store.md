@@ -53,7 +53,7 @@ php artisan migrate
 The migration creates the table under its configured name on the storage connection, where the store reads and writes
 it. It refuses to run over an existing table of that name, before changing anything, with a
 `TableAlreadyExistsException` naming `single_use.table`: set another name and migrate again. At run time the store
-and `model:prune` need only `SELECT`, `INSERT` and `DELETE` on the table.
+and `model:prune` need only `SELECT`, `INSERT`, `UPDATE` and `DELETE` on the table.
 
 To rename or move the table, change the setting and migrate in one deploy, then restart every worker: the store reads
 the setting when it records, and a table created under another name or on another connection is not found.

@@ -24,6 +24,7 @@ final readonly class Start
      * @param  ?string  $samlRequestId
      * @param  ?string  $expectedIssuer
      * @param  bool  $issuerRequired
+     * @param  bool  $forceAuthn
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
      */
     private function __construct(
@@ -40,6 +41,9 @@ final readonly class Start
         /** Whether the response must carry `iss` (RFC 9207). */
         public bool $issuerRequired,
 
+        /** Whether the SAML `AuthnRequest` sent `ForceAuthn="true"`. */
+        public bool $forceAuthn,
+
         /** Why the request could not start, for a refused one. */
         public ?FailureReason $reason,
     ) {}
@@ -51,12 +55,18 @@ final readonly class Start
      * @param  ?string  $samlRequestId
      * @param  ?string  $expectedIssuer
      * @param  bool  $issuerRequired
+     * @param  bool  $forceAuthn
      * @return self
      *
      * @throws \InvalidArgumentException
      */
-    public static function navigate(Navigation $navigation, ?string $samlRequestId = null, ?string $expectedIssuer = null, bool $issuerRequired = false): self
-    {
+    public static function navigate(
+        Navigation $navigation,
+        ?string $samlRequestId = null,
+        ?string $expectedIssuer = null,
+        bool $issuerRequired = false,
+        bool $forceAuthn = false,
+    ): self {
         if ($samlRequestId === '' || $expectedIssuer === '') {
             throw new \InvalidArgumentException('A started request\'s SAML request id and expected issuer are each non-empty when given.');
         }
@@ -65,7 +75,7 @@ final readonly class Start
             throw new \InvalidArgumentException(sprintf('A SAML request id is at most %d bytes.', Correlation::MAX_REQUEST_ID_LENGTH));
         }
 
-        return new self($navigation, $samlRequestId, $expectedIssuer, $issuerRequired, null);
+        return new self($navigation, $samlRequestId, $expectedIssuer, $issuerRequired, $forceAuthn, null);
     }
 
     /**
@@ -76,7 +86,7 @@ final readonly class Start
      */
     public static function refused(FailureReason $reason): self
     {
-        return new self(null, null, null, false, $reason);
+        return new self(null, null, null, false, false, $reason);
     }
 
     /**

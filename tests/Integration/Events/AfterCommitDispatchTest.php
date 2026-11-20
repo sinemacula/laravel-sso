@@ -5,6 +5,7 @@ declare(strict_types = 1);
 namespace Tests\Integration\Events;
 
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Connection;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Http\Request;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\Schema;
 use PHPUnit\Framework\Attributes\CoversClass;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\SsoEvent;
+use SineMacula\Laravel\Sso\Database\RetriedTransaction;
 use SineMacula\Laravel\Sso\Events\AfterCommitDispatcher;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Events\Enums\Flow;
@@ -173,6 +175,41 @@ final class AfterCommitDispatchTest extends TestCase
 
         self::assertSame(['ref_2'], $store->table(self::TABLE)->pluck('reference')->all());
         self::assertSame([$kept], $this->delivered->getArrayCopy());
+    }
+
+    /**
+     * A commit that fails to serialise runs the work again, and only the
+     * attempt that commits is reported, each event once.
+     *
+     * @return void
+     *
+     * @throws \Throwable
+     */
+    public function testACommitThatFailsToSerialiseRerunsTheWorkAndReportsItOnce(): void
+    {
+        $store    = DB::connection(self::STORE);
+        $attempts = [];
+
+        $this->failToSerialiseCommit();
+
+        RetriedTransaction::run($store, function (Connection $store) use (&$attempts): void {
+
+            $events     = [$this->failure(), $this->failure()];
+            $attempts[] = $events;
+
+            $store->table(self::TABLE)->insert(['reference' => 'ref_' . count($attempts)]);
+
+            foreach ($events as $event) {
+                $this->dispatcher()->dispatch($event);
+            }
+
+            self::assertCount(0, $this->delivered);
+        }, 2);
+
+        self::assertSame(1, $this->databaseFailuresFired());
+        self::assertCount(2, $attempts);
+        self::assertSame(['ref_2'], $store->table(self::TABLE)->pluck('reference')->all());
+        self::assertSame($attempts[1], $this->delivered->getArrayCopy());
     }
 
     /**

@@ -67,14 +67,15 @@ final class DomainServiceQueryBudgetTest extends PerformanceContractTestCase
     }
 
     /**
-     * The connection, then it and the domain's claims locked, and the insert; a
-     * duplicate and a stale caller, asked under the locks, write nothing.
+     * The connection, then it and the domain's claims locked, the insert and
+     * the children version; a duplicate and a stale caller, asked under the
+     * locks, write nothing.
      *
      * @return void
      */
-    public function testAClaimIsThreeReadsAndAnInsert(): void
+    public function testAClaimIsThreeReadsAndTwoWrites(): void
     {
-        $claimed   = $this->assertQueryBudget(3, 1, fn (): DomainResult => $this->claimDomain());
+        $claimed   = $this->assertQueryBudget(3, 2, fn (): DomainResult => $this->claimDomain());
         $duplicate = $this->assertQueryBudget(3, 0, fn (): DomainResult => $this->claimDomain());
 
         $this->freshness->answer(FreshnessOutcome::STALE);

@@ -30,7 +30,7 @@ final class StartTest extends TestCase
     public function testAStartedRequestNavigates(): void
     {
         $navigation = Navigation::redirect('https://idp.example.com/sso');
-        $start      = Start::navigate($navigation, '_abc', 'https://idp.example.com', true);
+        $start      = Start::navigate($navigation, '_abc', 'https://idp.example.com', true, true);
 
         self::assertTrue($start->isNavigating());
         self::assertFalse($start->isRefused());
@@ -38,6 +38,7 @@ final class StartTest extends TestCase
         self::assertSame('_abc', $start->samlRequestId);
         self::assertSame('https://idp.example.com', $start->expectedIssuer);
         self::assertTrue($start->issuerRequired);
+        self::assertTrue($start->forceAuthn);
         self::assertNull($start->reason);
 
         $bare = Start::navigate($navigation);
@@ -45,6 +46,7 @@ final class StartTest extends TestCase
         self::assertNull($bare->samlRequestId);
         self::assertNull($bare->expectedIssuer);
         self::assertFalse($bare->issuerRequired);
+        self::assertFalse($bare->forceAuthn);
     }
 
     /**
@@ -85,5 +87,6 @@ final class StartTest extends TestCase
         self::assertNull($start->samlRequestId);
         self::assertNull($start->expectedIssuer);
         self::assertFalse($start->issuerRequired);
+        self::assertFalse($start->forceAuthn);
     }
 }
