@@ -70,13 +70,15 @@ Two signature shapes cannot be verified with the SAML library the package uses, 
   refused as `signature_invalid`. Have Entra ID sign the assertion only (see
   [Identity provider setup](identity-provider-setup.md#over-saml-preset-microsoft_entra_saml)).
 
-Encrypted assertions are decrypted with the connection's current encryption key, or a retiring one still within its
-overlap, by RSA-OAEP only. Content encryption is AES-128-GCM or AES-192-GCM. AES-256-GCM cannot be accepted: the SAML
-library the package uses cannot decrypt it until a later major version, so it is neither accepted nor advertised.
+Encrypted assertions are decrypted with the connection's current encryption key, its next one, or a retiring one still
+within its overlap, by RSA-OAEP only. Content encryption is AES-128-GCM or AES-192-GCM. AES-256-GCM cannot be
+accepted: the SAML library the package uses cannot decrypt it until a later major version, so it is neither accepted
+nor advertised.
 AES-CBC is accepted only when you list it in `encryption_algorithms`, for an identity provider that offers nothing
 else, and then only inside a response whose own signature verifies before anything is decrypted. The assertion must
-carry exactly one `EncryptedKey`: one encrypted to several certificates is refused. Every decryption failure is the same
-`decryption_failed`, whatever the cause.
+carry at least one `EncryptedKey` and at most four: one encrypted to several certificates, such as each published
+encryption certificate during a rotation, decrypts with whichever of them your keys unwrap. Every decryption failure is
+the same `decryption_failed`, whatever the cause.
 
 With `require_encrypted_assertions` on (and `sso.features.encrypted_assertions` enabled), a plain assertion is refused
 with `encryption_required`, so a response cannot be downgraded.
@@ -89,8 +91,9 @@ Every time check allows the clock skew `sso.clock.skew_seconds` (60 seconds by d
 - the bearer confirmation must carry a `NotOnOrAfter` that has not passed, and must not carry `NotBefore`;
 - the response's and the assertion's `IssueInstant` must not be in the future, nor older than
   `sso.saml2.issue_instant_max_age_seconds` (300 by default, 30 to 3,600);
-- the `AuthnInstant` must not be in the future, and, with `max_authentication_age_seconds` set, no older than it; a
-  reauthentication must have authenticated after the request started;
+- the `AuthnInstant` must not be in the future, and, with `max_authentication_age_seconds` set, no older than it; when
+  the request sent `ForceAuthn` (a `reauthenticate`, or `force_authn` on when the request started), the provider must
+  have authenticated after the request started;
 - a `SessionNotOnOrAfter` that has passed refuses the response, with no skew; otherwise it becomes the result's provider
   session deadline.
 

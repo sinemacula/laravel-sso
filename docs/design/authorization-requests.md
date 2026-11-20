@@ -55,12 +55,12 @@ feed are in `flows.md`; applications are in `applications.md`.
   10. `Events\AuthorizationRequestStarted`, dispatched after that transaction commits (`Events\AfterCommitDispatcher`);
   11. `StartResult::started($reference, $navigation, $verifier)`, the verifier only when the package generated it.
 - The stored request holds `reference`; `state_digest` and `nonce_digest`, the lower-case hex SHA-256 of the state and
-  the nonce, never either; `purpose`, `application`, `connection_id`; `expected_issuer`, `issuer_required` and
-  `saml_request_id` as the driver's `Start` gave them; `code_verifier`, the PKCE verifier encrypted through
-  `Contracts\SecretEncrypter`; `handoff_challenge`, the client's challenge or the generated verifier's; `trust_version`,
-  the connection's as the start read it, which the completion compares with the connection's at consumption, before
-  anything is validated or a provider called, and again under its lock (`completion.md`); `identity_type` and
-  `identity_id`, the caller's identity, and `session_id`, its session for a `reauthenticate` alone
+  the nonce, never either; `purpose`, `application`, `connection_id`; `expected_issuer`, `issuer_required`,
+  `saml_request_id` and `force_authn` as the driver's `Start` gave them; `code_verifier`, the PKCE verifier encrypted
+  through `Contracts\SecretEncrypter`; `handoff_challenge`, the client's challenge or the generated verifier's;
+  `trust_version`, the connection's as the start read it, which the completion compares with the connection's at
+  consumption, before anything is validated or a provider called, and again under its lock (`completion.md`);
+  `identity_type` and `identity_id`, the caller's identity, and `session_id`, its session for a `reauthenticate` alone
   (`Purpose::bindsSession()`): a `link` gives its caller's session to freshness and stores none; and `expires_at`, now
   plus `FlowSettings::requestTtlSeconds()` (60 to 900, default 600).
 - `begin()` (steps 1, 4 and 6 to 11, for an application already admitted and a connection already found) and

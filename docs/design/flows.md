@@ -27,12 +27,12 @@ by flow and the events each operation reports. Each part's own behaviour is in i
   public reference, unique; `state_digest`, the SHA-256 of the random protocol state, unique, never the state;
   `purpose`, `application`, `connection_id`; `expected_issuer`, `issuer_required`; `nonce_digest`; `code_verifier`, the
   PKCE verifier used with the identity provider, encrypted through `Contracts\SecretEncrypter`; `saml_request_id`,
-  unique with the connection; `handoff_challenge`, the client's S256 challenge; `trust_version`, the connection's trust
-  version as the start read it, compared at consumption and again under the completion's lock; `identity_type`,
-  `identity_id` (`link`, `reauthenticate`) and `session_id` (`reauthenticate`); `expires_at`, and `consumed_at` (a
-  completion consumed it), `verified_at` (its response was verified and recorded against replay, at the provisioning
-  boundary), `voided_at` (a change to its connection voided it) and `completed_at` (its completion finished, either
-  way).
+  unique with the connection; `force_authn`, whether the SAML request sent `ForceAuthn`; `handoff_challenge`, the
+  client's S256 challenge; `trust_version`, the connection's trust version as the start read it, compared at consumption
+  and again under the completion's lock; `identity_type`, `identity_id` (`link`, `reauthenticate`) and `session_id`
+  (`reauthenticate`); `expires_at`, and `consumed_at` (a completion consumed it), `verified_at` (its response was
+  verified and recorded against replay, at the provisioning boundary), `voided_at` (a change to its connection voided
+  it) and `completed_at` (its completion finished, either way).
 - `sso.handoff_codes.table` (`sso_handoff_codes`, `Models\HandoffCode`): `code_digest`, unique, never the code; what the
   code is bound to: `purpose`, `application`, `connection_id`, `request_reference`, `handoff_challenge`, `identity_type`
   and `identity_id` (the flow's identity), `session_id`, `linked_identity_type`, `linked_identity_id` and `link_id`
@@ -116,7 +116,8 @@ binding is kept and nothing outlives a request.
   the PKCE verifier, decrypted only when the driver asks for it with `codeVerifier()` to build the token request), for
   the `Http\ClientContext` the response arrived from, which any event the validation reports carries (the OIDC driver's
   JWKS refetch), and answers `Protocols\Completion::verified(VerifiedClaims)` or `refused(FailureReason)`.
-  `Protocols\Start` keeps what a request stores, typed: `samlRequestId`, `expectedIssuer`, `issuerRequired`.
+  `Protocols\Start` keeps what a request stores, typed: `samlRequestId`, `forceAuthn`, `expectedIssuer`,
+  `issuerRequired`.
 - The steps run in `Completion\Enums\CompletionStep`'s order: `correlation`, `consumption`, `validation`,
   `replay_recording`, `link_resolution`, `enforcement`, `purpose_rules`, `domain_reservation`, `provisioning`,
   `unlinked_decision`, `handoff_issuance`. Each is a `Contracts\CompletionStage` taking and returning a
@@ -195,9 +196,11 @@ connection's `links_version` (`Links\LinkStore::create()`), so a subject migrati
 fails to serialise rather than miss the link; a stored authorisation request and an issued handoff code each raise their
 connection's `flows_version` (`Flows\AuthorizationRequestService`, `Handoffs\DatabaseHandoffStore`), so a change that
 voids the connection's flows (`Connections\InFlightVoider`) and locks the connection after either fails to serialise
-rather than leave the new request or code unvoided; and the identity's guard is written by every locker, so one whose
-snapshot predates another's commit fails to serialise rather than miss what that one did. The failure propagates, and a
-caller retries its whole transaction, never a part of it.
+rather than leave the new request or code unvoided; a key or certificate inserted and a domain claim written each raise
+their connection's `children_version` (`Keys\KeyService`, `Domains\DomainService`), so a deletion that locks the
+connection after either fails to serialise rather than leave the new row behind; and the identity's guard is written by
+every locker, so one whose snapshot predates another's commit fails to serialise rather than miss what that one did. The
+failure propagates, and a caller retries its whole transaction, never a part of it.
 
 ### Start
 

@@ -178,6 +178,7 @@ final readonly class RequestConsumption
             expectedIssuer: $request->expected_issuer,
             issuerRequired: $request->issuer_required,
             samlRequestId: $request->saml_request_id,
+            forceAuthn: $request->force_authn,
             nonceDigest: $request->nonce_digest,
             codeVerifier: $request->code_verifier,
             encrypter: $this->encrypter,

@@ -111,9 +111,10 @@ same settings renews it, on the record, as `ConnectionUpdated` naming `metadata_
 
 Only the HTTP-Redirect and HTTP-POST bindings are used, the connection's current one preferred; only RSA certificates of
 at least 2048 bits are proposed, since SAML is RSA only until the package's PHP floor moves to 8.5 (see
-[Setting up a SAML connection](saml-connections.md#saml-is-rsa-only)). Only the entity's `IDPSSODescriptor` is read:
-its `md:RoleDescriptor` elements, such as the WS-Federation roles Microsoft Entra ID and AD FS publish beside it, are of
-types the metadata schema does not define and are left out of its validation. An import reports no event.
+[Setting up a SAML connection](saml-connections.md#saml-is-rsa-only)). Only the entity's `IDPSSODescriptor` is read,
+and the schema validation covers what is read: every `md:RoleDescriptor` element of any type, such as the WS-Federation
+roles Microsoft Entra ID and AD FS publish beside it, is left out of it. With a
+[metadata signing anchor](#a-metadata-signing-anchor), the signature still covers them. An import reports no event.
 
 ## A metadata signing anchor
 
@@ -155,7 +156,8 @@ schedule when it has a [metadata signing anchor](#a-metadata-signing-anchor), or
 | No                      | `false`            | Left alone      | None                                  |
 
 A connection with no `metadata_url` never refreshes and has no deadline. Adding an anchor to a connection with a URL
-turns the default on, and removing the last turns it off, with no other change.
+turns the default on, and removing the last turns it off, with no other change. A disabled connection refreshes as an
+enabled one does.
 
 <!-- snippet: tests/Integration/Examples/SamlMetadata/admin/follow.php#saml-metadata-follow -->
 ```php

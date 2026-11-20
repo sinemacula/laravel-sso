@@ -51,11 +51,12 @@ return new class extends Migration {
             // Enforcement can be turned on only with such a connection.
             $blueprint->boolean('has_completed_sign_in')->default(false);
 
-            // Raised by each link, request or handoff code inserted, so a
-            // PostgreSQL REPEATABLE READ reader that locks the row later fails
-            // to serialise instead of missing the insert.
+            // Raised by each link, request, handoff code, key or domain claim
+            // written, so a PostgreSQL REPEATABLE READ reader that locks the
+            // row later fails to serialise instead of missing the insert.
             $blueprint->unsignedBigInteger('links_version')->default(0);
             $blueprint->unsignedBigInteger('flows_version')->default(0);
+            $blueprint->unsignedBigInteger('children_version')->default(0);
 
             // Never raised by an additive certificate.
             $blueprint->unsignedBigInteger('trust_version')->default(0);

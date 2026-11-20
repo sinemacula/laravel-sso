@@ -85,17 +85,18 @@ final readonly class AuthnRequests
             return Start::refused(FailureReason::CONNECTION_UNAVAILABLE);
         }
 
+        $forced   = self::forcesAuthn($options, $request);
         $outgoing = $this->writer->write(
             self::requestId(),
             $this->clock->now(),
             $this->endpoints->endpoints($connection),
             $options,
-            self::forcesAuthn($options, $request),
+            $forced,
             $request->state,
             $key,
         );
 
-        return Start::navigate(self::navigation($ssoUrl, $outgoing), $outgoing->id);
+        return Start::navigate(self::navigation($ssoUrl, $outgoing), $outgoing->id, forceAuthn: $forced);
     }
 
     /**

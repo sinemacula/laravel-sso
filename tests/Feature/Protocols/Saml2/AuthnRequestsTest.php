@@ -196,7 +196,8 @@ final class AuthnRequestsTest extends TestCase
 
     /**
      * `ForceAuthn="true"` when the connection forces authentication or the flow
-     * is a `reauthenticate`, and absent otherwise, by either binding.
+     * is a `reauthenticate`, and absent otherwise, by either binding; the start
+     * says which.
      *
      * @param  bool  $forceAuthn
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
@@ -206,10 +207,12 @@ final class AuthnRequestsTest extends TestCase
     #[DataProvider('provideForceAuthn')]
     public function testForceAuthnFollowsTheSwitchAndReauthentication(bool $forceAuthn, Purpose $purpose, bool $forced): void
     {
-        $redirect = self::redirectRoot($this->start($this->saml(['force_authn' => $forceAuthn]), $purpose));
-        $post     = self::postRoot($this->start($this->saml(['force_authn' => $forceAuthn, 'sso_binding' => 'http_post']), $purpose));
+        $redirected = $this->start($this->saml(['force_authn' => $forceAuthn]), $purpose);
+        $posted     = $this->start($this->saml(['force_authn' => $forceAuthn, 'sso_binding' => 'http_post']), $purpose);
 
-        foreach ([$redirect, $post] as $root) {
+        self::assertSame([$forced, $forced], [$redirected->forceAuthn, $posted->forceAuthn]);
+
+        foreach ([self::redirectRoot($redirected), self::postRoot($posted)] as $root) {
             self::assertSame($forced, $root->hasAttribute('ForceAuthn'));
             self::assertSame($forced ? 'true' : '', $root->getAttribute('ForceAuthn'));
             self::assertFalse($root->hasAttribute('IsPassive'));

@@ -6,26 +6,34 @@ namespace Tests\Integration\Connections;
 
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
+use PHPUnit\Framework\Attributes\DataProvider;
 use SineMacula\Laravel\Sso\Connections\ConnectionLifecycle;
 use SineMacula\Laravel\Sso\Contracts\Clock;
 use SineMacula\Laravel\Sso\Contracts\Freshness;
 use SineMacula\Laravel\Sso\Database\StorageConnection;
+use SineMacula\Laravel\Sso\Domains\DomainService;
 use SineMacula\Laravel\Sso\Identities\IdentityReference;
+use SineMacula\Laravel\Sso\Keys\Enums\KeyUse;
+use SineMacula\Laravel\Sso\Keys\KeyService;
 use SineMacula\Laravel\Sso\Links\Enums\LinkOrigin;
 use SineMacula\Laravel\Sso\Links\LinkStore;
 use SineMacula\Laravel\Sso\Links\LinkSubject;
 use SineMacula\Laravel\Sso\Models\Connection;
+use SineMacula\Laravel\Sso\Models\ConnectionKey;
+use SineMacula\Laravel\Sso\Models\Domain;
 use SineMacula\Laravel\Sso\Models\Link;
 use SineMacula\Laravel\Sso\Testing\FakeFreshness;
 use Tests\Concerns\RacesProcesses;
 use Tests\Concerns\UsesConnections;
 use Tests\Fixtures\Clients;
 use Tests\Fixtures\FixedClock;
+use Tests\Fixtures\Keys\Certificates;
 use Tests\TestCase;
 
 /**
- * Races a deletion against a link created after the deleter's snapshot, across
- * processes. Skipped on SQLite and without `pcntl`.
+ * Races a deletion against a link, key, certificate or domain claim written
+ * after the deleter's snapshot, across processes. Skipped on SQLite and without
+ * `pcntl`.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
@@ -34,6 +42,8 @@ use Tests\TestCase;
  */
 #[CoversClass(ConnectionLifecycle::class)]
 #[CoversClass(LinkStore::class)]
+#[CoversClass(KeyService::class)]
+#[CoversClass(DomainService::class)]
 final class ConcurrentConnectionDeletionTest extends TestCase
 {
     use RacesProcesses, UsesConnections;
@@ -47,10 +57,10 @@ final class ConcurrentConnectionDeletionTest extends TestCase
     /** @var string The deleter holds its snapshot. */
     private const string READ = 'deleter-read';
 
-    /** @var string The link's creation committed. */
-    private const string LINKED = 'link-committed';
+    /** @var string The writer committed. */
+    private const string WRITTEN = 'write-committed';
 
-    /** @var \SineMacula\Laravel\Sso\Models\Connection The connection deleted and linked through. */
+    /** @var \SineMacula\Laravel\Sso\Models\Connection The connection deleted and written to. */
     private Connection $connection;
 
     /**
@@ -92,33 +102,54 @@ final class ConcurrentConnectionDeletionTest extends TestCase
     }
 
     /**
-     * A link created after the deleter's snapshot is never left behind:
-     * PostgreSQL fails to serialise, MySQL deletes it.
+     * Rows of `[writer, status, model]`: the write, the status it answers and
+     * the model of the row it inserts.
      *
-     * @return void
+     * @return iterable<string, array{0: string, 1: string, 2: class-string<\SineMacula\Laravel\Sso\Models\SsoModel>}>
      */
-    public function testALinkCreatedAfterTheDeletersSnapshotIsNeverLeftBehind(): void
+    public static function provideWriters(): iterable
     {
-        $reports  = $this->race([$this->deleter(), $this->linker()]);
-        $reported = (string) json_encode($reports);
-        $pgsql    = DB::connection()->getDriverName() === 'pgsql';
-
-        self::assertSame(['result' => 'created', 'error' => null], $reports[1], $reported);
-        self::assertSame($pgsql ? ['result' => null, 'error' => self::RACE_SERIALIZATION_FAILURE] : ['result' => 'deleted', 'error' => null], $reports[0], $reported);
-        self::assertSame($pgsql ? [1, 1] : [0, 0], [Connection::query()->whereKey($this->connection->id)->count(), $this->links()], $reported);
+        yield from [
+            'a link'                => ['link', 'created', Link::class],
+            'a key'                 => ['key', 'added', ConnectionKey::class],
+            'a trusted certificate' => ['certificate', 'trusted', ConnectionKey::class],
+            'a domain claim'        => ['domain', 'claimed', Domain::class],
+        ];
     }
 
     /**
-     * The deleter: read under `REPEATABLE READ`, signal, wait for the link,
+     * A row written after the deleter's snapshot is never left behind:
+     * PostgreSQL fails to serialise, MySQL deletes it.
+     *
+     * @param  string  $writer
+     * @param  string  $status
+     * @param  class-string<\SineMacula\Laravel\Sso\Models\SsoModel>  $model
+     * @return void
+     */
+    #[DataProvider('provideWriters')]
+    public function testARowWrittenAfterTheDeletersSnapshotIsNeverLeftBehind(string $writer, string $status, string $model): void
+    {
+        $reports  = $this->race([$this->deleter($model), $this->writer($writer)]);
+        $reported = (string) json_encode($reports);
+        $pgsql    = DB::connection()->getDriverName() === 'pgsql';
+
+        self::assertSame(['result' => $status, 'error' => null], $reports[1], $reported);
+        self::assertSame($pgsql ? ['result' => null, 'error' => self::RACE_SERIALIZATION_FAILURE] : ['result' => 'deleted', 'error' => null], $reports[0], $reported);
+        self::assertSame($pgsql ? [1, 1] : [0, 0], [Connection::query()->whereKey($this->connection->id)->count(), $this->rowsOf($model)], $reported);
+    }
+
+    /**
+     * The deleter: read under `REPEATABLE READ`, signal, wait for the write,
      * then delete and commit.
      *
+     * @param  class-string<\SineMacula\Laravel\Sso\Models\SsoModel>  $model
      * @return \Closure(): string
      */
-    private function deleter(): \Closure
+    private function deleter(string $model): \Closure
     {
         $connectionId = $this->connection->id;
 
-        return function () use ($connectionId): string {
+        return function () use ($connectionId, $model): string {
 
             $database = DB::connection(StorageConnection::name());
 
@@ -126,10 +157,10 @@ final class ConcurrentConnectionDeletionTest extends TestCase
             $database->beginTransaction();
 
             Connection::query()->whereKey($connectionId)->get();
-            $this->links();
+            $this->rowsOf($model);
 
             $this->signal(self::READ);
-            $this->awaitSignal(self::LINKED);
+            $this->awaitSignal(self::WRITTEN);
 
             $status = app(ConnectionLifecycle::class)->delete(self::TENANT, $connectionId, Clients::browser())->status->value;
 
@@ -140,41 +171,48 @@ final class ConcurrentConnectionDeletionTest extends TestCase
     }
 
     /**
-     * The linker: wait for the deleter's snapshot, link a subject through the
+     * The writer: wait for the deleter's snapshot, write through the
      * connection, and signal once committed.
      *
+     * @param  string  $writer
      * @return \Closure(): string
      */
-    private function linker(): \Closure
+    private function writer(string $writer): \Closure
     {
         $connectionId = $this->connection->id;
 
-        return function () use ($connectionId): string {
+        return function () use ($connectionId, $writer): string {
 
             $this->awaitSignal(self::READ);
 
             try {
-                return app(LinkStore::class)->create(
-                    Connection::query()->findOrFail($connectionId),
-                    new LinkSubject(self::ENTITY_ID, 'subject-1'),
-                    new IdentityReference('user', '1'),
-                    LinkOrigin::LINK_PURPOSE,
-                    Clients::browser(),
-                )->status->value;
+                return match ($writer) {
+                    'link' => app(LinkStore::class)->create(
+                        Connection::query()->findOrFail($connectionId),
+                        new LinkSubject(self::ENTITY_ID, 'subject-1'),
+                        new IdentityReference('user', '1'),
+                        LinkOrigin::LINK_PURPOSE,
+                        Clients::browser(),
+                    )->status->value,
+                    'key'         => app(KeyService::class)->addNext(self::TENANT, $connectionId, KeyUse::SP_SIGNING, Clients::browser())->status->value,
+                    'certificate' => app(KeyService::class)->trustCertificate(self::TENANT, $connectionId, Certificates::distinct(0), Clients::browser())->status->value,
+                    default       => app(DomainService::class)->claim(self::TENANT, $connectionId, 'example.com', Clients::browser())->status->value,
+                };
             } finally {
-                $this->signal(self::LINKED);
+                $this->signal(self::WRITTEN);
             }
         };
     }
 
     /**
-     * How many links the connection has.
+     * How many rows of the model the connection has.
      *
+     * @param  class-string<\SineMacula\Laravel\Sso\Models\SsoModel>  $model
      * @return int
      */
-    private function links(): int
+    private function rowsOf(string $model): int
     {
-        return Link::query()->where('connection_id', $this->connection->id)->count();
+        return $model::query()->where('connection_id', $this->connection->id)->count();
     }
 
     /**

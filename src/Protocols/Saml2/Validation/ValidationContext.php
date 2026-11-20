@@ -5,7 +5,6 @@ declare(strict_types = 1);
 namespace SineMacula\Laravel\Sso\Protocols\Saml2\Validation;
 
 use Carbon\CarbonImmutable;
-use SineMacula\Laravel\Sso\Flows\Enums\Purpose;
 use SineMacula\Laravel\Sso\Protocols\ConsumedRequest;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Saml2Options;
 
@@ -82,19 +81,13 @@ final readonly class ValidationContext
     }
 
     /**
-     * When the consumed request started, for a `reauthenticate` request only.
+     * When the consumed request started, if it sent `ForceAuthn`.
      *
      * @return ?\Carbon\CarbonImmutable
      */
-    public function reauthenticationStart(): ?CarbonImmutable
+    public function forcedAuthenticationStart(): ?CarbonImmutable
     {
-        $consumed = $this->consumed;
-
-        if ($consumed === null || $consumed->purpose !== Purpose::REAUTHENTICATE) {
-            return null;
-        }
-
-        return $consumed->startedAt;
+        return $this->consumed?->forceAuthn === true ? $this->consumed->startedAt : null;
     }
 
     /**

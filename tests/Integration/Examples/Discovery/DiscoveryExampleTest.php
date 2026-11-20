@@ -27,6 +27,7 @@ use SineMacula\Laravel\Sso\Identities\IdentityReference;
 use SineMacula\Laravel\Sso\Protocols\CompletionRequest;
 use SineMacula\Laravel\Sso\Responses\CompletionResponses;
 use SineMacula\Laravel\Sso\Testing\FakeOpenIdProvider;
+use SineMacula\Laravel\Sso\Testing\FakeSamlIdentityProvider;
 use SineMacula\Laravel\Sso\Testing\HandoffRedirect;
 use Tests\Integration\Examples\Clients;
 use Tests\Integration\Examples\ExampleTestCase;
@@ -87,7 +88,7 @@ final class DiscoveryExampleTest extends ExampleTestCase
         $this->provider     = new FakeOpenIdProvider(clock: $this->clock);
         $this->connectionId = $this->makeOidcConnection($this->provider);
 
-        $this->verifyTheDomain();
+        $this->verifyTheDomain($this->connectionId, 'example.com');
     }
 
     /**
@@ -233,6 +234,31 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
+     * A match through an HTTP-POST SAML connection answers `post`, with the
+     * status, keys and headers of a miss.
+     *
+     * @return void
+     */
+    public function testAMatchThroughAnHttpPostSamlConnectionAnswersPost(): void
+    {
+        config()->set('sso.features.saml2', true);
+
+        $this->verifyTheDomain($this->makeSamlConnection(new FakeSamlIdentityProvider, ['sso_binding' => 'http_post']), 'example.net');
+
+        $match = $this->discover(['application' => self::APPLICATION, 'email' => 'jane@example.net'])->assertOk();
+        $miss  = $this->discover(['application' => self::APPLICATION, 'email' => self::MISS])->assertOk();
+
+        /** @var array{reference: string, navigation: array{type: string, url: string, fields: array<string, string>}, verifier: string} $body */
+        $body = $match->json();
+
+        self::assertSame(array_keys((array) $miss->json()), array_keys($body));
+        self::assertSame(['post', FakeSamlIdentityProvider::SSO_URL], [$body['navigation']['type'], $body['navigation']['url']]);
+        self::assertSame(['SAMLRequest', 'RelayState'], array_keys($body['navigation']['fields']));
+        self::assertSame('redirect', $miss->json('navigation.type'));
+        self::assertSame($miss->headers->get('Cache-Control'), $match->headers->get('Cache-Control'));
+    }
+
+    /**
      * Refusals answer `400` with their error, and a full limit `429` with
      * `Retry-After`.
      *
@@ -275,20 +301,22 @@ final class DiscoveryExampleTest extends ExampleTestCase
     }
 
     /**
-     * Claim and verify `example.com` for the connection.
+     * Claim and verify the domain for the connection.
      *
+     * @param  string  $connectionId
+     * @param  string  $domain
      * @return void
      */
-    private function verifyTheDomain(): void
+    private function verifyTheDomain(string $connectionId, string $domain): void
     {
         $domains = app(DomainService::class);
-        $claimed = $domains->claim(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->domain;
+        $claimed = $domains->claim(self::TENANT, $connectionId, $domain, Clients::browser())->domain;
 
         self::assertNotNull($claimed);
 
         $this->dns->publishes($claimed);
 
-        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $this->connectionId, 'example.com', Clients::browser())->status);
+        self::assertSame(DomainStatus::VERIFIED, $domains->verify(self::TENANT, $connectionId, $domain, Clients::browser())->status);
     }
 
     /**

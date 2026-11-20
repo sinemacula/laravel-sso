@@ -1140,6 +1140,35 @@ final class KeyServiceTest extends TestCase
     }
 
     /**
+     * Each key or certificate inserted raises its connection's children version
+     * by one; a refused addition raises nothing.
+     *
+     * @return void
+     */
+    public function testEachInsertRaisesTheChildrenVersionOfItsConnection(): void
+    {
+        $id    = $this->connection->id;
+        $other = $this->makeConnection(['protocol' => 'saml2']);
+
+        $this->add();
+        $this->add();
+
+        self::assertSame([2, 0], self::childrenVersions($this->connection, $other));
+
+        self::assertTrue($this->keys()->addNext(self::TENANT, $id, KeyUse::SP_SIGNING, Clients::browser(), KeyType::RSA, $this->actor)->isRefused());
+        self::assertSame([2, 0], self::childrenVersions($this->connection, $other));
+
+        $this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(0), Clients::browser());
+        $this->keys()->trustCertificate(self::TENANT, $id, Certificates::distinct(4), Clients::browser(), use: KeyUse::METADATA_SIGNING);
+
+        self::assertSame([4, 0], self::childrenVersions($this->connection, $other));
+
+        $this->replace([Certificates::distinct(0), Certificates::distinct(1), Certificates::distinct(2)]);
+
+        self::assertSame([6, 0], self::childrenVersions($this->connection, $other));
+    }
+
+    /**
      * Rows of `[certificates, violations]` a replacement refuses, with each
      * violation at its position.
      *
@@ -1440,5 +1469,16 @@ final class KeyServiceTest extends TestCase
         self::assertNotNull($result->key, sprintf('The helper answered %s (%s).', $result->status->value, $result->reason->value ?? 'no reason'));
 
         return $result->key;
+    }
+
+    /**
+     * The children version of each connection, read again.
+     *
+     * @param  \SineMacula\Laravel\Sso\Models\Connection  ...$connections
+     * @return list<int>
+     */
+    private static function childrenVersions(Connection ...$connections): array
+    {
+        return array_values(array_map(static fn (Connection $connection): int => Connection::query()->findOrFail($connection->id)->children_version, $connections));
     }
 }
