@@ -76,8 +76,8 @@ While a key is current, `addNext()` adds the new one as `next`. Both are now pub
 (`KeyRing::published()`, which the connection's metadata and JWKS are built from), so the identity provider can take up
 the new key before it is used. A `next` encryption key already decrypts, so an identity provider can encrypt to it as
 soon as it reads the new metadata. A connection has at most one `next` key of a use: adding a second is refused with
-`key_state_conflict`. An assertion the identity provider encrypts to both published encryption keys at once is refused
-with `decryption_failed`.
+`key_state_conflict`. An assertion the identity provider encrypts to both published encryption keys at once
+decrypts.
 
 ### 3. Make it current
 

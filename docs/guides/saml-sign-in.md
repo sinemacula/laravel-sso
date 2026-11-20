@@ -68,8 +68,9 @@ accepted: the SAML library the package uses cannot decrypt it until a later majo
 nor advertised.
 AES-CBC is accepted only when you list it in `encryption_algorithms`, for an identity provider that offers nothing
 else, and then only inside a response whose own signature verifies before anything is decrypted. The assertion must
-carry exactly one `EncryptedKey`: one encrypted to several certificates is refused. Every decryption failure is the same
-`decryption_failed`, whatever the cause.
+carry at least one `EncryptedKey` and at most four: one encrypted to several certificates, such as each published
+encryption certificate during a rotation, decrypts with whichever of them your keys unwrap. Every decryption failure is
+the same `decryption_failed`, whatever the cause.
 
 With `require_encrypted_assertions` on (and `sso.features.encrypted_assertions` enabled), a plain assertion is refused
 with `encryption_required`, so a response cannot be downgraded.
