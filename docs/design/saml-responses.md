@@ -85,9 +85,9 @@ Everything here judges only values the adapter read from verified elements.
   matches only `unspecified`), a qualifier that is not its party's, an empty value, an attribute subject absent,
   repeated, multi-valued or empty, or an encoding over 1024 bytes.
 - `response_invalid`: not exactly one `AuthnStatement`, or a `SessionIndex` or class the authentication context cannot
-  hold; `authentication_expired`: too old for `max_authentication_age_seconds`, earlier than a `reauthenticate`
-  request's start less the skew, or a `SessionNotOnOrAfter` not after now; `authentication_context_mismatch`: a class
-  other than one of `requested_authn_context`.
+  hold; `authentication_expired`: too old for `max_authentication_age_seconds`, earlier than the start less the skew
+  of a request that sent `ForceAuthn`, or a `SessionNotOnOrAfter` not after now; `authentication_context_mismatch`: a
+  class other than one of `requested_authn_context`.
 - A read the adapter refuses keeps its reason (`response_invalid`, `signature_invalid`, `decryption_failed`), every
   decryption failure the same.
 

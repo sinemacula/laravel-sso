@@ -82,8 +82,9 @@ Every time check allows the clock skew `sso.clock.skew_seconds` (60 seconds by d
 - the bearer confirmation must carry a `NotOnOrAfter` that has not passed, and must not carry `NotBefore`;
 - the response's and the assertion's `IssueInstant` must not be in the future, nor older than
   `sso.saml2.issue_instant_max_age_seconds` (300 by default, 30 to 3,600);
-- the `AuthnInstant` must not be in the future, and, with `max_authentication_age_seconds` set, no older than it; a
-  reauthentication must have authenticated after the request started;
+- the `AuthnInstant` must not be in the future, and, with `max_authentication_age_seconds` set, no older than it; when
+  the request sent `ForceAuthn` (a `reauthenticate`, or `force_authn` on when the request started), the provider must
+  have authenticated after the request started;
 - a `SessionNotOnOrAfter` that has passed refuses the response, with no skew; otherwise it becomes the result's provider
   session deadline.
 

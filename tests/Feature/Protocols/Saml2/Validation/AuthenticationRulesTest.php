@@ -164,44 +164,49 @@ final class AuthenticationRulesTest extends TestCase
     }
 
     /**
-     * Rows of `[purpose, instant, reason, forced]`, the instant in seconds from
-     * a start ten minutes ago, and whether the connection forces
-     * authentication.
+     * Rows of `[purpose, instant, reason, sent, setting]`: the instant in
+     * seconds from a start ten minutes ago, whether the request sent
+     * `ForceAuthn`, and the connection's `force_authn` at the response.
      *
-     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason, 3: bool}>
+     * @return iterable<string, array{0: \SineMacula\Laravel\Sso\Flows\Enums\Purpose, 1: int, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason, 3: bool, 4: bool}>
      */
-    public static function provideReauthentication(): iterable
+    public static function provideForcedAuthentication(): iterable
     {
         yield from [
-            'reauthenticate, at the start less the skew' => [Purpose::REAUTHENTICATE, -60, null, false],
-            'reauthenticate, one second earlier'         => [Purpose::REAUTHENTICATE, -61, FailureReason::AUTHENTICATION_EXPIRED, false],
-            'reauthenticate, one second later'           => [Purpose::REAUTHENTICATE, -59, null, false],
-            'reauthenticate, after the start'            => [Purpose::REAUTHENTICATE, 300, null, false],
-            'sign in, long before the start'             => [Purpose::SIGN_IN, -86400, null, false],
-            'link, long before the start'                => [Purpose::LINK, -86400, null, false],
-            'forced sign in, long before the start'      => [Purpose::SIGN_IN, -86400, null, true],
-            'forced reauthenticate, one second earlier'  => [Purpose::REAUTHENTICATE, -61, FailureReason::AUTHENTICATION_EXPIRED, true],
+            'reauthenticate, at the start less the skew' => [Purpose::REAUTHENTICATE, -60, null, true, false],
+            'reauthenticate, one second earlier'         => [Purpose::REAUTHENTICATE, -61, FailureReason::AUTHENTICATION_EXPIRED, true, false],
+            'reauthenticate, one second later'           => [Purpose::REAUTHENTICATE, -59, null, true, false],
+            'reauthenticate, after the start'            => [Purpose::REAUTHENTICATE, 300, null, true, false],
+            'forced sign in, long before the start'      => [Purpose::SIGN_IN, -86400, FailureReason::AUTHENTICATION_EXPIRED, true, true],
+            'forced sign in, at the start less the skew' => [Purpose::SIGN_IN, -60, null, true, true],
+            'forced link, one second earlier'            => [Purpose::LINK, -61, FailureReason::AUTHENTICATION_EXPIRED, true, true],
+            'sign in, long before the start'             => [Purpose::SIGN_IN, -86400, null, false, false],
+            'link, long before the start'                => [Purpose::LINK, -86400, null, false, false],
+            'sign in forced after it was sent'           => [Purpose::SIGN_IN, -86400, null, false, true],
+            'forced sign in, unforced after it was sent' => [Purpose::SIGN_IN, -86400, FailureReason::AUTHENTICATION_EXPIRED, true, false],
         ];
     }
 
     /**
-     * A `reauthenticate` request needs an authentication no earlier than its
-     * start less the skew; any other purpose does not, even with `force_authn`
-     * on.
+     * A request that sent `ForceAuthn` needs an authentication no earlier than
+     * its start less the skew, whatever the connection's `force_authn` is by
+     * the response; any other request does not.
      *
      * @param  \SineMacula\Laravel\Sso\Flows\Enums\Purpose  $purpose
      * @param  int  $instant
      * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
-     * @param  bool  $forced
+     * @param  bool  $sent
+     * @param  bool  $setting
      * @return void
      */
-    #[DataProvider('provideReauthentication')]
-    public function testAReauthenticationMustFollowTheRequestsStart(Purpose $purpose, int $instant, ?FailureReason $reason, bool $forced): void
+    #[DataProvider('provideForcedAuthentication')]
+    public function testAForcedAuthenticationMustFollowTheRequestsStart(Purpose $purpose, int $instant, ?FailureReason $reason, bool $sent, bool $setting): void
     {
         $started   = self::now()->subMinutes(10);
-        $consumed  = new ConsumedRequest($purpose, 'web', RequestReference::fromString('Bq8tVv3w0kLmNoPqRsTuVwXyZ0123456'), $started, samlRequestId: '_request-1');
+        $reference = RequestReference::fromString('Bq8tVv3w0kLmNoPqRsTuVwXyZ0123456');
+        $consumed  = new ConsumedRequest($purpose, 'web', $reference, $started, samlRequestId: '_request-1', forceAuthn: $sent);
         $statement = new AuthnStatement($started->addSeconds($instant));
-        $context   = AuthenticationRules::context(self::assertion([$statement]), self::context(['force_authn' => $forced], $consumed));
+        $context   = AuthenticationRules::context(self::assertion([$statement]), self::context(['force_authn' => $setting], $consumed));
 
         self::assertSame($reason, $context instanceof FailureReason ? $context : null);
         self::assertInstanceOf(AuthenticationContext::class, AuthenticationRules::context(self::assertion([$statement]), self::context()));
@@ -276,23 +281,24 @@ final class AuthenticationRulesTest extends TestCase
     }
 
     /**
-     * The rules answer in order: context, future instant, maximum age,
-     * reauthentication, class, session.
+     * The rules answer in order: context, future instant, maximum age, forced
+     * authentication, class, session.
      *
      * @return void
      */
     public function testAnswersInItsOrder(): void
     {
-        $strict   = self::context(['max_authentication_age_seconds' => 60, 'requested_authn_context' => [self::MFA]]);
-        $ended    = self::now()->subSecond();
-        $old      = self::now()->subHour();
-        $consumed = new ConsumedRequest(Purpose::REAUTHENTICATE, 'web', RequestReference::fromString('Bq8tVv3w0kLmNoPqRsTuVwXyZ0123456'), self::now(), samlRequestId: '_r');
-        $reauth   = self::context(['requested_authn_context' => [self::MFA]], $consumed);
+        $strict    = self::context(['max_authentication_age_seconds' => 60, 'requested_authn_context' => [self::MFA]]);
+        $ended     = self::now()->subSecond();
+        $old       = self::now()->subHour();
+        $reference = RequestReference::fromString('Bq8tVv3w0kLmNoPqRsTuVwXyZ0123456');
+        $consumed  = new ConsumedRequest(Purpose::REAUTHENTICATE, 'web', $reference, self::now(), samlRequestId: '_r', forceAuthn: true);
+        $forced    = self::context(['requested_authn_context' => [self::MFA]], $consumed);
 
         self::assertSame(FailureReason::RESPONSE_INVALID, self::refusalOf(new AuthnStatement(self::now()->addHour(), '', $ended, self::PPT), $strict));
         self::assertSame(FailureReason::ASSERTION_EXPIRED, self::refusalOf(new AuthnStatement(self::now()->addHour(), null, $ended, self::PPT), $strict));
         self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, self::refusalOf(new AuthnStatement($old, null, null, self::PPT), $strict));
-        self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, self::refusalOf(new AuthnStatement($old, null, null, self::PPT), $reauth));
+        self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, self::refusalOf(new AuthnStatement($old, null, null, self::PPT), $forced));
         self::assertSame(FailureReason::AUTHENTICATION_CONTEXT_MISMATCH, self::refusalOf(new AuthnStatement(self::now(), null, $ended, self::PPT), $strict));
         self::assertSame(FailureReason::AUTHENTICATION_EXPIRED, self::refusalOf(new AuthnStatement(self::now(), null, $ended, self::MFA), $strict));
     }

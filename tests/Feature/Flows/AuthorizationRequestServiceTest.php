@@ -170,6 +170,7 @@ final class AuthorizationRequestServiceTest extends TestCase
             'issuer_required'   => false,
             'nonce_digest'      => hash('sha256', $nonce),
             'saml_request_id'   => null,
+            'force_authn'       => false,
             'handoff_challenge' => $result->verifier->challenge()->value,
             'trust_version'     => 0,
             'identity_type'     => null,
@@ -238,8 +239,8 @@ final class AuthorizationRequestServiceTest extends TestCase
     }
 
     /**
-     * A posted form navigation is answered, and the driver's SAML id, issuer
-     * and `iss` requirement are stored.
+     * A posted form navigation is answered, and the driver's SAML id,
+     * `ForceAuthn`, issuer and `iss` requirement are stored.
      *
      * @return void
      */
@@ -249,6 +250,7 @@ final class AuthorizationRequestServiceTest extends TestCase
         $this->driver->samlRequestId  = '_a3f9c2e1-request';
         $this->driver->expectedIssuer = 'https://idp.example.com/saml';
         $this->driver->issuerRequired = true;
+        $this->driver->forceAuthn     = true;
 
         $result = $this->startFlow();
         $state  = $this->driver->lastStart()->state->reveal();
@@ -261,6 +263,7 @@ final class AuthorizationRequestServiceTest extends TestCase
         ], $result->body()['navigation']);
         self::assertTrue($result->navigation?->isPost());
         self::assertSame('_a3f9c2e1-request', $row->saml_request_id);
+        self::assertTrue($row->force_authn);
         self::assertSame('https://idp.example.com/saml', $row->expected_issuer);
         self::assertTrue($row->issuer_required);
     }
@@ -1128,6 +1131,7 @@ final class AuthorizationRequestServiceTest extends TestCase
             'issuer_required'   => $row->issuer_required,
             'nonce_digest'      => $row->nonce_digest,
             'saml_request_id'   => $row->saml_request_id,
+            'force_authn'       => $row->force_authn,
             'handoff_challenge' => $row->handoff_challenge,
             'trust_version'     => $row->trust_version,
             'identity_type'     => $row->identity_type,

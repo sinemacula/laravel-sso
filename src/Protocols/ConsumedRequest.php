@@ -35,6 +35,7 @@ final readonly class ConsumedRequest
      * @param  ?string  $expectedIssuer
      * @param  bool  $issuerRequired
      * @param  ?string  $samlRequestId
+     * @param  bool  $forceAuthn
      * @param  ?string  $nonceDigest
      * @param  ?string  $codeVerifier
      * @param  ?\SineMacula\Laravel\Sso\Contracts\SecretEncrypter  $encrypter
@@ -52,7 +53,7 @@ final readonly class ConsumedRequest
         /** The request's public reference. */
         public RequestReference $reference,
 
-        /** When the request started; a reauthentication must not predate it. */
+        /** When the request started; a forced authentication must not predate it. */
         public CarbonImmutable $startedAt,
 
         /** The issuer the response must come from, as the request recorded it. */
@@ -63,6 +64,9 @@ final readonly class ConsumedRequest
 
         /** The SAML `AuthnRequest` id `InResponseTo` must equal. */
         public ?string $samlRequestId = null,
+
+        /** Whether the SAML `AuthnRequest` sent `ForceAuthn="true"`. */
+        public bool $forceAuthn = false,
 
         /** The lower-case hex SHA-256 digest of the OIDC nonce. */
         private ?string $nonceDigest = null,
@@ -91,6 +95,7 @@ final readonly class ConsumedRequest
             'expected_issuer' => $this->expectedIssuer,
             'issuer_required' => $this->issuerRequired,
             'saml_request_id' => $this->samlRequestId,
+            'force_authn'     => $this->forceAuthn,
             'nonce'           => $this->nonceDigest  === null ? null : '[redacted]',
             'code_verifier'   => $this->codeVerifier === null ? null : '[redacted]',
         ];

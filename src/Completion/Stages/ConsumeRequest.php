@@ -167,6 +167,7 @@ final readonly class ConsumeRequest implements CompletionStage
             expectedIssuer: $request->expected_issuer,
             issuerRequired: $request->issuer_required,
             samlRequestId: $request->saml_request_id,
+            forceAuthn: $request->force_authn,
         );
     }
 }

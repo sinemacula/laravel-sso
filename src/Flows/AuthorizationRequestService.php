@@ -350,6 +350,7 @@ final readonly class AuthorizationRequestService
             'nonce_digest'      => $state->nonceDigest(),
             'code_verifier'     => $this->encrypter->encrypt($state->codeVerifier()->reveal()),
             'saml_request_id'   => $start->samlRequestId,
+            'force_authn'       => $start->forceAuthn,
             'handoff_challenge' => $challenge,
             'trust_version'     => $trustVersion,
             'identity_type'     => $caller?->identity->type,

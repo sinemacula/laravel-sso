@@ -12,9 +12,10 @@ request is written through is in `saml-adapter.md`.
 
 ### The request
 
-- `Protocols\Saml2\AuthnRequests::start()` answers the driver's `Start`: `Start::navigate($navigation, $id)` with the
-  request's `ID`, which the authorisation request stores as `saml_request_id`, unique per connection, for the
-  response's `InResponseTo`; or `Start::refused(connection_unavailable)`.
+- `Protocols\Saml2\AuthnRequests::start()` answers the driver's `Start`: `Start::navigate($navigation, $id,
+  forceAuthn: $forced)` with the request's `ID`, which the authorisation request stores as `saml_request_id`, unique
+  per connection, for the response's `InResponseTo`, and whether it sent `ForceAuthn`, stored as `force_authn`; or
+  `Start::refused(connection_unavailable)`.
 - `ID` is `_` followed by 32 bytes of the system's CSPRNG as lower-case hex (65 bytes, within
   `Correlation::MAX_REQUEST_ID_LENGTH`), fresh for every start, so two starts never share one.
 - `Version` is `2.0`. `IssueInstant` is the package's clock (`Contracts\Clock`) in UTC, to the second.
@@ -25,8 +26,9 @@ request is written through is in `saml-adapter.md`.
 - `NameIDPolicy` carries the connection's NameID format (`persistent`, `email` or `unspecified`, as its URI) with
   `AllowCreate="true"`. The transient format is never requested: the settings refuse it.
 - `ForceAuthn="true"` when the connection's `force_authn` is on, and always for the `reauthenticate` purpose; otherwise
-  the attribute is absent. The response validation holds the `AuthnInstant` to the request's creation for a
-  `reauthenticate` only; `max_authentication_age_seconds`, when set, bounds how old it may be for any purpose.
+  the attribute is absent. The authorisation request stores whether it was sent as `force_authn`, and the response
+  validation holds the `AuthnInstant` to the request's creation whenever it was, for any purpose, whatever the
+  connection's setting is by then; `max_authentication_age_seconds`, when set, bounds how old it may be for any purpose.
 - `RequestedAuthnContext` is present only when the connection lists `requested_authn_context` classes: each as an
   `AuthnContextClassRef`, in the order listed, with `Comparison="exact"`. The response's class is checked against the
   same list.
@@ -83,8 +85,9 @@ request is written through is in `saml-adapter.md`.
 2. The driver checks the metadata expiry (`metadata-refresh.md`), then `AuthnRequests` writes the request: a fresh
    `ID`, the issue instant, the endpoints, the connection's options, `ForceAuthn` when asked, the state as `RelayState`,
    and the signing key when the connection signs.
-3. The start answers `Start::navigate()` with the redirect or the post and the `ID`; the start service stores the
-   request with `saml_request_id` under the connection's lock and reports `AuthorizationRequestStarted`.
+3. The start answers `Start::navigate()` with the redirect or the post, the `ID` and whether it sent `ForceAuthn`; the
+   start service stores the request with `saml_request_id` and `force_authn` under the connection's lock and reports
+   `AuthorizationRequestStarted`.
 4. The identity provider answers at the assertion consumer service by HTTP-POST with `InResponseTo` equal to the `ID`
    and the same `RelayState`.
 

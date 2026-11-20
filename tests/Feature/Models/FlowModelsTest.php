@@ -97,6 +97,7 @@ final class FlowModelsTest extends TestCase
         self::assertMatchesRegularExpression('/^[0-9a-z]{26}$/', $read->id);
         self::assertSame(Purpose::LINK, $read->purpose);
         self::assertFalse($read->issuer_required);
+        self::assertFalse($read->force_authn);
         self::assertSame('2026-11-01T09:40:00+00:00', $read->expires_at->toIso8601String());
         self::assertSame('2026-11-01T09:30:00+00:00', $read->created_at->toIso8601String());
         self::assertNull($read->consumed_at);

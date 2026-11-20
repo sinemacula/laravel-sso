@@ -40,7 +40,8 @@ final class ConsumedRequestTest extends TestCase
         $reference = RequestReference::generate();
         $started   = CarbonImmutable::parse('2026-11-01T10:00:00Z');
         $nonce     = hash('sha256', 'nonce-1');
-        $request   = new ConsumedRequest(Purpose::REAUTHENTICATE, 'web', $reference, $started, 'https://op.example.com', true, '_id', $nonce, self::CIPHERTEXT, self::encrypter());
+        $issuer    = 'https://op.example.com';
+        $request   = new ConsumedRequest(Purpose::REAUTHENTICATE, 'web', $reference, $started, $issuer, true, '_id', true, $nonce, self::CIPHERTEXT, self::encrypter());
 
         self::assertSame(Purpose::REAUTHENTICATE, $request->purpose);
         self::assertSame('web', $request->application);
@@ -49,6 +50,7 @@ final class ConsumedRequestTest extends TestCase
         self::assertSame('https://op.example.com', $request->expectedIssuer);
         self::assertTrue($request->issuerRequired);
         self::assertSame('_id', $request->samlRequestId);
+        self::assertTrue($request->forceAuthn);
         self::assertSame('pkce-1', $request->codeVerifier()?->reveal());
         self::assertTrue($request->isNonce('nonce-1'));
         self::assertFalse($request->isNonce('nonce-2'));
@@ -71,6 +73,7 @@ final class ConsumedRequestTest extends TestCase
         self::assertNull($request->expectedIssuer);
         self::assertFalse($request->issuerRequired);
         self::assertNull($request->samlRequestId);
+        self::assertFalse($request->forceAuthn);
         self::assertNull($request->codeVerifier());
     }
 
@@ -145,7 +148,7 @@ final class ConsumedRequestTest extends TestCase
     {
         $reference = RequestReference::fromString(str_repeat('r', 32));
         $nonce     = hash('sha256', 'nonce-1');
-        $request   = new ConsumedRequest(Purpose::SIGN_IN, 'web', $reference, CarbonImmutable::now(), 'iss', false, null, $nonce, self::CIPHERTEXT, self::encrypter());
+        $request   = new ConsumedRequest(Purpose::SIGN_IN, 'web', $reference, CarbonImmutable::now(), 'iss', false, null, true, $nonce, self::CIPHERTEXT, self::encrypter());
 
         self::assertSame([
             'purpose'         => 'sign_in',
@@ -154,6 +157,7 @@ final class ConsumedRequestTest extends TestCase
             'expected_issuer' => 'iss',
             'issuer_required' => false,
             'saml_request_id' => null,
+            'force_authn'     => true,
             'nonce'           => '[redacted]',
             'code_verifier'   => '[redacted]',
         ], $request->__debugInfo());
