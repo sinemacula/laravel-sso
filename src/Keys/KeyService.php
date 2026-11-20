@@ -545,6 +545,9 @@ final readonly class KeyService
 
         CiphertextWrite::save($key, 'private_key', 'The connection\'s key could not be written');
 
+        // Writing the locked row keeps a stale deleter from missing the key.
+        Connection::query()->useWritePdo()->whereKey($locked->id)->increment('children_version');
+
         $this->events->keyAdded($locked, $key, $caller, $client);
 
         if ($first) {
@@ -587,6 +590,9 @@ final readonly class KeyService
             'not_before'    => $facts['not_before'],
             'not_after'     => $facts['not_after'],
         ])->save();
+
+        // Writing the locked row keeps a stale deleter from missing the key.
+        Connection::query()->useWritePdo()->whereKey($locked->id)->increment('children_version');
 
         if ($anchor) {
             $locked->forceFill($reset)->save();

@@ -310,6 +310,9 @@ final readonly class DomainService
             'recheck_leased_until'     => null,
         ])->save();
 
+        // Writing the locked row keeps a stale deleter from missing the claim.
+        Connection::query()->useWritePdo()->whereKey($locked->id)->increment('children_version');
+
         $this->events->claimed($locked, $claim, $caller, $client);
 
         return DomainResult::claimed(DomainSummary::of($claim));

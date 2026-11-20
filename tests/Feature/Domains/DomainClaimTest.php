@@ -22,6 +22,7 @@ use SineMacula\Laravel\Sso\Events\DomainClaimed;
 use SineMacula\Laravel\Sso\Events\Enums\FailureReason;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOperation;
 use SineMacula\Laravel\Sso\Freshness\Enums\FreshnessOutcome;
+use SineMacula\Laravel\Sso\Models\Connection;
 use SineMacula\Laravel\Sso\Models\Domain;
 use Tests\Fixtures\Clients;
 
@@ -309,6 +310,34 @@ final class DomainClaimTest extends DomainServiceTestCase
         self::assertSame('2026-11-15T09:30:00+00:00', $second->pendingExpiresAt?->toAtomString());
         self::assertSame(1, Domain::query()->count());
         $this->assertEventSequence([DomainClaimed::class]);
+    }
+
+    /**
+     * Each claim written raises its connection's children version by one, a
+     * claim again of an expired one included; a refused claim raises nothing.
+     *
+     * @return void
+     */
+    public function testEachClaimWrittenRaisesTheChildrenVersionOfItsConnection(): void
+    {
+        $other   = $this->makeConnection();
+        $version = fn (): array => [
+            Connection::query()->findOrFail($this->connection->id)->children_version,
+            Connection::query()->findOrFail($other->id)->children_version,
+        ];
+
+        $this->claimDomain();
+        $this->claimDomain('example.org');
+
+        self::assertSame([2, 0], $version());
+
+        self::assertTrue($this->claimDomain()->isInvalid());
+        self::assertSame([2, 0], $version());
+
+        $this->clock->advance(604800);
+        $this->claimDomain();
+
+        self::assertSame([3, 0], $version());
     }
 
     /**
