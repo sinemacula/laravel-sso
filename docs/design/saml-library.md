@@ -268,8 +268,10 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    descriptors are re-rooted the same way and verified as the package's `Library\SignedDescriptor`, which models the
    signature and the `ID` alone: the library's `EntitiesDescriptor` would model every member of an aggregate and refuse
    the whole when one member holds a value its stricter rules refuse. Only the pinned entity is schema-validated,
-   from a copy without its `md:RoleDescriptor` elements, whose extension types (WS-Federation's, in Entra ID and AD FS
-   metadata) no bundled schema defines and nothing reads; values are read from the digested bytes.
+   and the validation covers the metadata the package reads: the copy validated leaves out every `md:RoleDescriptor`,
+   of any type, since nothing reads one and no bundled schema defines the extension types they carry (WS-Federation's,
+   in Entra ID and AD FS metadata). With trust anchors they stay under the signature, which is verified over the
+   entity as published; values are read from the digested bytes.
 4. **The package owns the algorithm policy.** Check `SignatureMethod`, `DigestMethod`, a single `Reference` and its
    transforms on the parsed `SignedInfo`. Build the decryptor for RSA-OAEP only, check `EncryptionMethod` before
    `decrypt()`, and verify a trusted Response signature before decrypting AES-CBC. The ordering must be enforceable, and
