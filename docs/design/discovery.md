@@ -4,8 +4,8 @@
 
 This note records how a flow starts from an email address instead of a named connection: how the email's domain is
 resolved to a connection, the fixed order of a discovery start and the refusal each step answers, the per-domain rate
-limit, why a match and a miss answer in the same shape and status, how their timing is padded to a minimum duration (a
-mitigation, not a guarantee), and what the answer still discloses. Starting through a named connection, the request
+limit, why a match and a miss answer with the same status and keys, how their timing is padded to a minimum duration
+(a mitigation, not a guarantee), and what the answer still discloses. Starting through a named connection, the request
 stored and the fallback a named start shares with discovery are in `authorization-requests.md`; domain claims and the
 predicates they are judged by are in `domains.md` and `domain-rechecks.md`.
 
@@ -61,10 +61,11 @@ predicates they are judged by are in `domains.md` and `domain-rechecks.md`.
      purpose (and the identity and session a `link` or `reauthenticate` gave), never the email, its domain or a
      connection, and answers `AuthorizationRequestService::fallback($application, $challengeGiven)`.
 - A match and a miss answer the same status (`started`), the same body keys (`reference`, `navigation`, and `verifier`
-  exactly when no challenge was given), a reference of the same form (32 base64url characters), a `redirect`
-  navigation and the same headers (`Cache-Control: no-store`). Only the URL differs: the identity provider's for a
-  match, the application's `discovery.fallback_url` for a miss. A miss's reference names no request and its verifier
-  redeems nothing.
+  exactly when no challenge was given), a reference of the same form (32 base64url characters) and the same headers
+  (`Cache-Control: no-store`). A miss's navigation is a `redirect` to the application's `discovery.fallback_url`. A
+  match's is the driver's: a `redirect` to the identity provider, or, through a SAML connection whose `sso_binding` is
+  `http_post`, a `post` to it carrying `SAMLRequest` and `RelayState`. A miss's reference names no request and its
+  verifier redeems nothing.
 - `Discovery\Pacer` (`final`, `@internal`) holds every answer from step 2 on, refusals included, until
   `FlowSettings::discoveryMinimumDurationMilliseconds()` (50 to 2000, default 250) has passed since it started. It
   measures on the monotonic clock (`hrtime(true)`), not the package's `Contracts\Clock`, which a test may freeze, and
@@ -82,7 +83,8 @@ predicates they are judged by are in `domains.md` and `domain-rechecks.md`.
 - The email and its domain appear in no event and no log. The public reference is the only flow identifier an event
   carries; no event carries the protocol state, the nonce, a verifier or a challenge.
 - What the answer still discloses: where the navigation leads shows whether a domain routes to an identity provider, as
-  any discovery does. It never shows whether a person has an account, since no user is read. The guide says so.
+  any discovery does, and a `post` navigation shows that it routes to one over the HTTP-POST binding. It never shows
+  whether a person has an account, since no user is read. The guide says so.
 - An application that offers discovery while the feature is on needs `discovery.fallback_url`: `[applications]` refuses
   its absence at boot, and a start for such an application fails closed with the same message.
 

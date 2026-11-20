@@ -19,7 +19,7 @@ use SineMacula\Laravel\Sso\RateLimiting\AttemptSubject;
 
 /**
  * Starts a flow through the connection an email's domain routes to, or leads to
- * the application's fallback in the same shape, status and time.
+ * the application's fallback with the same status, keys and time.
  *
  * Call outside any transaction on the storage connection.
  *

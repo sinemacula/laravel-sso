@@ -90,7 +90,7 @@ final class KeyRotationTest extends TestCase
         self::assertSame([$old->id], self::ids($this->ring()->decryption($id)));
         self::assertSame([[$old->id, 'current', '2026-11-01 09:30:00', null]], $this->rows());
 
-        // A next key is published alongside it, and does not yet decrypt
+        // A next key is published alongside it, and decrypts after it
         $this->clock->advance(86400);
 
         $new = self::summaryOf($this->keys()->addNext(self::TENANT, $id, KeyUse::SP_ENCRYPTION, Clients::browser()));
@@ -98,7 +98,7 @@ final class KeyRotationTest extends TestCase
         self::assertSame(KeyState::NEXT, $new->state);
         self::assertSame([$old->id, $new->id], self::ids($this->ring()->published($id, KeyUse::SP_ENCRYPTION)));
         self::assertSame($new->id, $this->ring()->next($id, KeyUse::SP_ENCRYPTION)?->id);
-        self::assertSame([$old->id], self::ids($this->ring()->decryption($id)));
+        self::assertSame([$old->id, $new->id], self::ids($this->ring()->decryption($id)));
 
         // Made current, it replaces the old key, which still decrypts
         $this->clock->advance(86400);
