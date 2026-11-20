@@ -16,7 +16,7 @@ namespace SineMacula\Laravel\Sso\Keys\Enums;
  */
 enum KeyState: string
 {
-    // Published alongside the current key, not yet used
+    // Published alongside the current key; decrypting, not yet signing
     case NEXT = 'next';
 
     // The key signing and, for encryption, published and decrypting
