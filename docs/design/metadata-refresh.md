@@ -26,12 +26,13 @@ through the same claim, compare-and-set, backoff, queue, command, stale limit an
   `metadata_invalid`. libxml's default limits bound one text node, name or attribute, never the document, so an
   aggregate of tens of MiB parses without `LIBXML_PARSEHUGE`, which stays off.
 - Only the chosen entity is held to the SAML 2.0 metadata schema (`HardenedParser::validateElement()`, the entity copied
-  into a document of its own with every namespace in scope where it stood, its `md:RoleDescriptor` elements left out of
-  the copy; `metadata_invalid`, `schema`). No other
-  member of an aggregate is validated, and none, the chosen entity included, is modelled by the library's
-  `EntityDescriptor`, whose stricter rules (a URL with a scheme, a logo by `http`, `https` or `data`, an ASCII email
-  address) judge values the reader never reads. A federation member with a value the schema or the library refuses
-  never refuses the aggregate for every other connection pinned to it.
+  into a document of its own with every namespace in scope where it stood; `metadata_invalid`, `schema`). The validation
+  covers the metadata the reader reads: every `md:RoleDescriptor`, of any type, is left out of the copy, and with
+  anchors it stays under the signature, verified over the entity as published. No other member of an aggregate is
+  validated, and none, the chosen entity included, is modelled by the library's `EntityDescriptor`, whose stricter rules
+  (a URL with a scheme, a logo by `http`, `https` or `data`, an ASCII email address) judge values the reader never
+  reads. A federation member with a value the schema or the library refuses never refuses the aggregate for every other
+  connection pinned to it.
 - The root is an `EntityDescriptor` or an `EntitiesDescriptor`. The entity is chosen by the pinned entity id alone,
   compared exactly: exactly one `EntityDescriptor` anywhere in the document carries it (none is
   `metadata_entity_not_found`, two `metadata_invalid`, wherever the second hides), and it is the root or a child of an
