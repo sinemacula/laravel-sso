@@ -150,7 +150,8 @@ schedule when it has a [metadata signing anchor](#a-metadata-signing-anchor), or
 | No                      | `false`            | Left alone      | None                                  |
 
 A connection with no `metadata_url` never refreshes and has no deadline. Adding an anchor to a connection with a URL
-turns the default on, and removing the last turns it off, with no other change.
+turns the default on, and removing the last turns it off, with no other change. A disabled connection refreshes as an
+enabled one does.
 
 <!-- snippet: tests/Integration/Examples/SamlMetadata/admin/follow.php#saml-metadata-follow -->
 ```php
