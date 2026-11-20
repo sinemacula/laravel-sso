@@ -121,6 +121,15 @@ final class NamespaceDependenciesTest extends TestCase
     private const string TIME_READ = '/^(?:now|today|time|microtime|hrtime|(?!(?:self|static|parent)::)[\w\\\]+::(?:now|today)|date_create(?:_immutable)?'
         . '|new (?:[\w\\\]*\\\)?(?:datetime|carbon)(?:immutable)?)$/';
 
+    /** @var array<string, array<int, string>> The functions that read the time for an omitted or null argument, by position and name. */
+    private const array TIME_DEFAULTS = [
+        'date'      => [1 => 'timestamp'],
+        'gmdate'    => [1 => 'timestamp'],
+        'mktime'    => ['hour', 'minute', 'second', 'month', 'day', 'year'],
+        'gmmktime'  => ['hour', 'minute', 'second', 'month', 'day', 'year'],
+        'strtotime' => [1 => 'baseTimestamp'],
+    ];
+
     /** @var string A construction of an event context, as `callsIn()` gives it. */
     private const string CONTEXT_BUILT = '/^new (?:[\w\\\]*\\\)?eventcontext$/';
 
@@ -494,6 +503,54 @@ final class NamespaceDependenciesTest extends TestCase
             'date_create',
             'date_create_immutable',
         ], self::timeReadsIn($source));
+    }
+
+    /**
+     * Rows of `[call, reads]`: a call of a time function and what the time scan
+     * finds in it.
+     *
+     * @return iterable<string, array{0: string, 1: list<string>}>
+     */
+    public static function provideTimeFunctionCalls(): iterable
+    {
+        yield 'date without a timestamp' => ['date(\'Y\')', ['date']];
+        yield 'date with a null timestamp' => ['\date(\'Y\', null)', ['date']];
+        yield 'date with a bracketed null timestamp' => ['date(\'Y\', (null))', ['date']];
+        yield 'gmdate with a named null timestamp' => ['gmdate(format: \'Y\', timestamp: NULL)', ['gmdate']];
+        yield 'date with a timestamp' => ['date(\'Y\', $now)', []];
+        yield 'date with a named timestamp' => ['date(timestamp: $now, format: \'Y\')', []];
+        yield 'date with a nested call' => ['date(implode(\',\', [$a, $b]))', ['date']];
+        yield 'date with an interpolated format' => ['date("{$format}", $now)', []];
+        yield 'date with unpacked arguments' => ['date(\'Y\', ...$rest)', ['date']];
+        yield 'date as a callable' => ['date(...)', ['date']];
+        yield 'mktime with no argument' => ['mktime()', ['mktime']];
+        yield 'mktime with a part omitted' => ['mktime(0, 0, 0, 1, 1)', ['mktime']];
+        yield 'gmmktime with a null part' => ['gmmktime(0, null, 0, 1, 1, 2026)', ['gmmktime']];
+        yield 'mktime with a named part omitted' => ['mktime(0, 0, 0, day: 1, year: 2026)', ['mktime']];
+        yield 'mktime with every part' => ['mktime(0, 0, 0, 1, 1, 2026,)', []];
+        yield 'mktime with every part named' => ['mktime(year: 2026, month: 1, day: 1, hour: 0, minute: 0, second: 0)', []];
+        yield 'strtotime without a base' => ['strtotime(\'+1 day\')', ['strtotime']];
+        yield 'strtotime with a null base' => ['strtotime(\'+1 day\', null)', ['strtotime']];
+        yield 'strtotime with a base' => ['strtotime(\'+1 day\', $now)', []];
+        yield 'strtotime with a named base' => ['strtotime(baseTimestamp: $now, datetime: \'+1 day\')', []];
+        yield 'a method' => ['$this->date(\'Y\')', []];
+        yield 'a static method' => ['self::strtotime(\'+1 day\')', []];
+        yield 'a namespaced function' => ['Support\date(\'Y\')', []];
+        yield 'a declaration' => ['function mktime(int $hour): int {}', []];
+    }
+
+    /**
+     * The time scan finds a time function left to read the clock for a
+     * timestamp or date part, and skips one given every part.
+     *
+     * @param  string  $call
+     * @param  list<string>  $reads
+     * @return void
+     */
+    #[DataProvider('provideTimeFunctionCalls')]
+    public function testTheTimeScanFindsATimeFunctionLeftToReadTheClock(string $call, array $reads): void
+    {
+        self::assertSame($reads, self::timeReadsIn("<?php\n\nnamespace SineMacula\\Laravel\\Sso\\Example;\n\n{$call};\n"));
     }
 
     /**
@@ -984,7 +1041,123 @@ final class NamespaceDependenciesTest extends TestCase
      */
     private static function timeReadsIn(string $source): array
     {
-        return array_values(preg_grep(self::TIME_READ, self::callsIn($source)) ?: []);
+        return [...array_values(preg_grep(self::TIME_READ, self::callsIn($source)) ?: []), ...self::timeDefaultsIn($source)];
+    }
+
+    /**
+     * The functions in `TIME_DEFAULTS` called, by the name as written, with an
+     * argument they read the time for omitted, null or possibly unpacked.
+     *
+     * @param  string  $source
+     * @return list<string>
+     */
+    private static function timeDefaultsIn(string $source): array
+    {
+        $tokens = self::tokens($source);
+        $reads  = [];
+
+        foreach ($tokens as $index => $token) {
+
+            $name = is_array($token) && in_array($token[0], [T_STRING, T_NAME_FULLY_QUALIFIED], true) ? self::callee($token) : '';
+
+            if (!array_key_exists($name, self::TIME_DEFAULTS) || ($tokens[$index + 1] ?? null) !== '(' || self::isMember($tokens[$index - 1] ?? null)) {
+                continue;
+            }
+
+            if (!self::defaultsTheTime(self::TIME_DEFAULTS[$name], self::given(self::arguments($tokens, $index + 2)))) {
+                continue;
+            }
+
+            $reads[] = $name;
+        }
+
+        return array_values(array_unique($reads));
+    }
+
+    /**
+     * Whether the arguments given leave any of the parameters omitted or null;
+     * unpacked arguments (`null`) may.
+     *
+     * @param  array<int, string>  $parameters
+     * @param  ?array<int|string, string>  $given
+     * @return bool
+     */
+    private static function defaultsTheTime(array $parameters, ?array $given): bool
+    {
+        foreach ($parameters as $position => $name) {
+            if ($given === null || trim($given[$position] ?? $given[$name] ?? 'null', '()') === 'null') {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Each argument's lower-case text by position, or by name when named;
+     * `null` when any is unpacked.
+     *
+     * @param  list<non-empty-list<array{0: int, 1: string, 2: int}|string>>  $arguments
+     * @return ?array<int|string, string>
+     */
+    private static function given(array $arguments): ?array
+    {
+        $given = [];
+
+        foreach ($arguments as $argument) {
+
+            if (is_array($argument[0]) && $argument[0][0] === T_ELLIPSIS) {
+                return null;
+            }
+
+            $name = self::nameOf($argument);
+
+            $given[$name ?? count($given)] = implode('', array_map(self::callee(...), $name === null ? $argument : array_slice($argument, 2)));
+        }
+
+        return $given;
+    }
+
+    /**
+     * The parameter a named argument names; `null` for a positional one.
+     *
+     * @param  non-empty-list<array{0: int, 1: string, 2: int}|string>  $argument
+     * @return ?string
+     */
+    private static function nameOf(array $argument): ?string
+    {
+        return is_array($argument[0]) && $argument[0][0] === T_STRING && ($argument[1] ?? null) === ':' ? $argument[0][1] : null;
+    }
+
+    /**
+     * The arguments of the call whose first argument starts at the index, each
+     * as its tokens.
+     *
+     * @param  list<array{0: int, 1: string, 2: int}|string>  $tokens
+     * @param  int  $index
+     * @return list<non-empty-list<array{0: int, 1: string, 2: int}|string>>
+     */
+    private static function arguments(array $tokens, int $index): array
+    {
+        $arguments = [[]];
+        $depth     = 0;
+
+        for (; ($token = $tokens[$index] ?? ')') !== ')' || $depth > 0; $index++) {
+
+            $depth += match (true) {
+                in_array($token, ['(', '[', '{'], true), is_array($token) && in_array($token[0], [T_CURLY_OPEN, T_DOLLAR_OPEN_CURLY_BRACES, T_ATTRIBUTE], true) => 1,
+                in_array($token, [')', ']', '}'], true)                                                                                                         => -1,
+                default                                                                                                                                         => 0,
+            };
+
+            if ($token === ',' && $depth === 0) {
+                $arguments[] = [];
+            } else {
+                $arguments[array_key_last($arguments)][] = $token;
+            }
+        }
+
+        return array_values(array_filter($arguments, static fn (array $argument): bool => $argument !== []));
     }
 
     /**

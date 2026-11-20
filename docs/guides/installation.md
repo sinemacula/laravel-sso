@@ -15,6 +15,10 @@ plugins disabled, `--no-plugins` or the plugin not allowed, and any registry it 
 earlier install: run `composer install` again with it allowed, into a fresh vendor directory if the plugin has run
 before.
 
+SAML does not support PHP built against PCRE2 10.45 to 10.47 (see `PCRE_VERSION`): under them the SAML library refuses
+every NameID and attribute value with a character above U+00FF. Use PCRE2 10.48 or later. While SAML is on,
+`php artisan sso:check` fails under `[saml2]` on such a build.
+
 The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets three limits until the package
 can move to its next major version, which needs PHP 8.5:
 

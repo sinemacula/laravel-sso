@@ -95,23 +95,20 @@ trait FailsDatabaseStatements
      */
     protected function failCommit(int $occurrence = 1, ?string $connection = null): void
     {
-        $name   = $connection ?? StorageConnection::resolvedName();
-        $failed = false;
+        $this->armCommitFailure($occurrence, $connection, false);
+    }
 
-        Event::listen(TransactionCommitting::class, function (TransactionCommitting $event) use ($name, &$occurrence, &$failed): void {
-
-            if ($failed || $event->connectionName !== $name || --$occurrence > 0) {
-                return;
-            }
-
-            $failed = true;
-
-            $this->databaseFailureState()['fired']++;
-
-            $event->connection->getPdo()->rollBack();
-
-            throw self::injectedFailure($event->connection, 'commit');
-        });
+    /**
+     * Fail the nth outermost commit as a PostgreSQL serialisation failure,
+     * rolled back first as a failed one is.
+     *
+     * @param  int  $occurrence
+     * @param  ?string  $connection
+     * @return void
+     */
+    protected function failToSerialiseCommit(int $occurrence = 1, ?string $connection = null): void
+    {
+        $this->armCommitFailure($occurrence, $connection, true);
     }
 
     /**
@@ -174,6 +171,35 @@ trait FailsDatabaseStatements
     private function databaseFailureState(): \ArrayObject
     {
         return $this->databaseFailures ??= new \ArrayObject(['statements' => [], 'fired' => 0]);
+    }
+
+    /**
+     * Fail the nth outermost commit on the connection, once.
+     *
+     * @param  int  $occurrence
+     * @param  ?string  $connection
+     * @param  bool  $serialization
+     * @return void
+     */
+    private function armCommitFailure(int $occurrence, ?string $connection, bool $serialization): void
+    {
+        $name   = $connection ?? StorageConnection::resolvedName();
+        $failed = false;
+
+        Event::listen(TransactionCommitting::class, function (TransactionCommitting $event) use ($name, $serialization, &$occurrence, &$failed): void {
+
+            if ($failed || $event->connectionName !== $name || --$occurrence > 0) {
+                return;
+            }
+
+            $failed = true;
+
+            $this->databaseFailureState()['fired']++;
+
+            $event->connection->getPdo()->rollBack();
+
+            throw $serialization ? self::serializationFailure($event->connection, 'commit') : self::injectedFailure($event->connection, 'commit');
+        });
     }
 
     /**
