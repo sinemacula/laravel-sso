@@ -368,18 +368,66 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * A response whose issuer and assertion are in the default namespace, as
-     * ADFS writes them, is verified and read.
+     * Rows of `[unprefixed]`: whether the assertion's signature is in the
+     * default namespace too.
+     *
+     * @return iterable<string, array{0: bool}>
+     */
+    public static function provideDefaultNamespaceSignatures(): iterable
+    {
+        yield from [
+            'a prefixed signature, as AD FS writes it'              => [false],
+            'a signature in its own default, as Entra ID writes it' => [true],
+        ];
+    }
+
+    /**
+     * A response whose issuer and assertion are in the default namespace is
+     * verified and read, its signature prefixed or not.
+     *
+     * @param  bool  $unprefixed
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    #[DataProvider('provideDefaultNamespaceSignatures')]
+    public function testAResponseInTheDefaultNamespaceIsRead(bool $unprefixed): void
+    {
+        $assertion = self::assertionOf($this->read(self::defaultNamespaced($unprefixed))->response ?? self::fail('The response was refused.'));
+
+        self::assertSame([true, 'alice', ['alice@example.test']], [$assertion->isSigned(), $assertion->subject()?->nameId()?->value(), $assertion->attributes()[0]->values()]);
+    }
+
+    /**
+     * An assertion named by the prefix its response binds, declaring the same
+     * namespace as its default too, is verified and read.
      *
      * @return void
      *
      * @throws \DOMException
      */
-    public function testAResponseInTheDefaultNamespaceIsRead(): void
+    public function testAnAssertionBindingItsNamespaceTwiceIsRead(): void
     {
-        $assertion = self::assertionOf($this->read(self::defaultNamespaced())->response ?? self::fail('The response was refused.'));
+        $options   = self::responseOptions();
+        $writer    = new ResponseWriter;
+        $assertion = str_replace('<saml:Assertion ', '<saml:Assertion xmlns="' . ResponseWriter::NS_SAML . '" ', $writer->assertion($options));
+        $read      = $this->read(base64_encode($writer->response($options, self::signedAssertion($assertion))))->response;
 
-        self::assertSame([true, 'alice', ['alice@example.test']], [$assertion->isSigned(), $assertion->subject()?->nameId()?->value(), $assertion->attributes()[0]->values()]);
+        self::assertSame('alice', self::assertionOf($read ?? self::fail('The response was refused.'))->subject()?->nameId()?->value());
+    }
+
+    /**
+     * Rows of `[declared]`: whether the response declares `xs` as well as the
+     * assertion.
+     *
+     * @return iterable<string, array{0: bool}>
+     */
+    public static function provideInclusiveNamespaceScopes(): iterable
+    {
+        yield from [
+            'the assertion alone declaring xs'                 => [false],
+            'the response declaring xs too, as Okta writes it' => [true],
+        ];
     }
 
     /**
@@ -387,15 +435,35 @@ final class SamlAdapterTest extends TestCase
      * as Okta and Shibboleth sign, verifies once the assertion is re-rooted,
      * and its typed values are read.
      *
+     * @param  bool  $declared
      * @return void
      *
      * @throws \DOMException
      */
-    public function testASignatureKeepingInclusiveNamespacesIsRead(): void
+    #[DataProvider('provideInclusiveNamespaceScopes')]
+    public function testASignatureKeepingInclusiveNamespacesIsRead(bool $declared): void
     {
-        $assertion = self::assertionOf($this->read(self::inclusivelySigned())->response ?? self::fail('The response was refused.'));
+        $assertion = self::assertionOf($this->read(self::inclusivelySigned($declared))->response ?? self::fail('The response was refused.'));
 
         self::assertSame([true, ['alice@example.test']], [$assertion->isSigned(), $assertion->attributes()[0]->values()]);
+    }
+
+    /**
+     * An `InclusiveNamespaces` list on the `SignedInfo`'s own canonicalisation
+     * is refused by the schema, which knows no such element there.
+     *
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    public function testAnInclusiveNamespacesListOnTheSignedInfosCanonicalisationIsRefused(): void
+    {
+        $method = '<ds:CanonicalizationMethod Algorithm="' . self::NS_EC . '"';
+        $xml    = (string) base64_decode(self::inclusivelySigned(false), true);
+        $listed = str_replace($method . '/>', $method . '><ec:InclusiveNamespaces xmlns:ec="' . self::NS_EC . '" PrefixList="xs"/></ds:CanonicalizationMethod>', $xml);
+
+        self::assertNotSame($xml, $listed);
+        self::assertSame(['response_invalid', 'schema'], $this->refusal(base64_encode($listed)));
     }
 
     /**
@@ -550,19 +618,47 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * An unsuccessful response's assertion that cannot stand alone, needing a
-     * prefix only the response declares, is refused.
+     * Rows of `[status, signed, refusal]`: an assertion relying on a prefix the
+     * response binds, and how its response is refused, if at all.
      *
-     * @return void
+     * @return iterable<string, array{0: string, 1: bool, 2: array{0: ?string, 1: ?string}}>
      */
-    public function testAnUnsuccessfulResponsesAssertionMustStandAlone(): void
+    public static function provideInheritedPrefixes(): iterable
     {
-        $options   = [...self::responseOptions(), 'status' => 'urn:oasis:names:tc:SAML:2.0:status:Responder'];
+        $responder = 'urn:oasis:names:tc:SAML:2.0:status:Responder';
+
+        yield from [
+            'unsuccessful, the assertion unsigned' => [$responder, false, [null, null]],
+            'unsuccessful, the assertion signed'   => [$responder, true, ['signature_invalid', 'signature']],
+            'successful, the assertion signed'     => [FakeSamlResponse::SUCCESS, true, ['signature_invalid', 'signature']],
+        ];
+    }
+
+    /**
+     * An assertion may use a prefix only the response binds, but a signature
+     * that does not cover the binding verifies nothing that reads it.
+     *
+     * @param  string  $status
+     * @param  bool  $signed
+     * @param  array{0: ?string, 1: ?string}  $refusal
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    #[DataProvider('provideInheritedPrefixes')]
+    public function testASignatureMustCoverThePrefixesItsAssertionReads(string $status, bool $signed, array $refusal): void
+    {
+        $options   = [...self::responseOptions(), 'status' => $status];
         $writer    = new ResponseWriter;
         $assertion = str_replace('</saml:Conditions>', '<saml:Condition xsi:type="p:OneTimeUseType"/></saml:Conditions>', $writer->assertion($options));
-        $response  = str_replace('<samlp:Response ', '<samlp:Response xmlns:p="urn:oasis:names:tc:SAML:2.0:assertion" ', $writer->response($options, $assertion));
 
-        self::assertSame(['response_invalid', 'structure'], $this->refusal(base64_encode($response)));
+        if ($signed) {
+            $assertion = self::signedAssertion($assertion);
+        }
+
+        $response = str_replace('<samlp:Response ', '<samlp:Response xmlns:p="urn:oasis:names:tc:SAML:2.0:assertion" ', $writer->response($options, $assertion));
+
+        self::assertSame($refusal, $this->refusal(base64_encode($response)));
     }
 
     /**
@@ -909,6 +1005,7 @@ final class SamlAdapterTest extends TestCase
         $signature = substr($signed, $start, (int) strpos($signed, '</ds:Signature>') + strlen('</ds:Signature>') - $start);
         $nested    = str_replace('<saml:AssertionIDRef>_advised</saml:AssertionIDRef>', $writer->assertion([...$options, 'assertion_id' => '_advised']), $advised);
         $misplaced = str_replace('<saml:AssertionIDRef>_advised</saml:AssertionIDRef>', $signature, $advised);
+        $bare      = (string) preg_replace('#<saml:Subject>.*</saml:AttributeStatement>#s', '', $writer->assertion($options));
 
         self::assertTrue($this->read(self::signedAround($advised, $options))->isRead());
         self::assertSame(['response_invalid', 'decrypted_structure'], $this->refusal(self::signedAround($issuer, $options)));
@@ -916,6 +1013,7 @@ final class SamlAdapterTest extends TestCase
         self::assertSame(['response_invalid', 'decrypted_structure'], $this->refusal(self::signedAround($misplaced, $options)));
         self::assertSame(['response_invalid', 'duplicate_id'], $this->refusal(self::signedAround($sameId, $options)));
         self::assertSame(['response_invalid', 'schema'], $this->refusal(self::signedAround($invalid, $options)));
+        self::assertSame(['response_invalid', 'structure'], $this->refusal(self::signedAround($bare, $options)));
     }
 
     /**
@@ -1163,14 +1261,15 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
-     * A response as ADFS writes one, its issuer and assertion each in the
-     * default namespace, encoded.
+     * A response as AD FS and Entra ID write one, its issuer and assertion each
+     * in the default namespace, encoded.
      *
+     * @param  bool  $unprefixed
      * @return string
      *
      * @throws \DOMException
      */
-    private static function defaultNamespaced(): string
+    private static function defaultNamespaced(bool $unprefixed): string
     {
         $options   = self::responseOptions();
         $writer    = new ResponseWriter;
@@ -1179,6 +1278,10 @@ final class SamlAdapterTest extends TestCase
         self::idp()->signer()->sign(self::rootOf($assertion));
 
         $signed = (string) $assertion->saveXML(self::rootOf($assertion));
+
+        if ($unprefixed) {
+            $signed = self::unprefixedSignature($signed);
+        }
         $issuer = '<Issuer xmlns="' . ResponseWriter::NS_SAML . '">$1</Issuer>';
 
         return base64_encode((string) preg_replace('#<saml:Issuer>([^<]*)</saml:Issuer>#', $issuer, $writer->response($options, $signed)));
@@ -1186,13 +1289,15 @@ final class SamlAdapterTest extends TestCase
 
     /**
      * A response whose assertion declares `xs` and is signed, as Okta and
-     * Shibboleth sign, with exclusive canonicalisation keeping `xs`, encoded.
+     * Shibboleth sign, with exclusive canonicalisation keeping `xs`, encoded;
+     * the response declares `xs` too when asked.
      *
+     * @param  bool  $declared
      * @return string
      *
      * @throws \DOMException
      */
-    private static function inclusivelySigned(): string
+    private static function inclusivelySigned(bool $declared): string
     {
         $options   = self::responseOptions();
         $writer    = new ResponseWriter;
@@ -1209,7 +1314,46 @@ final class SamlAdapterTest extends TestCase
         $part('DigestValue')->textContent    = $digest;
         $part('SignatureValue')->textContent = self::idp()->signer()->signatureValue((string) $part('SignedInfo')->C14N(true));
 
-        return base64_encode($writer->response($options, (string) $document->saveXML($root)));
+        $response = $writer->response($options, (string) $document->saveXML($root));
+
+        return base64_encode($declared ? str_replace('<samlp:Response ', '<samlp:Response' . $xs . ' ', $response) : $response);
+    }
+
+    /**
+     * The assertion signed by the trusted provider.
+     *
+     * @param  string  $xml
+     * @return string
+     *
+     * @throws \DOMException
+     */
+    private static function signedAssertion(string $xml): string
+    {
+        $document = self::document($xml);
+
+        self::idp()->signer()->sign(self::rootOf($document));
+
+        return (string) $document->saveXML(self::rootOf($document));
+    }
+
+    /**
+     * The signed assertion with its signature moved into the default namespace
+     * and signed again.
+     *
+     * @param  string  $xml
+     * @return string
+     *
+     * @throws \DOMException
+     */
+    private static function unprefixedSignature(string $xml): string
+    {
+        $document = self::document((string) preg_replace(['#<(/?)ds:#', '#xmlns:ds=#'], ['<$1', 'xmlns='], $xml));
+        $info     = $document->getElementsByTagNameNS(ResponseReader::NS_DS, 'SignedInfo')->item(0)     ?? self::fail('The signature has no SignedInfo.');
+        $value    = $document->getElementsByTagNameNS(ResponseReader::NS_DS, 'SignatureValue')->item(0) ?? self::fail('The signature has no SignatureValue.');
+
+        $value->textContent = self::idp()->signer()->signatureValue((string) $info->C14N(true));
+
+        return (string) $document->saveXML(self::rootOf($document));
     }
 
     /**

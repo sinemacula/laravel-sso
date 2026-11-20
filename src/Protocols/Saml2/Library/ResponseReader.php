@@ -353,8 +353,8 @@ final readonly class ResponseReader
     }
 
     /**
-     * The assertion copied into its own document, so saml2 v6 digests it rather
-     * than the enclosing response (fixed upstream in PR #424).
+     * The assertion re-rooted in its own document, so saml2 v6 digests it
+     * rather than the enclosing response (fixed upstream in PR #424).
      *
      * @param  \DOMElement  $element
      * @return \SimpleSAML\SAML2\XML\saml\Assertion
@@ -364,12 +364,7 @@ final readonly class ResponseReader
     private static function reRooted(\DOMElement $element): Assertion
     {
         try {
-            $document = new \DOMDocument('1.0', 'UTF-8');
-            $copy     = $document->importNode($element, true);
-
-            $document->appendChild($copy);
-
-            return Assertion::fromXML($copy instanceof \DOMElement ? $copy : throw new ReadFailure(FailureReason::RESPONSE_INVALID, 'structure'));
+            return Assertion::fromXML(HardenedParser::reRooted($element));
         } catch (\Throwable) {
             throw new ReadFailure(FailureReason::RESPONSE_INVALID, 'structure');
         }

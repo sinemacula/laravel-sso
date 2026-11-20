@@ -272,6 +272,49 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
+     * Rows of `[xml]`: metadata declaring a default namespace below its entity,
+     * as an element of the entity's namespace or as Entra ID writes its keys.
+     *
+     * @return iterable<string, array{0: \Closure(): string}>
+     */
+    public static function provideNestedDefaultNamespaces(): iterable
+    {
+        yield from [
+            'a role descriptor redeclaring the metadata namespace' => [static fn (): string => (string) preg_replace_callback(
+                '#<md:IDPSSODescriptor.*?</md:IDPSSODescriptor>#s',
+                static fn (array $role): string => str_replace(
+                    ['<md:', '</md:', '<IDPSSODescriptor'],
+                    ['<', '</', '<IDPSSODescriptor xmlns="' . MetadataReader::NS_MD . '"'],
+                    $role[0],
+                ),
+                self::metadata()->toXml(),
+            )],
+            'a key in the signature namespace, as Entra ID writes it' => [static fn (): string => (string) preg_replace(
+                ['#<(/?)md:#', '#xmlns:md=#', '#<(/?)ds:#', '#xmlns:ds=#'],
+                ['<$1', 'xmlns=', '<$1', 'xmlns='],
+                self::metadata()->toXml(),
+            )],
+        ];
+    }
+
+    /**
+     * Signed metadata declaring a default namespace below its entity is read
+     * unanchored but refused anchored: the SAML library re-prefixes that
+     * element in the copy it digests, so the digest never matches.
+     *
+     * @param  \Closure(): string  $xml
+     * @return void
+     */
+    #[DataProvider('provideNestedDefaultNamespaces')]
+    public function testSignedMetadataWithANestedDefaultNamespaceIsRefused(\Closure $xml): void
+    {
+        $signed = self::signedRoot($xml(), self::idp()->signer());
+
+        self::assertTrue($this->read($signed)->isRead());
+        self::assertRefused(FailureReason::METADATA_SIGNATURE_INVALID, 'signature', $this->read($signed, anchors: [self::idp()->certificate()]));
+    }
+
+    /**
      * Every signature on the entity's path must verify, the aggregate's and the
      * entity's alike.
      *
