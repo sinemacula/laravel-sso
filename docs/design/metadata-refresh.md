@@ -72,30 +72,32 @@ through the same claim, compare-and-set, backoff, queue, command, stale limit an
   `true` delegates that trust to the URL and its TLS. Adding the first anchor turns the default on and removing the last
   turns it off, with no other change. The URL the administrator saved is the only one ever fetched. The OIDC source is
   recorded in `oidc-discovery.md`; there the setting defaults to on. A connection past its stale limit is still due, so
-  the schedule recovers it. The due connections are those of the protocols with a source, read on the write connection,
-  whose `metadata_refresh_at` is unset or not after now and whose `metadata_claimed_until` is unset or not after now, in
-  chunks of 100 by keyset on the id, that refresh; each source judges a chunk at once (`MetadataSource::refreshing()`),
-  so the SAML source reads the anchors of a chunk in one statement, since a connection that never refreshes stays due
-  and is read on every run. `sso:metadata:refresh` lists their ids (`dueConnectionIds()`) and queues one
-  `Metadata\RefreshConnectionMetadata` job per connection, carrying the id alone, on `sso.metadata.queue.connection` and
-  `.name`, allowed `.timeout_seconds` (30 to 3600, default 60, never more than `claim_seconds`, and less than the queue
-  connection's `retry_after` where it sets one, checked at boot, so a refresh still running is never reserved by a
-  second worker and recorded as failed) and `.tries` (default 1, failing on a timeout rather than being released past
-  its claim); the job calls `refreshQueued()`, which reads the connection again and is `skipped` when it is gone, no
-  longer refreshes or is no longer due. `--sync` refreshes them in the command instead (`refreshDue()`). The job and the
-  command each pass `new ClientContext(null, null)`, built where the work starts, so their events carry no IP address or
-  user agent; `refreshNow()` takes the administrator's client after their caller. `refreshNow()` refreshes the tenant's
-  connection whatever its backoff, its `metadata_refresh` setting or `sso.features.metadata_refresh`, and whether it has
-  expired or not, so it recovers a connection the schedule does not: it asks only `MetadataSource::isRefreshable()`,
-  that what it fetches is a URL the package may fetch, and that its protocol is available (`connection_not_found` for
-  another tenant's, `feature_disabled` for a protocol switched off or nothing to fetch, with nothing fetched), for the
-  `Identities\Caller` it requires. Where the schedule would not refresh the connection (its setting or the feature off,
-  or a SAML connection that has not opted in) it first asks `sso.connection.trust` freshness for that caller, and
-  `stale` is `freshness_required`; the write asks it again once the connection is locked, before the compare and set
-  (`RefreshWriter::locked()`), and a caller stale there releases the claim, writes nothing else, reports no event and is
-  `freshness_required`. It then counts the attempt against `AttemptSubject::metadata()` (the import's limit,
-  `sso.rate_limits.metadata`): past it, `rate_limited` with `retryAfter`, before anything is claimed or fetched. Every
-  entry refuses to run inside a transaction on the storage connection (`StorageConnection::assertNoTransaction()`).
+  the schedule recovers it. Whether a connection is enabled plays no part: a disabled one is refreshed as an enabled one
+  is, by the schedule and by `refreshNow()`. The due connections are those of the protocols with a source, read on the
+  write connection, whose `metadata_refresh_at` is unset or not after now and whose `metadata_claimed_until` is unset or
+  not after now, in chunks of 100 by keyset on the id, that refresh; each source judges a chunk at once
+  (`MetadataSource::refreshing()`), so the SAML source reads the anchors of a chunk in one statement, since a connection
+  that never refreshes stays due and is read on every run. `sso:metadata:refresh` lists their ids (`dueConnectionIds()`)
+  and queues one `Metadata\RefreshConnectionMetadata` job per connection, carrying the id alone, on
+  `sso.metadata.queue.connection` and `.name`, allowed `.timeout_seconds` (30 to 3600, default 60, never more than
+  `claim_seconds`, and less than the queue connection's `retry_after` where it sets one, checked at boot, so a refresh
+  still running is never reserved by a second worker and recorded as failed) and `.tries` (default 1, failing on a
+  timeout rather than being released past its claim); the job calls `refreshQueued()`, which reads the connection again
+  and is `skipped` when it is gone, no longer refreshes or is no longer due. `--sync` refreshes them in the command
+  instead (`refreshDue()`). The job and the command each pass `new ClientContext(null, null)`, built where the work
+  starts, so their events carry no IP address or user agent; `refreshNow()` takes the administrator's client after their
+  caller. `refreshNow()` refreshes the tenant's connection whatever its backoff, its `metadata_refresh` setting or
+  `sso.features.metadata_refresh`, and whether it has expired or not, so it recovers a connection the schedule does not:
+  it asks only `MetadataSource::isRefreshable()`, that what it fetches is a URL the package may fetch, and that its
+  protocol is available (`connection_not_found` for another tenant's, `feature_disabled` for a protocol switched off or
+  nothing to fetch, with nothing fetched), for the `Identities\Caller` it requires. Where the schedule would not refresh
+  the connection (its setting or the feature off, or a SAML connection that has not opted in) it first asks
+  `sso.connection.trust` freshness for that caller, and `stale` is `freshness_required`; the write asks it again once
+  the connection is locked, before the compare and set (`RefreshWriter::locked()`), and a caller stale there releases
+  the claim, writes nothing else, reports no event and is `freshness_required`. It then counts the attempt against
+  `AttemptSubject::metadata()` (the import's limit, `sso.rate_limits.metadata`): past it, `rate_limited` with
+  `retryAfter`, before anything is claimed or fetched. Every entry refuses to run inside a transaction on the storage
+  connection (`StorageConnection::assertNoTransaction()`).
 - The machinery is protocol-agnostic. `Metadata\MetadataRefresher` lists the due connections of every protocol that
   has a source (`Metadata\MetadataSources`: `SamlMetadataSource` for `saml2`, `OidcMetadataSource` for `oidc`; a
   protocol an application registered has none and never refreshes), asks the connection's source whether it refreshes,
