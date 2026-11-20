@@ -286,7 +286,7 @@ started.
 An authorisation request waits for its response for `authorization_requests.ttl_seconds`, 60 to 900 seconds (default
 600), and is consumed once whether the flow succeeds or fails. A discovery start takes at least
 `discovery.minimum_duration_milliseconds`, 50 to 2000 (default 250). This is a timing mitigation, not a guarantee: a
-domain that routes to a connection and one that does not answer with the same shape and status, and after the same time
+domain that routes to a connection and one that does not answer with the same status and keys, and after the same time
 when both finish within the floor, but work that outlasts it (a slow provider or database) still shows. Every start
 sleeps out the rest of the floor, so plan worker capacity for it, and raise it if starting a flow through any of your
 connections takes longer. Neither can be turned off. A handoff code's lifetime is each application's
