@@ -189,6 +189,27 @@ final class AssertionDecryptorTest extends TestCase
     }
 
     /**
+     * Decryption keys that cannot be read fail as any other decryption does.
+     *
+     * @return void
+     */
+    public function testUnreadableDecryptionKeysFailTheDecryption(): void
+    {
+        $document = new \DOMDocument;
+        $keys     = static fn (): array => throw new \RuntimeException('The key ring cannot be read.');
+        $policy   = new ResponsePolicy([], [], Saml2Settings::KEY_TRANSPORT_ALGORITHMS, Saml2Settings::DATA_ENCRYPTION_ALGORITHMS, $keys);
+
+        self::assertTrue($document->loadXML((new AssertionEncryptor)->encrypt(self::PLAINTEXT, self::spKeys()[1])));
+
+        try {
+            (new AssertionDecryptor)->decrypt(EncryptedAssertion::fromXML($document->documentElement ?? self::fail('The document has no root.')), $policy, false, 4096);
+            self::fail('Unreadable keys decrypted.');
+        } catch (ReadFailure $failure) {
+            self::assertSame(self::FAILED, [$failure->reason, $failure->detail]);
+        }
+    }
+
+    /**
      * The plaintext, or the failure's reason and detail, of the encrypted
      * assertion under a policy allowing the transports, with a spare key of
      * ours tried first.
