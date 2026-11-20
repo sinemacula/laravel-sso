@@ -8,6 +8,7 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
+use SimpleSAML\XML\Assert\Assert as XmlAssert;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Console\CheckConfigurationCommand;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
@@ -27,6 +28,23 @@ use Tests\TestCase;
 final class CheckConfigurationCommandTest extends TestCase
 {
     use ChecksTheFoundations, RunsConfigurationChecks;
+
+    /** @var string The problem reported where the SAML library refuses characters above U+00FF. */
+    private const string WIDE_CHARACTERS_REFUSED = '[saml2] The SAML library refuses characters above U+00FF under PCRE ' . PCRE_VERSION . '; use PCRE2 10.48 or later.';
+
+    /**
+     * Probe with a character every PCRE accepts, so the rest of the run does
+     * not depend on the PCRE build.
+     *
+     * @return void
+     */
+    #[\Override]
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->probeWith('a');
+    }
 
     /**
      * With every feature off, only the switches are checked and no query runs.
@@ -160,6 +178,52 @@ final class CheckConfigurationCommandTest extends TestCase
     }
 
     /**
+     * While SAML is on, or its switch is malformed, a probe the SAML library
+     * refuses fails the run under `[saml2]`.
+     *
+     * @return void
+     */
+    public function testARefusedProbeFailsTheRunWhileSamlIsOn(): void
+    {
+        $this->useThePackage();
+        $this->probeWith("\u{1}");
+
+        $passed = ['[features] OK', '[extensions] OK', '[storage] OK', '[endpoints] OK', '[applications] OK'];
+
+        self::assertSame([1, [...$passed, self::WIDE_CHARACTERS_REFUSED]], $this->check());
+
+        config()->set('sso.features.saml2', 'maybe');
+
+        self::assertSame(self::WIDE_CHARACTERS_REFUSED, $this->check()[1][5]);
+
+        config()->set('sso.features.saml2', false);
+        config()->set('sso.features.oidc', true);
+
+        self::assertSame([0, $passed], $this->check());
+    }
+
+    /**
+     * By default the run fails while SAML is on exactly where the library's
+     * string pattern refuses U+0100.
+     *
+     * @return void
+     */
+    public function testTheDefaultProbeFollowsTheLibrarysStringPattern(): void
+    {
+        $this->app?->forgetInstance(CheckConfigurationCommand::class);
+        $this->useThePackage();
+
+        $pattern = (new \ReflectionClass(XmlAssert::class))->getStaticPropertyValue('string_regex');
+
+        self::assertIsString($pattern);
+
+        [$code, $output] = $this->check();
+        $refused         = preg_match($pattern, "\u{100}") !== 1;
+
+        self::assertSame([$refused ? 1 : 0, $refused], [$code, in_array(self::WIDE_CHARACTERS_REFUSED, $output, true)]);
+    }
+
+    /**
      * Bind the checker to the foundations' checks before the provider registers
      * its own.
      *
@@ -189,6 +253,18 @@ final class CheckConfigurationCommandTest extends TestCase
         $app->offsetUnset(ConfigurationChecker::class);
 
         (new SsoServiceProvider($app))->register();
+    }
+
+    /**
+     * Run `sso:check` with the SAML library's string validation probed with the
+     * given character.
+     *
+     * @param  string  $character
+     * @return void
+     */
+    private function probeWith(string $character): void
+    {
+        $this->app?->instance(CheckConfigurationCommand::class, new CheckConfigurationCommand($character));
     }
 
     /**

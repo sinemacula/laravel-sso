@@ -90,8 +90,9 @@ final readonly class KeyRing
     }
 
     /**
-     * The encryption keys that decrypt: the current one, then each retiring one
-     * still within its overlap, the most recently current first.
+     * The encryption keys that decrypt: the current one, the next one, then
+     * each retiring one still within its overlap, the most recently current
+     * first.
      *
      * @param  string  $connectionId
      * @return list<\SineMacula\Laravel\Sso\Keys\KeySummary>
@@ -105,7 +106,7 @@ final readonly class KeyRing
         $keys  = self::of($connectionId)
             ->where('use', KeyUse::SP_ENCRYPTION->value)
             ->where(static function (Builder $query) use ($now): void {
-                $query->where('state', KeyState::CURRENT->value)
+                $query->whereIn('state', [KeyState::CURRENT->value, KeyState::NEXT->value])
                     ->orWhere(static function (Builder $retiring) use ($now): void {
                         $retiring->where('state', KeyState::RETIRING->value)->where('retiring_until', '>', $now);
                     });
@@ -216,13 +217,14 @@ final readonly class KeyRing
 
     /**
      * Where the key falls in decryption order, descending: the current key
-     * first, then the most recently made current, then the most recently added.
+     * first, then the next, then the most recently made current, then the most
+     * recently added.
      *
      * @param  \SineMacula\Laravel\Sso\Models\ConnectionKey  $key
      * @return list<bool|int|string|null>
      */
     private static function decryptionRank(ConnectionKey $key): array
     {
-        return [$key->state === KeyState::CURRENT, $key->made_current_at?->getTimestamp(), $key->created_at->getTimestamp(), $key->id];
+        return [$key->state === KeyState::CURRENT, $key->state === KeyState::NEXT, $key->made_current_at?->getTimestamp(), $key->created_at->getTimestamp(), $key->id];
     }
 }

@@ -67,22 +67,19 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
         $model      = new SingleUseKey;
         $connection = $model->getConnection();
         $table      = $model->getTable();
-        $digest     = hash('sha256', $key);
 
         $row = [
             'namespace'  => $namespace,
-            'key_digest' => $digest,
+            'key_digest' => hash('sha256', $key),
             'expires_at' => UtcDateTime::format($model, $until->ceilSecond()),
         ];
 
-        if ($this->store($connection, $table, $row)) {
+        if ($this->store($connection, $table, $row) || $this->renewExpired($connection, $table, $row, UtcDateTime::format($model, $now)) === 1) {
             return SingleUseOutcome::RECORDED;
         }
 
-        // Insert again whatever the delete removed: only the index can say
-        // whether a live holder is left.
-        $this->deleteExpired($connection, $table, $namespace, $digest, UtcDateTime::format($model, $now));
-
+        // Nothing renewed: the key is held, or a prune removed its row, which
+        // only the index can tell apart.
         return $this->store($connection, $table, $row) ? SingleUseOutcome::RECORDED : SingleUseOutcome::SEEN;
     }
 
@@ -138,25 +135,26 @@ final readonly class DatabaseSingleUseStore implements SingleUseStore
     }
 
     /**
-     * Delete the key's row if its expiry has passed.
+     * Move the key's row to the new expiry if its own has passed, returning the
+     * rows changed.
      *
      * @param  \Illuminate\Database\Connection  $connection
      * @param  string  $table
-     * @param  string  $namespace
-     * @param  string  $digest
+     * @param  array{namespace: string, key_digest: string, expires_at: string}  $row
      * @param  string  $now
-     * @return void
+     * @return int
      *
      * @throws \Throwable
      */
-    private function deleteExpired(Connection $connection, string $table, string $namespace, string $digest, string $now): void
+    private function renewExpired(Connection $connection, string $table, array $row, string $now): int
     {
-        $delete = static fn (Connection $connection): int => $connection->table($table)
-            ->where('namespace', $namespace)
-            ->where('key_digest', $digest)
+        $renew = static fn (Connection $connection): int => $connection->table($table)
+            ->where('namespace', $row['namespace'])
+            ->where('key_digest', $row['key_digest'])
             ->where('expires_at', '<=', $now)
-            ->delete();
+            ->update(['expires_at' => $row['expires_at']]);
 
-        RetriedTransaction::run($connection, $delete, self::ATTEMPTS);
+        // The new expiry is after now, so MySQL counts the row changed.
+        return RetriedTransaction::run($connection, $renew, self::ATTEMPTS);
     }
 }

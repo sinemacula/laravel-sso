@@ -120,8 +120,8 @@ final class ResponsePoliciesTest extends TestCase
     }
 
     /**
-     * Decryption keys are decrypted only when asked: the current, then retiring
-     * ones within their overlap, newest first.
+     * Decryption keys are decrypted only when asked: the current, the next,
+     * then retiring ones within their overlap, newest first.
      *
      * @return void
      */
@@ -131,6 +131,7 @@ final class ResponsePoliciesTest extends TestCase
         $this->ownKey($this->connection, KeyUse::SP_ENCRYPTION, KeyState::CURRENT, 'current', ['made_current_at' => self::at('09:30:00')]);
         $this->ownKey($this->connection, KeyUse::SP_ENCRYPTION, KeyState::RETIRING, 'newer', self::retiring('09:00:00', '10:00:00'));
         $this->ownKey($this->connection, KeyUse::SP_ENCRYPTION, KeyState::RETIRING, 'expired', self::retiring('07:00:00', '09:30:00'));
+        $this->ownKey($this->connection, KeyUse::SP_ENCRYPTION, KeyState::NEXT, 'next', []);
         $this->ownKey($this->connection, KeyUse::SP_SIGNING, KeyState::CURRENT, 'signing', ['made_current_at' => self::at('09:00:00')]);
         $this->ownKey($this->other, KeyUse::SP_ENCRYPTION, KeyState::CURRENT, 'other', ['made_current_at' => self::at('09:00:00')]);
 
@@ -140,8 +141,8 @@ final class ResponsePoliciesTest extends TestCase
 
         $keys = $policy->decryptionKeys();
 
-        self::assertSame(['current', 'newer', 'older'], array_map(static fn (Secret $key): string => $key->reveal(), $keys));
-        self::assertSame(3, $this->encrypter->decryptions);
+        self::assertSame(['current', 'next', 'newer', 'older'], array_map(static fn (Secret $key): string => $key->reveal(), $keys));
+        self::assertSame(4, $this->encrypter->decryptions);
     }
 
     /**
