@@ -99,8 +99,8 @@ final class AuthenticationRules
     }
 
     /**
-     * Whether a reauthentication is no earlier than the request's start less
-     * the skew.
+     * Whether a forced authentication is no earlier than the request's start
+     * less the skew.
      *
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\AuthnStatement  $statement
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Validation\ValidationContext  $context
@@ -108,7 +108,7 @@ final class AuthenticationRules
      */
     private static function isSinceRequestStarted(AuthnStatement $statement, ValidationContext $context): bool
     {
-        $start = $context->reauthenticationStart();
+        $start = $context->forcedAuthenticationStart();
 
         return $start === null || $statement->authnInstant() >= $start->subSeconds($context->skew);
     }

@@ -27,6 +27,7 @@ use SineMacula\Laravel\Sso\Models\Casts\UtcDateTime;
  * @property ?string $nonce_digest
  * @property ?string $code_verifier
  * @property ?string $saml_request_id
+ * @property bool $force_authn
  * @property string $handoff_challenge
  * @property int $trust_version
  * @property ?string $identity_type
@@ -63,6 +64,7 @@ final class AuthorizationRequest extends SsoModel
     /** @var array<string, mixed> The model's default attribute values. */
     protected $attributes = [
         'issuer_required' => false,
+        'force_authn'     => false,
     ];
 
     /**
@@ -87,6 +89,7 @@ final class AuthorizationRequest extends SsoModel
         return [
             'purpose'         => Purpose::class,
             'issuer_required' => 'boolean',
+            'force_authn'     => 'boolean',
             'trust_version'   => 'integer',
             'expires_at'      => UtcDateTime::class,
             'consumed_at'     => UtcDateTime::class,

@@ -425,6 +425,46 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     }
 
     /**
+     * Rows of `[sent, setting, reason]`: the connection's `force_authn` when
+     * the sign-in starts and when its response arrives.
+     *
+     * @return iterable<string, array{0: bool, 1: bool, 2: ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason}>
+     */
+    public static function provideForceAuthnChanges(): iterable
+    {
+        yield 'forced throughout' => [true, true, FailureReason::AUTHENTICATION_EXPIRED];
+        yield 'unforced after the start' => [true, false, FailureReason::AUTHENTICATION_EXPIRED];
+        yield 'forced after the start' => [false, true, null];
+        yield 'never forced' => [false, false, null];
+    }
+
+    /**
+     * A SAML sign-in is held to the window when its request sent `ForceAuthn`,
+     * whatever the connection's `force_authn` is by the response.
+     *
+     * @param  bool  $sent
+     * @param  bool  $setting
+     * @param  ?\SineMacula\Laravel\Sso\Events\Enums\FailureReason  $reason
+     * @return void
+     */
+    #[DataProvider('provideForceAuthnChanges')]
+    public function testSamlHoldsASignInToTheWindowWhenItsRequestForcedAuthentication(bool $sent, bool $setting, ?FailureReason $reason): void
+    {
+        $this->connection = $this->samlConnection(['force_authn' => $sent]);
+
+        $this->hold(self::samlSubject());
+
+        $start = $this->start();
+
+        $this->connection->forceFill(['settings' => [...$this->connection->settings, 'force_authn' => $setting]])->save();
+        $this->clock->advance(self::ELAPSED);
+
+        $completion = $this->assertion($start, [$this->statement($this->clock->now()->subDay())]);
+
+        self::assertSame([$reason, $reason === null], [$completion->reason, $completion->isCompleted()]);
+    }
+
+    /**
      * Link the subject to the person on the connection and bind the session.
      *
      * @param  \SineMacula\Laravel\Sso\Links\LinkSubject  $subject
@@ -535,16 +575,17 @@ final class ReauthenticationRulesTest extends LinkingTestCase
     /**
      * A SAML connection trusting the identity provider's certificate.
      *
+     * @param  array<string, mixed>  $settings
      * @return \SineMacula\Laravel\Sso\Models\Connection
      *
      * @throws \LogicException
      */
-    private function samlConnection(): Connection
+    private function samlConnection(array $settings = []): Connection
     {
         $connection = $this->makeConnection([
             'protocol'          => 'saml2',
             'enabled'           => true,
-            'settings'          => ['idp_entity_id' => FakeSamlIdentityProvider::ENTITY_ID, 'sso_url' => FakeSamlIdentityProvider::SSO_URL],
+            'settings'          => ['idp_entity_id' => FakeSamlIdentityProvider::ENTITY_ID, 'sso_url' => FakeSamlIdentityProvider::SSO_URL, ...$settings],
             'attribute_mapping' => ['email' => 'email'],
         ]);
 

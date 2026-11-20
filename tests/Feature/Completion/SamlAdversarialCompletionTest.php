@@ -818,7 +818,13 @@ final class SamlAdversarialCompletionTest extends TestCase
      */
     private function reauthenticating(): self
     {
-        $this->request->forceFill(['purpose' => 'reauthenticate', 'identity_type' => 'App\Models\User', 'identity_id' => '42', 'session_id' => 'session-1'])->save();
+        $this->request->forceFill([
+            'purpose'       => 'reauthenticate',
+            'identity_type' => 'App\Models\User',
+            'identity_id'   => '42',
+            'session_id'    => 'session-1',
+            'force_authn'   => true,
+        ])->save();
 
         return $this;
     }

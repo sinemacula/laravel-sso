@@ -57,6 +57,10 @@ return new class extends Migration {
             $blueprint->text('code_verifier')->nullable();
             $blueprint->string('saml_request_id', 255)->nullable();
 
+            // Whether the SAML request sent ForceAuthn, which holds the
+            // AuthnInstant to the request's start.
+            $blueprint->boolean('force_authn')->default(false);
+
             // S256 challenge of the client's verifier.
             $blueprint->char('handoff_challenge', 43);
 

@@ -110,7 +110,7 @@ final class IdTokenValidationBench
         $reference = RequestReference::fromString(self::REFERENCE);
 
         $this->options       = OidcOptions::of($this->connection);
-        $this->consumed      = new ConsumedRequest(Purpose::SIGN_IN, 'web', $reference, $now, FakeOpenIdProvider::ISSUER, false, null, hash('sha256', self::NONCE));
+        $this->consumed      = new ConsumedRequest(Purpose::SIGN_IN, 'web', $reference, $now, FakeOpenIdProvider::ISSUER, nonceDigest: hash('sha256', self::NONCE));
         $this->validRs256    = new TokenResponse((string) $token, self::ACCESS_TOKEN);
         $this->validEs256    = new TokenResponse((string) $token->signedWith($ec, 'ES256'), self::ACCESS_TOKEN);
         $this->badSignature  = new TokenResponse((string) $token->signedWith(FakeSigningKey::rsa(), 'RS256'), self::ACCESS_TOKEN);

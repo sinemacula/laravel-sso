@@ -104,6 +104,7 @@ final class RequestConsumptionTest extends TestCase
             'expected_issuer' => 'https://idp.example.com',
             'issuer_required' => true,
             'saml_request_id' => self::SAML_REQUEST_ID,
+            'force_authn'     => true,
         ]);
 
         $this->clock->advance(30);
@@ -127,6 +128,7 @@ final class RequestConsumptionTest extends TestCase
         self::assertSame('https://idp.example.com', $consumed->expectedIssuer);
         self::assertTrue($consumed->issuerRequired);
         self::assertSame(self::SAML_REQUEST_ID, $consumed->samlRequestId);
+        self::assertTrue($consumed->forceAuthn);
         self::assertTrue($consumed->isNonce(self::NONCE));
         self::assertFalse($consumed->isNonce(self::STATE));
         self::assertSame(self::PKCE_VERIFIER, $consumed->codeVerifier()?->reveal());
