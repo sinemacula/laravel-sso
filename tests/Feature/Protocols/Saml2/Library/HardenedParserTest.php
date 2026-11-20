@@ -53,10 +53,12 @@ final class HardenedParserTest extends TestCase
 
         $copy = HardenedParser::reRooted($root->firstChild);
 
+        // libxml before 2.13 keeps the URI escaped, so its form varies
+        self::assertSame(1, preg_match('/ xmlns:q="[^"]*"/', $root->C14N(), $q));
         self::assertSame($copy, $copy->ownerDocument?->documentElement);
         self::assertNotSame($root->ownerDocument, $copy->ownerDocument);
         self::assertSame(
-            '<Assertion xmlns="urn:d" xmlns:p="urn:p" xmlns:q="urn:a&#38;b" xmlns:xs="urn:xs" xmlns:xsi="' . self::NS_XSI . '" ID="_a" xsi:type="xs:string">'
+            '<Assertion xmlns="urn:d" xmlns:p="urn:p"' . $q[0] . ' xmlns:xs="urn:xs" xmlns:xsi="' . self::NS_XSI . '" ID="_a" xsi:type="xs:string">'
             . '<!-- kept --><Signature xmlns="urn:ds"><SignedInfo>'
             . '<ec:InclusiveNamespaces xmlns:ec="' . self::NS_EC . '" PrefixList="q"></ec:InclusiveNamespaces></SignedInfo></Signature>'
             . '<p:Used></p:Used><Value xmlns:y="urn:y" type="y:z"></Value><Plain xmlns=""></Plain><Rebound xmlns:xs="urn:other" type="xs:t"></Rebound></Assertion>',
@@ -70,6 +72,11 @@ final class HardenedParserTest extends TestCase
 
         self::assertInstanceOf(\DOMElement::class, $quoted);
         self::assertSame('urn:a"b', HardenedParser::reRooted($quoted)->lookupNamespaceURI('p'));
+
+        $referenced = (new HardenedParser)->load($xml = '<r xmlns:p="urn:a&amp;#38;&lt;&gt;&quot;&#x22;b"><a><p:b/></a></r>', strlen($xml))->documentElement?->firstChild;
+
+        self::assertInstanceOf(\DOMElement::class, $referenced);
+        self::assertSame($referenced->lookupNamespaceURI('p'), HardenedParser::reRooted($referenced)->lookupNamespaceURI('p'));
     }
 
     /**

@@ -281,13 +281,25 @@ final readonly class HardenedParser
                 continue;
             }
 
-            // Raw as libxml writes it, so an escaped value stays escaped
-            $quote = str_contains($uri, '"') ? '\'' : '"';
-
-            $declarations[$prefix === $element->prefix ? 0 : 1] .= ' ' . $name . '=' . $quote . $uri . $quote;
+            $declarations[$prefix === $element->prefix ? 0 : 1] .= ' ' . $name . '="' . self::escaped($uri) . '"';
         }
 
         return $declarations;
+    }
+
+    /**
+     * The namespace URI escaped for a declaration. libxml before 2.13 keeps a
+     * URI's references escaped, so they are not escaped again.
+     *
+     * @param  string  $uri
+     * @return string
+     */
+    private static function escaped(string $uri): string
+    {
+        $probe = new \DOMDocument;
+        $probe->loadXML('<r xmlns:p="&amp;"/>');
+
+        return htmlspecialchars($uri, ENT_XML1 | ENT_QUOTES, 'UTF-8', $probe->documentElement?->lookupNamespaceURI('p') === '&');
     }
 
     /**
