@@ -309,6 +309,24 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
+     * With an anchor, a signature with a second reference or an object is
+     * refused as a structure the library will not read.
+     *
+     * @return void
+     */
+    public function testASignatureOfAnotherShapeIsRefusedAsAStructure(): void
+    {
+        $anchors = [self::idp()->certificate()];
+        $signed  = self::metadata()->with(['sign' => 'entity'])->toXml();
+        $twice   = (string) preg_replace('#<ds:Reference .*?</ds:Reference>#s', '$0$0', $signed);
+        $object  = str_replace('</ds:Signature>', '<ds:Object/></ds:Signature>', $signed);
+
+        self::assertTrue($this->read($signed, anchors: $anchors)->isRead());
+        self::assertRefused(FailureReason::METADATA_INVALID, 'structure', $this->read($twice, anchors: $anchors));
+        self::assertRefused(FailureReason::METADATA_INVALID, 'structure', $this->read($object, anchors: $anchors));
+    }
+
+    /**
      * A signed aggregate changed after it was signed is refused, wherever the
      * change is.
      *
