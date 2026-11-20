@@ -723,6 +723,26 @@ final class MetadataReaderTest extends TestCase
     }
 
     /**
+     * Role descriptors of any type are left out of the schema validation, and
+     * an anchor's signature still covers them.
+     *
+     * @return void
+     */
+    public function testRoleDescriptorsOfAnyTypeAreLeftOutOfTheSchemaButNotTheSignature(): void
+    {
+        $roles = '<md:RoleDescriptor protocolSupportEnumeration="urn:example:roles"><md:Unknown/></md:RoleDescriptor>'
+            . '<md:RoleDescriptor xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ex="urn:example:roles"'
+            . ' xsi:type="ex:UndefinedType" protocolSupportEnumeration="urn:example:roles"><ex:Anything/></md:RoleDescriptor>';
+        $anchors = [self::idp()->certificate()];
+        $xml     = self::withMember(self::metadata()->toXml(), self::ENTITY_ID, $roles . self::ROLE);
+        $signed  = self::signedRoot($xml, self::idp()->signer());
+
+        self::assertSame(FakeSamlIdentityProvider::SSO_URL, $this->read($xml)->ssoUrl());
+        self::assertSame(FakeSamlIdentityProvider::SSO_URL, $this->read($signed, anchors: $anchors)->ssoUrl());
+        self::assertRefused(FailureReason::METADATA_SIGNATURE_INVALID, 'signature', $this->read(str_replace('<md:Unknown/>', '<md:Changed/>', $signed), anchors: $anchors));
+    }
+
+    /**
      * Only RSA certificates of at least 2048 bits are read, each once, and none
      * usable for signing is refused.
      *

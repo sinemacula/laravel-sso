@@ -94,8 +94,8 @@ refuses ends the redemption:
   previous holder committed. A standalone `link` that comes to `Exceptions\LinkCandidatesChanged` all the same is tried
   again as a serialisation failure, below; inside a caller's transaction it propagates for a retry of the whole, as a
   40001 `DeadlockException` once a nested transaction has rethrown it.
-- A standalone transaction the database rolls back as a deadlock, a lock wait timeout or a serialisation failure, one in
-  a savepoint inside it included, is tried again from its start, at most three times in all
+- A standalone transaction the database rolls back as a deadlock, a MySQL lock wait timeout or a serialisation failure,
+  one in a savepoint inside it included, is tried again from its start, at most three times in all
   (`Database\RetriedTransaction`, `storage.md`). Laravel never runs it again once it has
   committed, so an after-commit listener's exception never repeats the redemption. The attempt counted at step 1 is
   counted once. Inside a caller's transaction the failure propagates at once, never retried in part.

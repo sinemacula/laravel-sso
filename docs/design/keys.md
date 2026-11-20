@@ -58,11 +58,13 @@ encryption algorithms each key serves is decided with the SAML and OIDC drivers,
   Anything else is `key_state_conflict`: a second `next`, making current a key that is not `next`, retiring the
   `current` key, or acting on a trusted certificate with an own-key operation.
 - The overlap: a key replaced as current becomes `retiring` with `retiring_until` set to the moment it was replaced
-  plus `sso.keys.overlap_seconds` (a week by default; 0 to 90 days). Decryption accepts the current encryption key and
-  each retiring one whose `retiring_until` is after the clock's now, the most recently current first; an overlap of 0
-  ends as the key is replaced. A retiring key stays a row, and still decrypts nothing, until it is retired.
+  plus `sso.keys.overlap_seconds` (a week by default; 0 to 90 days). Decryption accepts the current encryption key, then
+  the next one, then each retiring one whose `retiring_until` is after the clock's now, the most recently current
+  first; an overlap of 0 ends as the key is replaced. A retiring key stays a row, and still decrypts nothing, until it
+  is retired.
 - Publishing: metadata and a JWKS carry the current key and then the next one (`KeyRing::published()`), so an identity
-  provider learns a key before it signs or encrypts with it.
+  provider learns a key before it signs or encrypts with it. A `next` encryption key decrypts from the moment it is
+  added, so a provider that takes it up early is not refused.
 - Trusted certificates are a set per use: up to `KeyService::MAX_TRUSTED_CERTIFICATES` (10) each for `idp_signing` and
   `metadata_signing` per connection, each judged before it is trusted by `Keys\CertificateInspector`, every violation at
   the setting `certificate`:
@@ -101,7 +103,8 @@ encryption algorithms each key serves is decided with the SAML and OIDC drivers,
 ## Success Path
 
 1. An administrator adds the connection's first signing key: `addNext()` generates it and stores it as `current`.
-2. When it is time to rotate, `addNext()` stores a new key as `next`; metadata now carries both.
+2. When it is time to rotate, `addNext()` stores a new key as `next`; metadata now carries both and, for encryption,
+   both decrypt.
 3. Once the identity provider has the new key, `makeCurrent()` makes it current; the old one is `retiring` and, for
    encryption, still decrypts until the overlap ends.
 4. After the overlap, `retire()` removes the old key.

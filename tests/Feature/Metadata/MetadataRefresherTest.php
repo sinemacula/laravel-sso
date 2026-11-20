@@ -172,6 +172,7 @@ final class MetadataRefresherTest extends TestCase
             'no metadata URL'            => [[], ['metadata_url' => null], false],
             'a metadata URL over HTTP'   => [[], ['metadata_url' => 'http://idp.example.test/metadata.xml'], false],
             'an OIDC connection'         => [['protocol' => 'oidc'], [], false],
+            'disabled'                   => [['enabled' => false], [], true],
         ];
     }
 
@@ -190,7 +191,7 @@ final class MetadataRefresherTest extends TestCase
         $connection = $this->saml($settings, $attributes);
 
         self::assertSame($due ? [$connection->id] : [], $this->refresher()->dueConnectionIds());
-        self::assertCount($due ? 1 : 0, $this->refresher()->refreshDue(Clients::browser()));
+        self::assertSame($due ? [RefreshOutcome::REFRESHED] : [], array_column($this->refresher()->refreshDue(Clients::browser()), 'outcome'));
         self::assertCount($due ? 1 : 0, $this->fetcher->requests());
     }
 
@@ -673,6 +674,20 @@ final class MetadataRefresherTest extends TestCase
         self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, [], 1, false]], self::summaries([$result]));
         self::assertSame(0, $this->row($connection)->metadata_refresh_failures);
         self::assertCount(1, $this->fetcher->requests());
+    }
+
+    /**
+     * A refresh now refreshes a disabled connection and leaves it disabled.
+     *
+     * @return void
+     */
+    public function testARefreshNowRefreshesADisabledConnection(): void
+    {
+        $connection = $this->saml([], ['enabled' => false]);
+        $result     = $this->refresher()->refreshNow(self::TENANT, $connection->id, self::actor(), Clients::browser());
+
+        self::assertSame([[RefreshOutcome::REFRESHED, $connection->id, [], 1, false]], self::summaries([$result]));
+        self::assertFalse($this->row($connection)->enabled);
     }
 
     /**

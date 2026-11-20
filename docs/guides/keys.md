@@ -43,9 +43,9 @@ A client assertion key must fit the connection's
 [`client_assertion_algorithm`](oidc-connections.md#the-client-assertion-algorithm) when it pins one: one that does not
 is refused (`key_type`, `not_allowed`), before it is generated.
 
-Each key moves through three states: `next` (published, not yet used), `current` (signing, and for encryption,
-published and decrypting) and `retiring` (replaced, still decrypting until the overlap ends). A rotation without
-downtime takes four steps.
+Each key moves through three states: `next` (published and, for encryption, decrypting, but not yet signing),
+`current` (signing, and for encryption, published and decrypting) and `retiring` (replaced, still decrypting until the
+overlap ends). A rotation without downtime takes four steps.
 
 ### 1. Add the first key
 
@@ -74,7 +74,8 @@ The type defaults to RSA; pass `KeyType::EC` for a P-256 key where the use allow
 
 While a key is current, `addNext()` adds the new one as `next`. Both are now published, the current key first
 (`KeyRing::published()`, which the connection's metadata and JWKS are built from), so the identity provider can take up
-the new key before it is used. A connection has at most one `next` key of a use: adding a second is refused with
+the new key before it is used. A `next` encryption key already decrypts, so an identity provider can encrypt to it as
+soon as it reads the new metadata. A connection has at most one `next` key of a use: adding a second is refused with
 `key_state_conflict`. An assertion the identity provider encrypts to both published encryption keys at once is refused
 with `decryption_failed`.
 
