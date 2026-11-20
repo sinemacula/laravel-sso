@@ -43,9 +43,9 @@ and the package routes its domain to the connection the domain is verified for.
   where the answer leads still shows whether a domain signs in through single sign-on: anyone can learn that
   `example.com` uses an identity provider by trying an address at it. Do not offer discovery where that fact is itself
   sensitive.
-- **Timing is mitigated, not hidden.** A match and a miss answer in the same shape, and every start is padded to
-  `sso.discovery.minimum_duration_milliseconds`. Work that outlasts the floor (a slow provider or database) still
-  shows, and every start holds its worker for the floor, so plan capacity for it.
+- **Timing is mitigated, not hidden.** A match and a miss answer with the same status and keys, and every start is
+  padded to `sso.discovery.minimum_duration_milliseconds`. Work that outlasts the floor (a slow provider or database)
+  still shows, and every start holds its worker for the floor, so plan capacity for it.
 
 See [Discovery](discovery.md).
 
