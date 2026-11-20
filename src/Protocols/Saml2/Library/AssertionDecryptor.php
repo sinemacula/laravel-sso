@@ -41,6 +41,9 @@ final readonly class AssertionDecryptor
     /** @var list<string> AES-CBC, decrypted only after a verified response signature. */
     public const array CBC_ALGORITHMS = [C::BLOCK_ENC_AES128, C::BLOCK_ENC_AES192, C::BLOCK_ENC_AES256];
 
+    /** @var int The most `EncryptedKey`s an assertion may carry, which bounds its RSA work. */
+    public const int MAX_ENCRYPTED_KEYS = 4;
+
     /** @var int Ciphertext allowance over the plaintext cap for IV, tag and padding, in bytes. */
     private const int OVERHEAD_BYTES = 64;
 
@@ -74,8 +77,6 @@ final readonly class AssertionDecryptor
      * @param  bool  $responseSigned
      * @param  int  $maxBytes
      * @return ?string
-     *
-     * @throws \Throwable
      */
     private static function plaintext(EncryptedAssertion $encrypted, ResponsePolicy $policy, bool $responseSigned, int $maxBytes): ?string
     {
@@ -85,19 +86,20 @@ final readonly class AssertionDecryptor
         $keys      = [...$inline, ...$encrypted->getDecryptionKeys()];
         $cipher    = base64_decode((string) $data->getCipherData()->getCipherValue()?->getContent()->getValue(), true);
 
-        if (!self::admitsData($algorithm, $policy, $responseSigned) || count($keys) !== 1 || !self::fits($cipher, $maxBytes + self::OVERHEAD_BYTES)) {
+        if (!self::admitsData($algorithm, $policy, $responseSigned) || count($keys) > self::MAX_ENCRYPTED_KEYS || !self::fits($cipher, $maxBytes + self::OVERHEAD_BYTES)) {
             return null;
         }
 
-        $session = self::sessionKey($keys[0], $policy, self::DATA_ENCRYPTION_ALGORITHMS[$algorithm]);
+        foreach (self::sessionKeys($keys, $policy, self::DATA_ENCRYPTION_ALGORITHMS[$algorithm]) as $session) {
 
-        if ($session === null) {
-            return null;
+            $plaintext = self::decrypted($algorithm, $session, (string) $cipher);
+
+            if ($plaintext !== null) {
+                return self::fits($plaintext, $maxBytes) ? $plaintext : null;
+            }
         }
 
-        $plaintext = (new EncryptionAlgorithmFactory([]))->getAlgorithm($algorithm, new SymmetricKey($session))->decrypt((string) $cipher);
-
-        return self::fits($plaintext, $maxBytes) ? $plaintext : null;
+        return null;
     }
 
     /**
@@ -119,46 +121,73 @@ final readonly class AssertionDecryptor
     }
 
     /**
-     * The session key, from the first SP decryption key that unwraps one of the
-     * right length.
+     * Each session key of the right length that an SP decryption key unwraps
+     * from an encrypted key under an allowed transport, in order.
      *
-     * @param  \SimpleSAML\XMLSecurity\XML\xenc\EncryptedKey  $key
+     * @param  array<\SimpleSAML\XMLSecurity\XML\xenc\EncryptedKey>  $keys
      * @param  \SineMacula\Laravel\Sso\Protocols\Saml2\Messages\ResponsePolicy  $policy
      * @param  int  $length
-     * @return ?string
+     * @return \Generator<int, string>
      */
-    private static function sessionKey(EncryptedKey $key, ResponsePolicy $policy, int $length): ?string
+    private static function sessionKeys(array $keys, ResponsePolicy $policy, int $length): \Generator
     {
-        $transport = (string) $key->getEncryptionMethod()?->getAlgorithm()->getValue();
+        $allowed     = array_intersect(self::KEY_TRANSPORT_ALGORITHMS, $policy->keyTransportAlgorithms);
+        $candidates  = array_filter($keys, static fn (EncryptedKey $key): bool => in_array(self::transport($key), $allowed, true));
+        $privateKeys = $candidates === [] ? [] : $policy->decryptionKeys();
 
-        if (!in_array($transport, self::KEY_TRANSPORT_ALGORITHMS, true) || !in_array($transport, $policy->keyTransportAlgorithms, true)) {
-            return null;
-        }
+        foreach ($candidates as $key) {
+            foreach ($privateKeys as $privateKey) {
 
-        foreach ($policy->decryptionKeys() as $privateKey) {
+                $session = self::unwrapped($key, $privateKey->reveal());
 
-            $session = self::unwrapped($key, $transport, $privateKey->reveal());
+                if ($session === null || strlen($session) !== $length) {
+                    continue;
+                }
 
-            if ($session !== null && strlen($session) === $length) {
-                return $session;
+                yield $session;
             }
         }
+    }
 
-        return null;
+    /**
+     * The key transport algorithm of the encrypted key.
+     *
+     * @param  \SimpleSAML\XMLSecurity\XML\xenc\EncryptedKey  $key
+     * @return string
+     */
+    private static function transport(EncryptedKey $key): string
+    {
+        return (string) $key->getEncryptionMethod()?->getAlgorithm()->getValue();
     }
 
     /**
      * The session key the private key unwraps, if it does.
      *
      * @param  \SimpleSAML\XMLSecurity\XML\xenc\EncryptedKey  $key
-     * @param  string  $transport
      * @param  string  $privateKey
      * @return ?string
      */
-    private static function unwrapped(EncryptedKey $key, string $transport, #[\SensitiveParameter] string $privateKey): ?string
+    private static function unwrapped(EncryptedKey $key, #[\SensitiveParameter] string $privateKey): ?string
     {
         try {
-            return $key->decrypt((new KeyTransportAlgorithmFactory)->getAlgorithm($transport, new PrivateKey(PEM::fromString($privateKey))));
+            return $key->decrypt((new KeyTransportAlgorithmFactory)->getAlgorithm(self::transport($key), new PrivateKey(PEM::fromString($privateKey))));
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    /**
+     * The ciphertext decrypted under the session key, if it decrypts.
+     *
+     * @param  string  $algorithm
+     * @param  string  $session
+     * @param  string  $cipher
+     * @return ?string
+     */
+    private static function decrypted(string $algorithm, #[\SensitiveParameter] string $session, string $cipher): ?string
+    {
+        try {
+            return (new EncryptionAlgorithmFactory([]))->getAlgorithm($algorithm, new SymmetricKey($session))->decrypt($cipher);
         } catch (\Throwable) {
             return null;
         }

@@ -39,10 +39,14 @@ response it is given (correlation, audience, times, subject, replay) is the driv
 - The package owns the signature algorithm policy on the parsed `SignedInfo`: the `SignatureMethod` in the connection's
   allow-list (RSA-SHA256, RSA-SHA384 or RSA-SHA512), the `DigestMethod` SHA-256, SHA-384 or SHA-512, exactly one
   `Reference` to the signed element, and only the enveloped-signature and exclusive canonicalisation transforms.
-- Decryption is RSA-OAEP key transport only, with exactly one `EncryptedKey`; the `EncryptionMethod` is checked against
-  the connection's allow-list before `decrypt()`. AES-128-GCM and AES-192-GCM are allowed; AES-CBC only when the
-  connection lists it and the response carries a verified signature. AES-256-GCM is out until the PHP floor moves to 8.5
-  and saml2 v7 is stable (`saml-library.md`, condition 8). Every decryption failure is the one refusal
+- Decryption is RSA-OAEP key transport only; the `EncryptionMethod` is checked against the connection's allow-list
+  before `decrypt()`. An assertion may carry up to `AssertionDecryptor::MAX_ENCRYPTED_KEYS` (4) `EncryptedKey`s, in its
+  `KeyInfo` or beside its `EncryptedData`, as an identity provider encrypting to every published certificate sends.
+  Each under an allowed transport is tried against each decryption key in turn, until a session key of the right
+  length decrypts the `EncryptedData`; under AES-GCM one that unwraps but fails authentication moves on to the next,
+  so the outcome never says which unwrapped. AES-128-GCM and AES-192-GCM are allowed; AES-CBC only when the connection
+  lists it and the response carries a verified signature. AES-256-GCM is out until the PHP floor moves to 8.5 and
+  saml2 v7 is stable (`saml-library.md`, condition 8). Every decryption failure is the one refusal
   `decryption_failed`, whichever key or step failed.
 - An assertion that no verified signature covers, its own or the response's, is refused. An unsuccessful response reads
   no assertion, but every signature it carries must still verify.
@@ -76,8 +80,9 @@ response it is given (correlation, audience, times, subject, replay) is the driv
   `saml:Assertion`: `response_invalid`.
 - A missing, unverifiable or out-of-policy signature, or an assertion no verified signature covers:
   `signature_invalid`.
-- A disallowed key transport or data encryption algorithm, an AES-CBC assertion without a verified response signature,
-  more than one `EncryptedKey`, or any decryption failure: `decryption_failed`.
+- A disallowed data encryption algorithm, an AES-CBC assertion without a verified response signature, no
+  `EncryptedKey` or more than four, none under an allowed key transport that a decryption key unwraps to a session key
+  that decrypts, or any other decryption failure: `decryption_failed`.
 - A response the library cannot map (an element it refuses after the schema accepted it) is refused as
   `response_invalid` with the detail `structure`, never thrown.
 - An envelope that cannot be read is `null`: the completion treats it as uncorrelated.
