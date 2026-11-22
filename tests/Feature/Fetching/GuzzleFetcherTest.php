@@ -633,6 +633,7 @@ final class GuzzleFetcherTest extends TestCase
         $onHeaders(new Response(200, ['Content-Length' => '1024']));
         $onHeaders(new Response(200));
         $onHeaders(new Response(200, ['Content-Length' => 'not a number']));
+        $onHeaders(new \RuntimeException('A queued failure.'));
 
         self::assertFalse($progress(0, 0, 0, 0));
         self::assertFalse($progress(2048, 1024, 0, 0));
