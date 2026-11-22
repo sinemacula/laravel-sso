@@ -48,10 +48,8 @@
             "expect": "accept",
             "description": "Signed assertion encrypted to the SP (RSA-OAEP key transport, AES-256-GCM); response signed.",
             "package": {
-                "outcome": "refused",
-                "reason": "decryption_failed",
-                "detail": "decryption",
-                "note": "AES-256-GCM is unusable in xml-security 2.x and out until saml2 v7 (docs/design/saml-library.md, condition 5)."
+                "outcome": "read",
+                "subject": "alice-persistent-id"
             }
         },
         {

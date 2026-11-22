@@ -67,9 +67,7 @@ an `InclusiveNamespaces` list on the `SignedInfo`'s own `CanonicalizationMethod`
 transforms, as Okta and Shibboleth sign, is accepted.
 
 Encrypted assertions are decrypted with the connection's current encryption key, its next one, or a retiring one still
-within its overlap, by RSA-OAEP only. Content encryption is AES-128-GCM or AES-192-GCM. AES-256-GCM cannot be
-accepted: the SAML library the package uses cannot decrypt it until a later major version, so it is neither accepted
-nor advertised.
+within its overlap, by RSA-OAEP only. Content encryption is AES-128-GCM, AES-192-GCM or AES-256-GCM.
 AES-CBC is accepted only when you list it in `encryption_algorithms`, for an identity provider that offers nothing
 else, and then only inside a response whose own signature verifies before anything is decrypted. The assertion must
 carry at least one `EncryptedKey` and at most four: one encrypted to several certificates, such as each published

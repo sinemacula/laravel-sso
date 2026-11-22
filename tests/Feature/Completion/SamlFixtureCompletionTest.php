@@ -159,7 +159,7 @@ final class SamlFixtureCompletionTest extends TestCase
             : FailureReason::from($fixture['package']['reason'] ?? '');
 
         self::assertSame($reason, $result->reason, $fixture['name']);
-        self::assertTrue($fixture['expect'] !== 'accept' || $fixture['name'] === '04-valid-encrypted-oaep-gcm', "{$fixture['name']} must be accepted.");
+        self::assertNotSame('accept', $fixture['expect'], "{$fixture['name']} must be accepted.");
         $this->assertRefusedCleanly($reason);
     }
 

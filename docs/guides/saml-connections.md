@@ -86,16 +86,15 @@ SAML keys and certificates are RSA, for every use. On PHP 8.3 the package uses s
 decrypts with RSA alone, so it accepts:
 
 - signatures by RSA with SHA-256, SHA-384 or SHA-512 (`signature_algorithms`);
-- key transport by RSA-OAEP, and content encryption by AES-128-GCM or AES-192-GCM, or AES-CBC when you list it
+- key transport by RSA-OAEP, and content encryption by AES-GCM (128, 192 or 256 bits), or AES-CBC when you list it
   (`encryption_algorithms`).
 
 Anything else is refused when it is configured, never at sign-in: generating an elliptic curve key for `SP_SIGNING` or
 `SP_ENCRYPTION` is invalid (`key_type`, `not_allowed`); trusting an elliptic curve certificate as an identity provider
-signing certificate or a metadata signing anchor is invalid (`certificate`, `unsupported`); and listing ECDSA, RSA-PSS
-or AES-256-GCM in a connection's algorithms is invalid (`not_allowed`). An identity provider that signs only with ECDSA,
-or encrypts only with AES-256-GCM, cannot be connected over SAML yet: ECDSA and AES-256-GCM arrive when the package's
-PHP floor moves to 8.5 and saml2 v7 is stable. Most identity providers sign with RSA by default; ask its administrator
-for an RSA signing certificate.
+signing certificate or a metadata signing anchor is invalid (`certificate`, `unsupported`); and listing ECDSA or RSA-PSS
+in a connection's algorithms is invalid (`not_allowed`). An identity provider that signs only with ECDSA cannot be
+connected over SAML yet: ECDSA arrives when the package's PHP floor moves to 8.5 and saml2 v7 is stable. Most identity
+providers sign with RSA by default; ask its administrator for an RSA signing certificate.
 
 ## 4. Trust the identity provider
 

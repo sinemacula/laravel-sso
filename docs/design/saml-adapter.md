@@ -48,9 +48,8 @@ response it is given (correlation, audience, times, subject, replay) is the driv
   `KeyInfo` or beside its `EncryptedData`, as an identity provider encrypting to every published certificate sends.
   Each under an allowed transport is tried against each decryption key in turn, until a session key of the right
   length decrypts the `EncryptedData`; under AES-GCM one that unwraps but fails authentication moves on to the next,
-  so the outcome never says which unwrapped. AES-128-GCM and AES-192-GCM are allowed; AES-CBC only when the connection
-  lists it and the response carries a verified signature. AES-256-GCM is out until the PHP floor moves to 8.5 and
-  saml2 v7 is stable (`saml-library.md`, condition 8). Every decryption failure is the one refusal
+  so the outcome never says which unwrapped. AES-128-GCM, AES-192-GCM and AES-256-GCM are allowed; AES-CBC only when
+  the connection lists it and the response carries a verified signature. Every decryption failure is the one refusal
   `decryption_failed`, whichever key or step failed.
 - An assertion that no verified signature covers, its own or the response's, is refused. An unsuccessful response reads
   no assertion, but every signature it carries must still verify.
@@ -120,6 +119,5 @@ response it is given (correlation, audience, times, subject, replay) is the driv
 ## Change Triggers
 
 - A saml2 or xml-security release: re-run the fixture set before taking it.
-- The PHP floor reaches 8.5: the move to saml2 v7 rewrites this namespace on PHP's new DOM classes, and AES-256-GCM
-  joins the allow-list.
+- The PHP floor reaches 8.5: the move to saml2 v7 rewrites this namespace on PHP's new DOM classes.
 - A new message kind (logout, artefact): its own schema, cap and profile, and the same boundary.

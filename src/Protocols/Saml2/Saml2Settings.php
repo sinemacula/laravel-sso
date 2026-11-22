@@ -34,10 +34,11 @@ final readonly class Saml2Settings implements ProtocolSettings
         'http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p',
     ];
 
-    /** @var list<string> Default data encryption; AES-256-GCM is broken in `xml-security` 2.x. */
+    /** @var list<string> Default data encryption: AES-GCM. */
     public const array DATA_ENCRYPTION_ALGORITHMS = [
         'http://www.w3.org/2009/xmlenc11#aes128-gcm',
         'http://www.w3.org/2009/xmlenc11#aes192-gcm',
+        'http://www.w3.org/2009/xmlenc11#aes256-gcm',
     ];
 
     /** @var list<string> The data encryption algorithms accepted only when listed: AES-CBC. */

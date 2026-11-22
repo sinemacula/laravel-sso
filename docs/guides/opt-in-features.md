@@ -29,8 +29,8 @@ and ends with a single-use handoff code the client redeems with its verifier. Wh
 package is not in use. A protocol on needs `sso.endpoints.base_url` and at least one application, and each connection
 is created disabled and is used only once it is complete and enabled.
 
-- **SAML** is RSA only on PHP 8.3, with AES-128-GCM or AES-192-GCM for encryption: a provider that signs only with
-  ECDSA or encrypts only with AES-256-GCM cannot be connected yet ([Installation](installation.md)).
+- **SAML** is RSA only on PHP 8.3: a provider that signs only with ECDSA cannot be connected yet
+  ([Installation](installation.md)).
 - **OpenID Connect** pins each connection's ID token algorithms and never negotiates them; a narrow list can refuse a
   provider that moves to another algorithm ([Setting up an OIDC connection](oidc-connections.md#risks)).
 
@@ -77,7 +77,7 @@ encryption key whose certificate the provider encrypts to.
   through a log or an extension. Signatures, not encryption, decide what is trusted.
 - **What it costs.** Once required, a plain assertion is refused (`encryption_required`), so a provider that stops
   encrypting stops signing people in. The encryption key has to be rotated with the provider in step
-  ([Keys](keys.md)), and only RSA-OAEP with AES-128-GCM or AES-192-GCM is accepted by default.
+  ([Keys](keys.md)), and only RSA-OAEP with AES-GCM is accepted by default.
 
 ## AES-CBC compatibility
 
