@@ -7,7 +7,7 @@ verifies their signatures. Three candidates went through the same adversarial fi
 remaining criteria: schema validation, whether the verified element can be reached for the package's absolute-path check
 of signed elements, per-connection algorithm control, PHP 8.3 to 8.5, dependency fit with Laravel 12 and 13 (Symfony 7.4
 and 8), release cadence and maintenance. The package uses `simplesamlphp/saml2` `~6.2.5` with
-`simplesamlphp/xml-security` `~2.3.1`, under the conditions in the decision below. The fixtures go on to seed the
+`simplesamlphp/xml-security` `~2.3.2`, under the conditions in the decision below. The fixtures go on to seed the
 package's fake SAML identity provider.
 
 Candidates:
@@ -132,9 +132,9 @@ one assertion, schema).
     Neither `release-6.2` nor `release-6.x` has the fix.
   - The workaround is the upstream fix's: re-root the signed assertion in a document of its own before `verify()`.
     With it, v6 passes 02, 03 and 41.
-- **Defect 2: AES-256-GCM is unusable.** `xml-security` 2.x defines `BLOCK_ENC_AES256_GCM` as
+- **Defect 2: AES-256-GCM is unusable.** `xml-security` before 2.3.2 defines `BLOCK_ENC_AES256_GCM` as
   `http://www.w3.org/2009xmlenc11#aes256-gcm` (a slash is missing), so the real URI is refused as an unsupported
-  algorithm (fixture 04). The fix is `xml-security` issue #91 and is only in 3.x (PHP 8.5). AES-128-GCM and AES-192-GCM
+  algorithm (fixture 04). The fix is `xml-security` issue #91, in 2.3.2 and 3.x. AES-128-GCM and AES-192-GCM
   work. 2.3.1 includes the GCM tag-validation fix (GHSA-r353-4845-pr5p).
 - **Defect 3: dependency fit with Guzzle 8.**
   - `simplesamlphp/assert` 2.x and `xml-common` 2.8 require `guzzlehttp/psr7` `~2.8`, and Guzzle 8 requires psr7
@@ -249,7 +249,7 @@ one assertion, schema).
 ## Decision
 
 The package uses `simplesamlphp/saml2` v6, constrained to `~6.2.5`, with `simplesamlphp/xml-security` constrained to
-`~2.3.1`. It is the only candidate that gives the package the verified element and per-connection algorithm control
+`~2.3.2`. It is the only candidate that gives the package the verified element and per-connection algorithm control
 through the library rather than around it. onelogin's handling of wrapping is sound, but it cannot control algorithms,
 it decrypts before verifying, it keeps process-wide state, and it is pinned to an xmlseclibs line with unfixed
 advisories, so it fails the package's algorithm policy and the suite's Octane rule. v5 cannot be installed beside
@@ -279,16 +279,13 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    in Entra ID and AD FS metadata). With trust anchors they stay under the signature, which is verified over the
    entity as published; values are read from the digested bytes.
 
-   Two signature shapes stay refused on v6. An `ec:InclusiveNamespaces` list on the `SignedInfo`'s own
-   `CanonicalizationMethod` is refused `response_invalid` (`schema`): no exclusive canonicalisation schema is loaded,
-   and `xml-security` would drop the list anyway. And `xml-security` 2.x digests its own `importNode` copy of the
-   document, so a signature over an element holding a nested default namespace declaration outside its own `Signature`
-   fails inside the library: a response signature over an assertion in its own default namespace, as Entra ID writes
-   one, and signed metadata whose `KeyInfo` or role descriptor declares its own default namespace, as Entra ID's
-   federation metadata does. The assertion's own signature is unaffected, since its nested `Signature` is removed before
-   the digest. The same copy names every element by the first declaration of its namespace, so a signed element whose
-   names use two prefixes for one namespace fails as well. `xml-security` 3.x, on PHP 8.4's DOM classes, keeps the
-   declarations.
+   One signature shape stays refused on v6: an `ec:InclusiveNamespaces` list on the `SignedInfo`'s own
+   `CanonicalizationMethod` is refused `response_invalid` (`schema`), since no exclusive canonicalisation schema is
+   loaded and `xml-security` would drop the list anyway. `xml-security` before 2.3.2 digested an `importNode` copy of
+   the document, which re-prefixed a nested default namespace and named every element by the first declaration of its
+   namespace, so a response signature over an assertion in its own default namespace, as Entra ID writes one, and Entra
+   ID's signed federation metadata failed inside the library. 2.3.2 digests a re-parsed copy, and the package requires
+   it.
 4. **The package owns the algorithm policy.** Check `SignatureMethod`, `DigestMethod`, a single `Reference` and its
    transforms on the parsed `SignedInfo`. saml2 itself refuses a second `Reference` or a `ds:Object` as it reads the
    signature, before this check runs, so a message with either is refused with the detail `structure`, not

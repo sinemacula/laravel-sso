@@ -62,13 +62,9 @@ Every signature in a response must verify with a certificate the connection trus
 only selects among those. The assertion must be covered by a verified signature, its own or the response's, and, with
 `want_assertions_signed` on, by its own.
 
-Two signature shapes cannot be verified with the SAML library the package uses, and are refused:
-
-- an `InclusiveNamespaces` list on the `SignedInfo`'s own `CanonicalizationMethod`, refused as `response_invalid`; a
-  list in the reference's transforms, as Okta and Shibboleth sign, is accepted;
-- a response signature over an assertion written in its own default namespace, as Microsoft Entra ID writes it,
-  refused as `signature_invalid`. Have Entra ID sign the assertion only (see
-  [Identity provider setup](identity-provider-setup.md#over-saml-preset-microsoft_entra_saml)).
+One signature shape cannot be verified with the SAML library the package uses, and is refused as `response_invalid`:
+an `InclusiveNamespaces` list on the `SignedInfo`'s own `CanonicalizationMethod`. A list in the reference's
+transforms, as Okta and Shibboleth sign, is accepted.
 
 Encrypted assertions are decrypted with the connection's current encryption key, its next one, or a retiring one still
 within its overlap, by RSA-OAEP only. Content encryption is AES-128-GCM or AES-192-GCM. AES-256-GCM cannot be

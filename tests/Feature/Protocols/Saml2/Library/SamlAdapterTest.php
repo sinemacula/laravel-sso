@@ -417,6 +417,49 @@ final class SamlAdapterTest extends TestCase
     }
 
     /**
+     * Rows of `[shape]`: an unsigned assertion rewritten into a shape whose
+     * names the SAML library once re-prefixed in the copy it digested.
+     *
+     * @return iterable<string, array{0: \Closure(string): string}>
+     */
+    public static function provideAssertionNamespaceShapes(): iterable
+    {
+        $unprefixed = static fn (string $xml): string => (string) preg_replace(['#<(/?)saml:#', '#xmlns:saml=#'], ['<$1', 'xmlns='], $xml);
+
+        yield from [
+            'in its own default namespace, as Entra ID writes it' => [$unprefixed],
+            'naming its namespace by two prefixes'                => [static fn (string $xml): string => str_replace(
+                ['<Assertion ', '<Issuer>', '</Issuer>'],
+                ['<Assertion xmlns:saml="' . ResponseWriter::NS_SAML . '" ', '<saml:Issuer>', '</saml:Issuer>'],
+                $unprefixed($xml),
+            )],
+        ];
+    }
+
+    /**
+     * A response signed in its envelope, as Entra ID signs one, is verified and
+     * read whatever namespace shape its assertion takes.
+     *
+     * @param  \Closure(string): string  $shape
+     * @return void
+     *
+     * @throws \DOMException
+     */
+    #[DataProvider('provideAssertionNamespaceShapes')]
+    public function testAnEnvelopeSignatureOverAnAssertionOfAnyNamespaceShapeIsRead(\Closure $shape): void
+    {
+        $options  = self::responseOptions();
+        $writer   = new ResponseWriter;
+        $document = self::document($writer->response($options, $shape($writer->assertion($options))));
+
+        self::idp()->signer()->sign(self::rootOf($document));
+
+        $read = $this->read(base64_encode((string) $document->saveXML()))->response;
+
+        self::assertSame([true, false, 'alice'], [$read?->isSigned(), $read?->assertion()?->isSigned(), $read?->assertion()?->subject()?->nameId()?->value()]);
+    }
+
+    /**
      * Rows of `[declared]`: whether the response declares `xs` as well as the
      * assertion.
      *
