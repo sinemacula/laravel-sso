@@ -389,13 +389,13 @@ final class GuzzleFetcherTest extends TestCase
         self::assertSame([], $this->resolver->lookups());
         self::assertSame('https://93.184.216.34/metadata', (string) $this->sentRequest(0)->getUri());
         self::assertSame('https://[2606:4700:4700::1111]/metadata', (string) $this->sentRequest(1)->getUri());
-        self::assertArrayNotHasKey(CURLOPT_RESOLVE, $this->curlOptions(0));
-        self::assertArrayNotHasKey(CURLOPT_RESOLVE, $this->curlOptions(1));
+        self::assertSame([], $this->curlOptions(0));
+        self::assertSame([], $this->curlOptions(1));
     }
 
     /**
-     * Every request uses the fixed transport options, set as cURL options too
-     * where Guzzle leaves them.
+     * Every request uses the fixed transport options, with only the address pin
+     * set as a cURL option.
      *
      * @return void
      */
@@ -417,19 +417,7 @@ final class GuzzleFetcherTest extends TestCase
         self::assertSame(['https'], $options['protocols']);
         self::assertSame(20.0, $options['timeout']);
         self::assertSame(7.0, $options['connect_timeout']);
-
-        $managed = [
-            CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
-            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_FOLLOWLOCATION  => false,
-            CURLOPT_NOPROXY         => '*',
-        ];
-
-        $curl = $this->curlOptions();
-
-        unset($curl[CURLOPT_RESOLVE]);
-
-        self::assertSame($managed, $curl);
+        self::assertSame([CURLOPT_RESOLVE], array_keys($this->curlOptions()));
     }
 
     /**

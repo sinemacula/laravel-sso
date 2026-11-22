@@ -63,11 +63,11 @@ belong are refused in one place (the OWASP Server-Side Request Forgery Preventio
   `HTTPS_PROXY`, is used), `decode_content` false with no `Accept-Encoding` sent (so the size cap is on the bytes
   received, not on a decompressed body), `https` as the only protocol, `User-Agent: laravel-sso`, and `Accept` by
   purpose (metadata `application/samlmetadata+xml, application/xml;q=0.9, text/xml;q=0.8`; JWKS
-  `application/jwk-set+json, application/json;q=0.9`; the rest `application/json`). The fetcher also sets
-  `CURLOPT_PROTOCOLS` and `CURLOPT_REDIR_PROTOCOLS` to `CURLPROTO_HTTPS`, `CURLOPT_FOLLOWLOCATION` false and
-  `CURLOPT_NOPROXY` `*`. The package requires Guzzle `^7.9`, because the SAML library holds it there
-  (`saml-library.md`). Guzzle 8 sets those cURL options itself from the `protocols`, `allow_redirects` and `proxy`
-  options and refuses them in the `curl` option, so moving up means the fetcher stops setting them.
+  `application/jwk-set+json, application/json;q=0.9`; the rest `application/json`). The package requires Guzzle
+  `^7.15.2 || ^8.0.1`, the first releases of each major without a published advisory. Each sets cURL's protocols from
+  `protocols`, so cURL speaks HTTPS alone, sets `CURLOPT_PROXY` to `''` from `proxy`, so cURL never reads a proxy from
+  the environment, and never lets cURL follow a redirect itself. Guzzle 8 refuses those cURL options in the `curl`
+  option, so the only one the fetcher sets is `CURLOPT_RESOLVE`.
 - The handler is Guzzle's `CurlHandler`, built by the fetcher, never `choose_handler()`, the stream handler or a proxy
   handler, because only cURL can pin the address with `CURLOPT_RESOLVE`. Without `ext-curl` and with no handler
   injected, the constructor throws a `LogicException` rather than fall back. `[fetcher]` reports a missing `ext-curl`

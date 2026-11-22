@@ -137,9 +137,8 @@ one assertion, schema).
   algorithm (fixture 04). The fix is `xml-security` issue #91 and is only in 3.x (PHP 8.5). AES-128-GCM and AES-192-GCM
   work. 2.3.1 includes the GCM tag-validation fix (GHSA-r353-4845-pr5p).
 - **Defect 3: dependency fit with Guzzle 8.**
-  - `simplesamlphp/assert` 2.x and `xml-common` 2.8 require `guzzlehttp/psr7` `~2.8`, and Guzzle 8 requires psr7
-    `^3`, so v6 installs only beside Guzzle 7. Adding v6 to a lock on Guzzle 8.3.1 resolved only by downgrading it to
-    7.16.1.
+  - `simplesamlphp/assert` before 2.0.3 and `xml-common` before 2.8.3 require `guzzlehttp/psr7` `~2.8`, and Guzzle 8
+    requires psr7 `^3`, so v6 installs beside Guzzle 8 only with those releases or later. They allow psr7 3.
   - Laravel 12 and 13 on Symfony 7.4, and Laravel 13 on Symfony 8 (PHP 8.4 platform), resolve cleanly.
   - `xml-common` needs the Composer plugin `simplesamlphp/composer-xmlprovider-installer`. A non-interactive install
     fails until the application allows it in `allow-plugins`.
@@ -242,7 +241,7 @@ one assertion, schema).
 | Per-connection algorithm control           | Yes: per-call verifier and decryptor; digest and content checks on parsed values | Yes, as v6                     | No                                                               |
 | Verify before decrypt                      | Caller controls the order                                                        | Caller controls the order      | No: decrypts in the constructor                                  |
 | PHP 8.3 to 8.5                             | Clean                                                                            | Clean                          | Clean                                                            |
-| Laravel 12 and 13, Symfony 7.4 and 8       | Yes; caps Guzzle at 7; needs `allow-plugins`                                     | No (`symfony/finder` `~6.4.0`) | Yes                                                              |
+| Laravel 12 and 13, Symfony 7.4 and 8       | Yes; needs `allow-plugins`                                                       | No (`symfony/finder` `~6.4.0`) | Yes                                                              |
 | Octane and queue safety                    | Container set once at boot; nothing per request                                  | As v6                          | Static base URL and `$_SERVER` reads                             |
 | Maintenance                                | Active; two 6.x lines; fixes land on v7 (PHP 8.5)                                | Security fixes only            | Slow; vulnerable xmlseclibs 3.x pinned                           |
 
@@ -297,8 +296,8 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    ordering must be enforceable, and v6 lets the caller control it.
 5. **AES-256-GCM is out until v7.** The package's SP metadata advertises AES-128-GCM and AES-192-GCM only, and the
    documentation states the limit.
-6. **Guzzle is held at 7.** The package requires `guzzlehttp/guzzle` `^7.9` and documents why. Guzzle 8 returns when
-   saml2's dependencies allow `guzzlehttp/psr7` 3.x, or with v7, which requires PHP 8.5.
+6. **Guzzle 7 or 8.** The package requires `guzzlehttp/guzzle` `^7.15.2 || ^8.0.1`. With Guzzle 8, Composer takes
+   `assert` 2.0.3 and `xml-common` 2.8.3 or later, the first to allow `guzzlehttp/psr7` 3.
 7. **Composer setup.** The installation guide tells applications to allow the
    `simplesamlphp/composer-xmlprovider-installer` plugin.
 8. **SAML is RSA only on this floor.** SAML stays on PHP 8.3 and saml2 v6, whose signatures are RSA alone: RSA with
@@ -330,7 +329,6 @@ the API changes to PHP's new DOM classes, so the adapter has to be rewritten, no
 ## Change Triggers
 
 - saml2 6.2.x backports PR #424, or `xml-security` 2.x fixes the AES-256-GCM URI: drop the matching condition.
-- `assert` or `xml-common` 2.x loosens `guzzlehttp/psr7` to allow 3.x: restore Guzzle 8.
 - The package's PHP floor moves to 8.5 and saml2 v7 is stable: re-run this comparison against v7, plan the adapter
   rewrite, and allow ECDSA signatures and AES-256-GCM (conditions 5 and 8).
 - An application needs the library's container for its own use of the library: condition 9 refuses it; the two cannot

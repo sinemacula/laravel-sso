@@ -84,6 +84,40 @@ final class TlsTransportTest extends TestCase
     }
 
     /**
+     * A proxy named in the environment is never used.
+     *
+     * @return void
+     *
+     * @throws \JsonException
+     * @throws \Random\RandomException
+     */
+    public function testIgnoresAProxyInTheEnvironment(): void
+    {
+        $proxy    = 'http://127.0.0.1:9';
+        $set      = ['https_proxy' => $proxy, 'HTTPS_PROXY' => $proxy, 'all_proxy' => $proxy, 'ALL_PROXY' => $proxy, 'no_proxy' => null, 'NO_PROXY' => null];
+        $previous = [];
+
+        foreach ($set as $name => $value) {
+            $previous[$name] = getenv($name, true);
+
+            putenv($value === null ? $name : $name . '=' . $value);
+        }
+
+        try {
+            $server = TlsServer::start('ok', self::HOST);
+            $result = $this->fetch($server, trusted: true);
+            $report = $server->finish();
+        } finally {
+            foreach ($previous as $name => $value) {
+                putenv($value === false ? $name : $name . '=' . $value);
+            }
+        }
+
+        self::assertTrue($result->isFetched(), (string) json_encode($this->log->getRecords()));
+        self::assertSame('GET /metadata HTTP/1.1', $report['request']);
+    }
+
+    /**
      * An untrusted certificate fails the fetch before the request is sent.
      *
      * @return void

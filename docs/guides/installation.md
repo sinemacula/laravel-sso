@@ -7,23 +7,21 @@ composer config allow-plugins.simplesamlphp/composer-xmlprovider-installer true
 composer require sinemacula/laravel-sso
 ```
 
-The package needs PHP 8.3 or later and Laravel 12.40 or later, or 13.3 or later, with the `bcmath`, `curl`, `dom`,
-`hash`, `libxml`, `mbstring`, `openssl` and `zlib` extensions; Composer requires them, and the boot check names any that
-is missing (see [Checking the configuration](configuration.md#checking-the-configuration)). While SAML is on, the same
-check names any XML provider package whose element registry the plugin has not put in place, as after an install with
-plugins disabled, `--no-plugins` or the plugin not allowed, and any registry it put in place twice or left stale from an
-earlier install: run `composer install` again with it allowed, into a fresh vendor directory if the plugin has run
-before.
+The package needs PHP 8.3 or later, Laravel 12.40 or later or 13.3 or later, and Guzzle 7.15.2 or later or 8.0.1 or
+later, with the `bcmath`, `curl`, `dom`, `hash`, `libxml`, `mbstring`, `openssl` and `zlib` extensions; Composer
+requires them, and the boot check names any that is missing (see
+[Checking the configuration](configuration.md#checking-the-configuration)). While SAML is on, the same check names any
+XML provider package whose element registry the plugin has not put in place, as after an install with plugins disabled,
+`--no-plugins` or the plugin not allowed, and any registry it put in place twice or left stale from an earlier install:
+run `composer install` again with it allowed, into a fresh vendor directory if the plugin has run before.
 
 SAML does not support PHP built against PCRE2 10.45 to 10.47 (see `PCRE_VERSION`): under them the SAML library refuses
 every NameID and attribute value with a character above U+00FF. Use PCRE2 10.48 or later. While SAML is on,
 `php artisan sso:check` fails under `[saml2]` on such a build.
 
-The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets three limits until the package
+The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets two limits until the package
 can move to its next major version, which needs PHP 8.5:
 
-- **Guzzle stays at 7.** The package requires `guzzlehttp/guzzle` `^7.9`, because the SAML library's dependencies do
-  not yet allow `guzzlehttp/psr7` 3, which Guzzle 8 needs.
 - **No AES-256-GCM.** The library cannot decrypt an assertion encrypted with AES-256-GCM, so the package neither
   accepts nor advertises it: an encrypted assertion must use AES-128-GCM or AES-192-GCM (or AES-CBC, only where a
   connection opts in). Configure the identity provider accordingly.

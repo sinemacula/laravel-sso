@@ -27,7 +27,7 @@
         "ext-mbstring": "*",
         "ext-openssl": "*",
         "ext-zlib": "*",
-        "guzzlehttp/guzzle": "^7.9",
+        "guzzlehttp/guzzle": "^7.15.2 || ^8.0.1",
         "laravel/framework": "^12.40|^13.3",
         "psr/clock": "^1.0",
         "simplesamlphp/saml2": "~6.2.5",
