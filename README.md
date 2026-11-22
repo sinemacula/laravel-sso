@@ -203,7 +203,6 @@ them, for maintainers and reviewers, are in [docs/design](docs/design/README.md)
 
 - PHP ^8.3, with the `bcmath`, `curl`, `dom`, `hash`, `libxml`, `mbstring`, `openssl` and `zlib` extensions
 - Laravel ^12.40 || ^13.3
-- For SAML, PCRE2 10.48 or later (10.45 to 10.47 are not supported)
 
 ## Testing
 
