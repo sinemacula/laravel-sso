@@ -18,8 +18,7 @@ use SimpleSAML\XMLSchema\Exception\SchemaViolationException;
 final class SamlString
 {
     /**
-     * Whether the library's string type accepts the value; under PCRE2 10.45 to
-     * 10.47 it refuses every character above U+00FF.
+     * Whether the library's string type accepts the value.
      *
      * @param  string  $value
      * @return bool

@@ -7,7 +7,6 @@ namespace Tests\Feature\Protocols\Saml2\Library;
 use Carbon\CarbonImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
-use SimpleSAML\XML\Assert\Assert as XmlAssert;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\AssertionDecryptor;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\AssertionMapper;
 use SineMacula\Laravel\Sso\Protocols\Saml2\Library\HardenedParser;
@@ -202,10 +201,6 @@ final class SamlAdapterTest extends TestCase
     #[DataProvider('provideExactSubjects')]
     public function testTheSubjectIsReadExactlyAsSent(string $value): void
     {
-        if (preg_match('/[^\x{0}-\x{FF}]/u', $value) === 1 && preg_match(self::xmlStringPattern(), "\u{100}") !== 1) {
-            self::markTestSkipped('This PCRE rejects characters above U+00FF in the SAML library\'s string pattern.');
-        }
-
         $result    = $this->read(self::response()->with(['name_id' => $value, 'attributes' => ['employeeNumber' => [$value]]])->encoded());
         $assertion = self::assertionOf($result->response ?? self::fail(sprintf('The response was refused: %s/%s.', $result->reason?->value, $result->detail)));
 
@@ -1472,17 +1467,5 @@ final class SamlAdapterTest extends TestCase
         $result = $this->read($encoded, $policy);
 
         return [$result->reason?->value, $result->detail];
-    }
-
-    /**
-     * The pattern the SAML library holds every string value to.
-     *
-     * @return string
-     */
-    private static function xmlStringPattern(): string
-    {
-        $pattern = (new \ReflectionClass(XmlAssert::class))->getStaticPropertyValue('string_regex');
-
-        return is_string($pattern) ? $pattern : self::fail('The SAML library has no string pattern.');
     }
 }

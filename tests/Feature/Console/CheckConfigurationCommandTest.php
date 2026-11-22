@@ -8,7 +8,6 @@ use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use PHPUnit\Framework\Attributes\CoversClass;
-use SimpleSAML\XML\Assert\Assert as XmlAssert;
 use SineMacula\Laravel\Sso\Config\ConfigurationChecker;
 use SineMacula\Laravel\Sso\Console\CheckConfigurationCommand;
 use SineMacula\Laravel\Sso\SsoServiceProvider;
@@ -203,24 +202,19 @@ final class CheckConfigurationCommandTest extends TestCase
     }
 
     /**
-     * By default the run fails while SAML is on exactly where the library's
-     * string pattern refuses U+0100.
+     * By default the run passes while SAML is on, since the library's string
+     * type accepts U+0100 under any PCRE.
      *
      * @return void
      */
-    public function testTheDefaultProbeFollowsTheLibrarysStringPattern(): void
+    public function testTheDefaultProbePassesWhileSamlIsOn(): void
     {
         $this->app?->forgetInstance(CheckConfigurationCommand::class);
         $this->useThePackage();
 
-        $pattern = (new \ReflectionClass(XmlAssert::class))->getStaticPropertyValue('string_regex');
-
-        self::assertIsString($pattern);
-
         [$code, $output] = $this->check();
-        $refused         = preg_match($pattern, "\u{100}") !== 1;
 
-        self::assertSame([$refused ? 1 : 0, $refused], [$code, in_array(self::WIDE_CHARACTERS_REFUSED, $output, true)]);
+        self::assertSame([0, false], [$code, in_array(self::WIDE_CHARACTERS_REFUSED, $output, true)]);
     }
 
     /**

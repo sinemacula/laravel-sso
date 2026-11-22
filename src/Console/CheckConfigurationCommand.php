@@ -18,7 +18,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
  *
  * Reads configuration only: no database connection, network request or secret.
  * While SAML is on, it also fails where the SAML library's string validation
- * refuses characters above U+00FF, as under PCRE2 10.45 to 10.47.
+ * refuses characters above U+00FF.
  *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
