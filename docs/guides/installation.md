@@ -7,19 +7,17 @@ composer config allow-plugins.simplesamlphp/composer-xmlprovider-installer true
 composer require sinemacula/laravel-sso
 ```
 
-The package needs PHP 8.3 or later and Laravel 12.40 or later, or 13.3 or later, with the `bcmath`, `curl`, `dom`,
-`hash`, `libxml`, `mbstring`, `openssl` and `zlib` extensions; Composer requires them, and the boot check names any that
-is missing (see [Checking the configuration](configuration.md#checking-the-configuration)). While SAML is on, the same
-check names any XML provider package whose element registry the plugin has not put in place, as after an install with
-plugins disabled, `--no-plugins` or the plugin not allowed, and any registry it put in place twice or left stale from an
-earlier install: run `composer install` again with it allowed, into a fresh vendor directory if the plugin has run
-before.
+The package needs PHP 8.3 or later, Laravel 12.40 or later or 13.3 or later, and Guzzle 7.15.2 or later or 8.0.1 or
+later, with the `bcmath`, `curl`, `dom`, `hash`, `libxml`, `mbstring`, `openssl` and `zlib` extensions; Composer
+requires them, and the boot check names any that is missing (see
+[Checking the configuration](configuration.md#checking-the-configuration)). While SAML is on, the same check names any
+XML provider package whose element registry the plugin has not put in place, as after an install with plugins disabled,
+`--no-plugins` or the plugin not allowed, and any registry it put in place twice or left stale from an earlier install:
+run `composer install` again with it allowed, into a fresh vendor directory if the plugin has run before.
 
-The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets two limits until the package
+The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets one limit until the package
 can move to its next major version, which needs PHP 8.5:
 
-- **Guzzle stays at 7.** The package requires `guzzlehttp/guzzle` `^7.9`, because the SAML library's dependencies do
-  not yet allow `guzzlehttp/psr7` 3, which Guzzle 8 needs.
 - **RSA only.** SAML signatures are RSA with SHA-256, SHA-384 or SHA-512, and every SAML key and certificate is RSA:
   ECDSA signatures and elliptic curve keys are refused when they are configured. ECDSA arrives when the package's PHP
   floor moves to 8.5 and saml2 v7 is stable.

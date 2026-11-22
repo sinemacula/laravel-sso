@@ -300,7 +300,7 @@ final readonly class GuzzleFetcher implements Fetcher
             'proxy'           => '',
             'decode_content'  => false,
             'protocols'       => ['https'],
-            'curl'            => $this->curlOptions($target, $address),
+            'curl'            => $this->pin($target, $address),
             // Guzzle 7's mock handler also passes a queued failure here, which
             // has no headers to check
             'on_headers' => static function (mixed $response) use ($cap, &$tooLarge): void {
@@ -378,25 +378,24 @@ final readonly class GuzzleFetcher implements Fetcher
     }
 
     /**
-     * The cURL options of one hop.
+     * The cURL option that pins one hop's host to the checked address, none for
+     * an IP literal.
      *
      * @param  array{uri: \Psr\Http\Message\UriInterface, host: string, port: int, literal: ?string}  $target
      * @param  string  $address
      * @return array<int, mixed>
      */
-    private function curlOptions(array $target, string $address): array
+    private function pin(array $target, string $address): array
     {
+        if ($target['literal'] !== null) {
+            return [];
+        }
+
         $bytes     = (string) inet_pton($address);
         $canonical = (string) inet_ntop($bytes);
-        $pinned    = strlen($bytes)     === 16 ? '[' . $canonical . ']' : $canonical;
-        $options   = $target['literal'] === null ? [CURLOPT_RESOLVE => [sprintf('%s:%d:%s', $target['host'], $target['port'], $pinned)]] : [];
+        $pinned    = strlen($bytes) === 16 ? '[' . $canonical . ']' : $canonical;
 
-        return $options + [
-            CURLOPT_PROTOCOLS       => CURLPROTO_HTTPS,
-            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTPS,
-            CURLOPT_FOLLOWLOCATION  => false,
-            CURLOPT_NOPROXY         => '*',
-        ];
+        return [CURLOPT_RESOLVE => [sprintf('%s:%d:%s', $target['host'], $target['port'], $pinned)]];
     }
 
     /**
