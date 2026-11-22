@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.2.0](https://github.com/sinemacula/laravel-sso/compare/v0.1.0...v0.2.0) (2026-11-22)
+
+
+### Features
+
+* accept aes-256-gcm encrypted saml assertions ([#125](https://github.com/sinemacula/laravel-sso/issues/125)) ([b956881](https://github.com/sinemacula/laravel-sso/commit/b95688148082ec3d20401e8d3fc5b2c33f9ec7ee))
+
+
+### Bug Fixes
+
+* allow guzzle 8 ([#123](https://github.com/sinemacula/laravel-sso/issues/123)) ([7226e38](https://github.com/sinemacula/laravel-sso/commit/7226e382c08dc7d79501f4e089c95b05bee8c4bf))
+* verify saml signatures over nested default namespaces ([#124](https://github.com/sinemacula/laravel-sso/issues/124)) ([479f377](https://github.com/sinemacula/laravel-sso/commit/479f377f4764d2398d8da378f6a086ec2195eea2))
+
 ## 0.1.0 (2026-11-21)
 
 First release. Tenant single sign-on for Laravel over SAML 2.0 and OpenID Connect: each tenant signs its people in
