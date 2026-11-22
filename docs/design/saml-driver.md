@@ -34,10 +34,9 @@ in `saml-responses.md`, re-initiation in `idp-initiated.md`, the service provide
 - `startUrl()` answers the start URL re-initiation sends the browser to, naming the connection, or `null` when the
   connection does not allow IdP-initiated sign-in; the re-initiation asks it again of the locked connection.
 - SAML is RSA only on PHP 8.3 and saml2 v6, a known limit of the package's signature policy: RSA signatures with
-  SHA-256, SHA-384 or SHA-512, RSA-OAEP key transport, AES-128-GCM or AES-192-GCM content encryption. Every SAML key use
-  refuses an elliptic curve key or certificate, and the allow-lists refuse ECDSA, RSA-PSS and AES-256-GCM, at
-  validation, with a code naming the setting; ECDSA and AES-256-GCM arrive when the PHP floor moves to 8.5 and saml2 v7
-  is stable (`saml-library.md`, condition 8).
+  SHA-256, SHA-384 or SHA-512, RSA-OAEP key transport, AES-GCM content encryption. Every SAML key use refuses an
+  elliptic curve key or certificate, and the allow-lists refuse ECDSA and RSA-PSS, at validation, with a code naming the
+  setting; ECDSA arrives when the PHP floor moves to 8.5 and saml2 v7 is stable (`saml-library.md`, condition 8).
 - A response's `Destination` must be present and exactly the assertion consumer service URL, signed or not, as every
   bearer confirmation's `Recipient` must (`saml-responses.md`).
 - Only the adapter's namespace (`Protocols\Saml2\Library`) calls the SAML library. The driver and its collaborators

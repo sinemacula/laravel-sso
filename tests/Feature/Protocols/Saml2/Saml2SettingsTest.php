@@ -42,9 +42,6 @@ final class Saml2SettingsTest extends TestCase
     /** @var string The AES-128-GCM data encryption algorithm. */
     private const string AES128_GCM = 'http://www.w3.org/2009/xmlenc11#aes128-gcm';
 
-    /** @var string The AES-256-GCM data encryption algorithm, which the library cannot decrypt. */
-    private const string AES256_GCM = 'http://www.w3.org/2009/xmlenc11#aes256-gcm';
-
     /**
      * Nothing given stores every default, in the order the settings are named.
      *
@@ -74,7 +71,11 @@ final class Saml2SettingsTest extends TestCase
             'http://www.w3.org/2001/04/xmldsig-more#rsa-sha384',
             'http://www.w3.org/2001/04/xmldsig-more#rsa-sha512',
         ], Saml2Settings::SIGNATURE_ALGORITHMS);
-        self::assertSame(['http://www.w3.org/2009/xmlenc11#aes128-gcm', 'http://www.w3.org/2009/xmlenc11#aes192-gcm'], Saml2Settings::DATA_ENCRYPTION_ALGORITHMS);
+        self::assertSame([
+            'http://www.w3.org/2009/xmlenc11#aes128-gcm',
+            'http://www.w3.org/2009/xmlenc11#aes192-gcm',
+            'http://www.w3.org/2009/xmlenc11#aes256-gcm',
+        ], Saml2Settings::DATA_ENCRYPTION_ALGORITHMS);
     }
 
     /**
@@ -218,7 +219,6 @@ final class Saml2SettingsTest extends TestCase
             ],
             'an encryption algorithm twice' => [['encryption_algorithms' => [self::RSA_OAEP, self::AES128_GCM, self::AES128_GCM]], [['encryption_algorithms.2', 'duplicate']]],
             'no key transport'              => [['encryption_algorithms' => [self::AES128_GCM]], [['encryption_algorithms', 'required']]],
-            'aes-256-gcm'                   => [['encryption_algorithms' => [self::RSA_OAEP, self::AES256_GCM]], [['encryption_algorithms.1', 'not_allowed']]],
             'ecdsa'                         => [['signature_algorithms' => ['http://www.w3.org/2001/04/xmldsig-more#ecdsa-sha256']], [['signature_algorithms.0', 'not_allowed']]],
             'rsa-pss'                       => [['signature_algorithms' => [self::RSA_PSS]], [['signature_algorithms.0', 'not_allowed']]],
             'an age as a string'            => [['max_authentication_age_seconds' => '3600'], [['max_authentication_age_seconds', 'invalid_type']]],

@@ -29,10 +29,11 @@ final readonly class AssertionDecryptor
     /** @var list<string> The key transport algorithms the package decrypts: RSA-OAEP only. */
     public const array KEY_TRANSPORT_ALGORITHMS = [C::KEY_TRANSPORT_OAEP, C::KEY_TRANSPORT_OAEP_MGF1P];
 
-    /** @var array<string, int> Decryptable data algorithms and their key length in bytes; no AES-256-GCM before `xml-security` 3. */
+    /** @var array<string, int> Decryptable data algorithms and their key length in bytes. */
     public const array DATA_ENCRYPTION_ALGORITHMS = [
         C::BLOCK_ENC_AES128_GCM => 16,
         C::BLOCK_ENC_AES192_GCM => 24,
+        C::BLOCK_ENC_AES256_GCM => 32,
         C::BLOCK_ENC_AES128     => 16,
         C::BLOCK_ENC_AES192     => 24,
         C::BLOCK_ENC_AES256     => 32,

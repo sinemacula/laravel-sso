@@ -127,17 +127,17 @@ final class MetadataWriterTest extends TestCase
     public static function provideEncryptionAlgorithms(): iterable
     {
         yield from [
-            'the default'    => [null, [self::AES128_GCM, self::AES192_GCM, self::RSA_OAEP, self::RSA_OAEP_MGF1P]],
-            'one of each'    => [[self::AES192_GCM, self::RSA_OAEP_MGF1P], [self::AES192_GCM, self::RSA_OAEP_MGF1P]],
-            'key transports' => [[self::RSA_OAEP_MGF1P, self::AES128_GCM, self::RSA_OAEP], [self::AES128_GCM, self::RSA_OAEP_MGF1P, self::RSA_OAEP]],
-            'AES-CBC listed' => [[self::RSA_OAEP, self::AES256_CBC], [self::AES256_CBC, self::RSA_OAEP]],
-            'never written'  => [[self::RSA_1_5, self::AES256_GCM, self::RSA_OAEP, self::AES192_GCM], [self::AES192_GCM, self::RSA_OAEP]],
+            'the default'           => [null, [self::AES128_GCM, self::AES192_GCM, self::AES256_GCM, self::RSA_OAEP, self::RSA_OAEP_MGF1P]],
+            'one of each'           => [[self::AES192_GCM, self::RSA_OAEP_MGF1P], [self::AES192_GCM, self::RSA_OAEP_MGF1P]],
+            'key transports'        => [[self::RSA_OAEP_MGF1P, self::AES128_GCM, self::RSA_OAEP], [self::AES128_GCM, self::RSA_OAEP_MGF1P, self::RSA_OAEP]],
+            'AES-CBC listed'        => [[self::RSA_OAEP, self::AES256_CBC], [self::AES256_CBC, self::RSA_OAEP]],
+            'RSA 1.5 never written' => [[self::RSA_1_5, self::AES256_GCM, self::RSA_OAEP, self::AES192_GCM], [self::AES256_GCM, self::AES192_GCM, self::RSA_OAEP]],
         ];
     }
 
     /**
      * Each encryption key descriptor carries the methods the allow-list gives,
-     * a signing one none, and AES-256-GCM and RSA 1.5 are never written.
+     * a signing one none, and RSA 1.5 is never written.
      *
      * @param  ?list<string>  $algorithms
      * @param  list<string>  $methods
@@ -154,7 +154,6 @@ final class MetadataWriterTest extends TestCase
 
         self::assertSame($methods, self::values($xpath->query('//md:KeyDescriptor[@use="encryption"]/md:EncryptionMethod/@Algorithm')));
         self::assertSame([], self::values($xpath->query('//md:KeyDescriptor[@use="signing"]/md:EncryptionMethod/@Algorithm')));
-        self::assertStringNotContainsString(self::AES256_GCM, $xml);
         self::assertStringNotContainsString(self::RSA_1_5, $xml);
     }
 

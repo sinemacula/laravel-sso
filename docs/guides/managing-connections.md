@@ -327,7 +327,7 @@ Each violation names a setting by its dotted path (`issuer`, `signature_algorith
 | `want_assertions_signed`         | `true`, `false`                                                               | `true`                    |
 | `require_encrypted_assertions`   | `true` (with `sso.features.encrypted_assertions` on), `false`                 | `false`                   |
 | `signature_algorithms`           | RSA over SHA-256, SHA-384 or SHA-512; no SHA-1                                | all three                 |
-| `encryption_algorithms`          | RSA-OAEP key transport; AES-128-GCM or AES-192-GCM, or AES-CBC when listed    | RSA-OAEP and both AES-GCM |
+| `encryption_algorithms`          | RSA-OAEP key transport; AES-GCM, or AES-CBC when listed                       | RSA-OAEP and all AES-GCM  |
 | `force_authn`                    | `true`, `false`                                                               | `false`                   |
 | `requested_authn_context`        | Up to 10 context class URIs, each at most 1024 bytes                          | none                      |
 | `max_authentication_age_seconds` | 60 to 604800 (a week)                                                         | none                      |
@@ -339,12 +339,12 @@ Each violation names a setting by its dotted path (`issuer`, `signature_algorith
 The algorithms are given by their XML Signature and XML Encryption URIs, for example
 `http://www.w3.org/2001/04/xmldsig-more#rsa-sha256` and `http://www.w3.org/2009/xmlenc11#aes128-gcm`; an encryption list
 holds at least one key transport and one data algorithm, and never RSA 1.5. SAML is RSA only on PHP 8.3 and saml2 v6:
-ECDSA and RSA-PSS signatures and AES-256-GCM in these lists are refused as `not_allowed`; a generated elliptic curve key
-is refused as `key_type` `not_allowed`, and a trusted elliptic curve certificate as `certificate` `unsupported`, for
-every SAML key use. ECDSA and AES-256-GCM arrive when the PHP floor moves to 8.5 and saml2 v7 is stable (see [Setting up
-a SAML connection](saml-connections.md#saml-is-rsa-only)). A SAML connection has no secret among its settings: its key
-pairs and trusted certificates are managed with its keys (see [Keys and certificates](keys.md)). Setting up a SAML
-connection from start to finish is described in [Setting up a SAML connection](saml-connections.md).
+ECDSA and RSA-PSS signatures in these lists are refused as `not_allowed`; a generated elliptic curve key is refused as
+`key_type` `not_allowed`, and a trusted elliptic curve certificate as `certificate` `unsupported`, for every SAML key
+use. ECDSA arrives when the PHP floor moves to 8.5 and saml2 v7 is stable (see
+[Setting up a SAML connection](saml-connections.md#saml-is-rsa-only)). A SAML connection has no secret among its
+settings: its key pairs and trusted certificates are managed with its keys (see [Keys and certificates](keys.md)).
+Setting up a SAML connection from start to finish is described in [Setting up a SAML connection](saml-connections.md).
 
 ## OIDC settings
 

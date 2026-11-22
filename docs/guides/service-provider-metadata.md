@@ -84,10 +84,10 @@ One unsigned `md:EntityDescriptor` for the connection, with one `md:SPSSODescrip
 | `NameIDFormat`                   | The connection's `name_id_format` (`persistent` by default)                             |
 | `AssertionConsumerService`       | HTTP-POST, at the connection's assertion consumer service URL, `index="0"`, the default |
 
-With the default `encryption_algorithms`, each encryption key lists AES-128-GCM, AES-192-GCM, RSA-OAEP
+With the default `encryption_algorithms`, each encryption key lists AES-128-GCM, AES-192-GCM, AES-256-GCM, RSA-OAEP
 (`http://www.w3.org/2009/xmlenc11#rsa-oaep`) and RSA-OAEP with MGF1 (`http://www.w3.org/2001/04/xmlenc#rsa-oaep-mgf1p`).
-AES-CBC is listed only when you add it to the connection's `encryption_algorithms`. AES-256-GCM is never listed: the
-SAML library the package uses cannot decrypt it until its next major version. RSA 1.5 is never accepted or listed.
+AES-CBC is listed only when you add it to the connection's `encryption_algorithms`. RSA 1.5 is never accepted or
+listed.
 
 The metadata is the service provider side only, so a connection is described before its identity provider settings are
 given, and while it is disabled: register it at the identity provider first, then fill in the provider's settings and

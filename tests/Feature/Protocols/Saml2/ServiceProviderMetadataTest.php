@@ -66,7 +66,7 @@ final class ServiceProviderMetadataTest extends TestCase
     /** @var string AES-192-GCM. */
     private const string AES192_GCM = 'http://www.w3.org/2009/xmlenc11#aes192-gcm';
 
-    /** @var string AES-256-GCM, which the library cannot decrypt until saml2 v7. */
+    /** @var string AES-256-GCM. */
     private const string AES256_GCM = 'http://www.w3.org/2009/xmlenc11#aes256-gcm';
 
     /** @var string AES-128-CBC. */
@@ -76,7 +76,7 @@ final class ServiceProviderMetadataTest extends TestCase
     private const string RSA_1_5 = 'http://www.w3.org/2001/04/xmlenc#rsa-1_5';
 
     /** @var list<string> The encryption methods a connection allows by default, data algorithms first. */
-    private const array DEFAULT_METHODS = [self::AES128_GCM, self::AES192_GCM, self::RSA_OAEP, self::RSA_OAEP_MGF1P];
+    private const array DEFAULT_METHODS = [self::AES128_GCM, self::AES192_GCM, self::AES256_GCM, self::RSA_OAEP, self::RSA_OAEP_MGF1P];
 
     /** @var string A private key's ciphertext as a row holds it. */
     private const string CIPHERTEXT = 'the-stored-private-key-ciphertext';
@@ -191,14 +191,14 @@ final class ServiceProviderMetadataTest extends TestCase
                 [self::RSA_OAEP_MGF1P, self::RSA_OAEP, self::AES192_GCM, self::AES128_GCM],
                 [self::AES192_GCM, self::AES128_GCM, self::RSA_OAEP_MGF1P, self::RSA_OAEP],
             ],
-            'AES-CBC listed'              => [[self::RSA_OAEP, self::AES128_CBC, self::AES128_GCM], [self::AES128_CBC, self::AES128_GCM, self::RSA_OAEP]],
-            'stored but never advertised' => [[self::RSA_1_5, self::RSA_OAEP, self::AES256_GCM, self::AES128_GCM], [self::AES128_GCM, self::RSA_OAEP]],
+            'AES-CBC listed'                      => [[self::RSA_OAEP, self::AES128_CBC, self::AES128_GCM], [self::AES128_CBC, self::AES128_GCM, self::RSA_OAEP]],
+            'RSA 1.5 stored but never advertised' => [[self::RSA_1_5, self::RSA_OAEP, self::AES256_GCM, self::AES128_GCM], [self::AES256_GCM, self::AES128_GCM, self::RSA_OAEP]],
         ];
     }
 
     /**
      * Each encryption certificate carries an encryption method for each
-     * algorithm the connection allows, and never AES-256-GCM or RSA 1.5.
+     * algorithm the connection allows, and never RSA 1.5.
      *
      * @param  ?list<string>  $algorithms
      * @param  list<string>  $methods
@@ -221,7 +221,6 @@ final class ServiceProviderMetadataTest extends TestCase
         self::assertSame($expected, $description->body);
         self::assertSame([...$methods, ...$methods], self::values($xpath, '//md:KeyDescriptor[@use="encryption"]/md:EncryptionMethod/@Algorithm'));
         self::assertSame([], self::values($xpath, '//md:KeyDescriptor[@use="signing"]/md:EncryptionMethod/@Algorithm'));
-        self::assertStringNotContainsString(self::AES256_GCM, $description->body);
         self::assertStringNotContainsString(self::RSA_1_5, $description->body);
     }
 

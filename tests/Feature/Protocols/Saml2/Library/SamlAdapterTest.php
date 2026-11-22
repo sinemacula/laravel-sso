@@ -860,6 +860,7 @@ final class SamlAdapterTest extends TestCase
         self::assertNotNull($assertion);
         self::assertSame([true, true, 'alice'], [$assertion->isEncrypted(), $assertion->isSigned(), $assertion->subject()?->nameId()?->value()]);
         self::assertTrue($this->read(self::response()->encryptedFor($spCert, 'rsa-oaep', 'aes192-gcm')->encoded())->isRead());
+        self::assertTrue($this->read(self::response()->encryptedFor($spCert, 'rsa-oaep', 'aes256-gcm')->encoded())->isRead());
     }
 
     /**
@@ -897,7 +898,7 @@ final class SamlAdapterTest extends TestCase
             'no decryption key'           => ['gcm', ['keys' => []]],
             'a key that does not unwrap'  => ['gcm', ['keys' => ['other']]],
             'rsa 1.5'                     => ['rsa15', []],
-            'aes-256-gcm'                 => ['aes256', []],
+            'aes-256-gcm not listed'      => ['aes256', ['data' => ['http://www.w3.org/2009/xmlenc11#aes128-gcm']]],
             'a key transport not listed'  => ['gcm', ['transports' => ['http://www.w3.org/2009/xmlenc11#rsa-oaep']]],
             'a data algorithm not listed' => ['gcm', ['data' => ['http://www.w3.org/2009/xmlenc11#aes192-gcm']]],
             'aes-cbc not listed'          => ['cbc-signed', []],

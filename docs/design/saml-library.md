@@ -292,22 +292,21 @@ The decision holds under these conditions, and the package's SAML adapter has a 
    `signature_policy`; the package's own check stays as a defence. Build the decryptor for RSA-OAEP only, check
    `EncryptionMethod` before `decrypt()`, and verify a trusted Response signature before decrypting AES-CBC. The
    ordering must be enforceable, and v6 lets the caller control it.
-5. **AES-256-GCM is out until v7.** The package's SP metadata advertises AES-128-GCM and AES-192-GCM only, and the
-   documentation states the limit.
+5. **AES-256-GCM from `xml-security` 2.3.2.** The package requires 2.3.2, which fixes the URI, so AES-128-GCM,
+   AES-192-GCM and AES-256-GCM are all allowed and advertised.
 6. **Guzzle is held at 7.** The package requires `guzzlehttp/guzzle` `^7.9` and documents why. Guzzle 8 returns when
    saml2's dependencies allow `guzzlehttp/psr7` 3.x, or with v7, which requires PHP 8.5.
 7. **Composer setup.** The installation guide tells applications to allow the
    `simplesamlphp/composer-xmlprovider-installer` plugin.
 8. **SAML is RSA only on this floor.** SAML stays on PHP 8.3 and saml2 v6, whose signatures are RSA alone: RSA with
-   SHA-256, SHA-384 or SHA-512 signs and verifies, RSA-OAEP transports keys, and AES-128-GCM or AES-192-GCM encrypts
-   content. This is a known limit of the package's signature policy. Configuration validation refuses everything else
-   for every SAML key use, each with its own code: a generated `sp_signing` or `sp_encryption` key of type `ec`
-   (`key_type`, `not_allowed`); an elliptic curve certificate trusted as `idp_signing` or as a `metadata_signing` anchor
-   (`certificate`, `unsupported`); and an ECDSA or RSA-PSS signature algorithm or AES-256-GCM in a connection's
-   allow-lists (`not_allowed`). An elliptic curve certificate published in metadata is ignored, for an import and a
-   refresh alike, and metadata whose only signing certificates are elliptic curve is refused `metadata_invalid`
-   (`signing_certificate`). ECDSA signatures and AES-256-GCM arrive when the PHP floor moves to 8.5 and saml2 v7 is
-   stable.
+   SHA-256, SHA-384 or SHA-512 signs and verifies, RSA-OAEP transports keys, and AES-GCM encrypts content. This is a
+   known limit of the package's signature policy. Configuration validation refuses everything else for every SAML key
+   use, each with its own code: a generated `sp_signing` or `sp_encryption` key of type `ec` (`key_type`,
+   `not_allowed`); an elliptic curve certificate trusted as `idp_signing` or as a `metadata_signing` anchor
+   (`certificate`, `unsupported`); and an ECDSA or RSA-PSS signature algorithm in a connection's allow-lists
+   (`not_allowed`). An elliptic curve certificate published in metadata is ignored, for an import and a refresh alike,
+   and metadata whose only signing certificates are elliptic curve is refused `metadata_invalid`
+   (`signing_certificate`). ECDSA signatures arrive when the PHP floor moves to 8.5 and saml2 v7 is stable.
 9. **The package owns the library's container.** The library reads its clock, logger, temporary directory, files and
    algorithm blacklist from one process-wide container. The package sets its own (`Library\LibraryContainer`) before
    its first parse, keeps it for the life of the process (idempotent under Octane and in queue workers), and refuses
@@ -326,10 +325,10 @@ the API changes to PHP's new DOM classes, so the adapter has to be rewritten, no
 
 ## Change Triggers
 
-- saml2 6.2.x backports PR #424, or `xml-security` 2.x fixes the AES-256-GCM URI: drop the matching condition.
+- saml2 6.2.x backports PR #424: drop the matching condition.
 - `assert` or `xml-common` 2.x loosens `guzzlehttp/psr7` to allow 3.x: restore Guzzle 8.
 - The package's PHP floor moves to 8.5 and saml2 v7 is stable: re-run this comparison against v7, plan the adapter
-  rewrite, and allow ECDSA signatures and AES-256-GCM (conditions 5 and 8).
+  rewrite, and allow ECDSA signatures (condition 8).
 - An application needs the library's container for its own use of the library: condition 9 refuses it; the two cannot
   share one process until the library's container is per call.
 - An advisory against `saml2`, `xml-security` or `xml-common`: re-run the fixture set against the patched version
