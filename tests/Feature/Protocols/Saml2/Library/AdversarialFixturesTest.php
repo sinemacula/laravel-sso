@@ -21,8 +21,6 @@ use Tests\TestCase;
 /**
  * Feature tests for the adversarial SAML fixtures, read through the adapter.
  *
- * The AES-256-GCM fixture stays refused until saml2 v7.
- *
  * @author      Ben Carey <bdmc@sinemacula.co.uk>
  * @copyright   2026 Sine Macula Limited
  *
@@ -85,7 +83,7 @@ final class AdversarialFixturesTest extends TestCase
         self::assertFalse($result->isRead());
         self::assertNull($result->response);
         self::assertSame([$package['reason'], $package['detail']], [$result->reason?->value, $result->detail]);
-        self::assertTrue($expect !== 'accept' || $name === '04-valid-encrypted-oaep-gcm', "{$name} must be accepted.");
+        self::assertNotSame('accept', $expect, "{$name} must be accepted.");
     }
 
     /**

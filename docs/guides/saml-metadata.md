@@ -134,11 +134,6 @@ signature on the way to it must verify. Changing the anchors is a trust change: 
 flight, so a refresh that began before it is refused. An anchor is also what lets a connection with a `metadata_url`
 [refresh by default](#refreshing-on-a-schedule): adding the first turns that on, and removing the last turns it off.
 
-Signed metadata that declares a default namespace on an element inside the signed entity or aggregate, outside its
-own `Signature`, cannot be verified by the SAML library the package uses, and is refused `metadata_signature_invalid`
-(`signature`). Microsoft Entra ID's federation metadata is written this way (each `KeyInfo` declares its own default
-namespace), so an Entra ID connection cannot use a metadata signing anchor.
-
 ## Refreshing on a schedule
 
 A refresh replaces a connection's trusted signing certificates with what its metadata lists, and HTTPS proves only who

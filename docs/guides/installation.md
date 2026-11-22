@@ -15,19 +15,12 @@ XML provider package whose element registry the plugin has not put in place, as 
 `--no-plugins` or the plugin not allowed, and any registry it put in place twice or left stale from an earlier install:
 run `composer install` again with it allowed, into a fresh vendor directory if the plugin has run before.
 
-SAML does not support PHP built against PCRE2 10.45 to 10.47 (see `PCRE_VERSION`): under them the SAML library refuses
-every NameID and attribute value with a character above U+00FF. Use PCRE2 10.48 or later. While SAML is on,
-`php artisan sso:check` fails under `[saml2]` on such a build.
-
-The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets two limits until the package
+The SAML library (`simplesamlphp/saml2` 6.2 with `simplesamlphp/xml-security` 2.3) sets one limit until the package
 can move to its next major version, which needs PHP 8.5:
 
-- **No AES-256-GCM.** The library cannot decrypt an assertion encrypted with AES-256-GCM, so the package neither
-  accepts nor advertises it: an encrypted assertion must use AES-128-GCM or AES-192-GCM (or AES-CBC, only where a
-  connection opts in). Configure the identity provider accordingly.
 - **RSA only.** SAML signatures are RSA with SHA-256, SHA-384 or SHA-512, and every SAML key and certificate is RSA:
-  ECDSA signatures and elliptic curve keys are refused when they are configured. ECDSA and AES-256-GCM arrive when the
-  package's PHP floor moves to 8.5 and saml2 v7 is stable.
+  ECDSA signatures and elliptic curve keys are refused when they are configured. ECDSA arrives when the package's PHP
+  floor moves to 8.5 and saml2 v7 is stable.
 
 Publish the config and the migrations (every `sso_` table, created on the storage connection: the default connection
 unless `sso.storage.connection` names another, see [Storage](configuration.md#storage)), then migrate:

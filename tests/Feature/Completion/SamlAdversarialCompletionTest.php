@@ -336,10 +336,10 @@ final class SamlAdversarialCompletionTest extends TestCase
 
         $certificate = self::spKeys()[1];
         $variants    = [
-            'rsa 1.5'     => static fn (FakeSamlResponse $response): string => $response->encryptedFor($certificate, 'rsa-1_5', 'aes128-gcm')->encoded(),
-            'cbc'         => static fn (FakeSamlResponse $response): string => $response->encryptedFor($certificate, 'rsa-oaep-mgf1p', 'aes128-cbc')->encoded(),
-            'aes-256-gcm' => static fn (FakeSamlResponse $response): string => $response->encryptedFor($certificate, 'rsa-oaep-mgf1p', 'aes256-gcm')->encoded(),
-            'tampered'    => static fn (FakeSamlResponse $response): string => base64_encode(self::tampered($response->encryptedFor($certificate)->toXml())),
+            'rsa 1.5'                => static fn (FakeSamlResponse $response): string => $response->encryptedFor($certificate, 'rsa-1_5', 'aes128-gcm')->encoded(),
+            'cbc'                    => static fn (FakeSamlResponse $response): string => $response->encryptedFor($certificate, 'rsa-oaep-mgf1p', 'aes128-cbc')->encoded(),
+            'aes-256-gcm not listed' => static fn (FakeSamlResponse $response): string => $response->encryptedFor($certificate, 'rsa-oaep-mgf1p', 'aes256-gcm')->encoded(),
+            'tampered'               => static fn (FakeSamlResponse $response): string => base64_encode(self::tampered($response->encryptedFor($certificate)->toXml())),
         ];
 
         $seen = [];

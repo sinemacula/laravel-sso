@@ -128,9 +128,7 @@ everyone it holds, so:
 
 - The default Name ID is the user principal name in an email format, which can be reassigned: change the Unique User
   Identifier before the first sign-in.
-- Keep the signing option at Sign SAML assertion, Entra ID's default. A response signature over Entra ID's assertion
-  cannot be verified, so a response signed with Sign SAML response, alone or with the assertion, is refused
-  (`signature_invalid`).
+- Any of Entra ID's signing options works: Sign SAML assertion (the default), Sign SAML response, or both.
 - Entra ID sends attributes with no `NameFormat`; name `urn:oasis:names:tc:SAML:2.0:attrname-format:unspecified` for a
   linking attribute ([SAML attributes](linking-by-domain.md#saml-attributes)).
 - If you turn on token encryption at Entra ID, check which content encryption it uses: anything other than AES-128-GCM

@@ -44,9 +44,8 @@ at a URL is the application's: the package builds no route.
   - one `NameIDFormat`, the connection's (`persistent` by default);
   - one `AssertionConsumerService`: HTTP-POST, at the connection's assertion consumer service, `index="0"`,
     `isDefault="true"`.
-- AES-256-GCM is never advertised, since the library cannot decrypt it until saml2 v7 (`saml-library.md`, condition 5),
-  and RSA 1.5 never is: the encryption methods come from `Saml2Options`, which keeps only the algorithms the settings
-  allow, even when a stored list names others.
+- RSA 1.5 is never advertised: the encryption methods come from `Saml2Options`, which keeps only the algorithms the
+  settings allow, even when a stored list names others.
 - No secret is ever written. The writer takes only certificates, and refuses anything that is not exactly one PEM
   certificate block, a private key included, before the library sees it. A published key with no certificate is left
   out. The metadata is not signed.
@@ -102,7 +101,7 @@ at a URL is the application's: the package builds no route.
   same input.
 - `tests/Feature/Protocols/Saml2/ServiceProviderMetadataTest.php`: through the driver, the whole document; current and
   next certificates during a rotation with `KeyService::addNext()`, and only the current after `makeCurrent()` and
-  `retire()`; the allow-list, never AES-256-GCM or RSA 1.5; the flags and NameID format following the settings; an
+  `retire()`; the allow-list, never RSA 1.5; the flags and NameID format following the settings; an
   incomplete connection described; a key with no certificate left out; no private key, ciphertext or secret; the same
   bytes for the same state.
 - `tests/Feature/Connections/ServiceProviderDescriptionsTest.php`: unknown and other-tenant connections refused
@@ -112,7 +111,6 @@ at a URL is the application's: the package builds no route.
 
 ## Change Triggers
 
-- saml2 v7, or `xml-security` fixing the AES-256-GCM URI (`saml-library.md`): AES-256-GCM may be allowed and advertised.
 - A second assertion consumer service or binding, single logout, or requested attributes: each adds an element here
   and a test of it.
 - Signed metadata, an `ID`, `validUntil` or `cacheDuration`: the determinism invariant and its test change with it.
