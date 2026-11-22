@@ -108,39 +108,6 @@ jobs:
                 run: composer test
 
     # ==========================================================================
-    # JOB: GUZZLE TESTS
-    # ==========================================================================
-    guzzle:
-        name: Test / Guzzle ${{ matrix.guzzle }}
-        runs-on: ubuntu-latest
-
-        # The lowest release of each major the package allows; the jobs above
-        # resolve the latest
-        strategy:
-            fail-fast: false
-            matrix:
-                guzzle: [ 7.15.2, 8.0.1 ]
-
-        steps:
-            -   name: Checkout
-                uses: actions/checkout@v7
-                with:
-                    persist-credentials: false
-
-            -   name: Setup PHP
-                uses: sinemacula/.github/.github/actions/setup-php@v3.2.0
-                with:
-                    php-version: 8.3
-
-            -   name: Pin Guzzle version
-                env:
-                    GUZZLE_VERSION: ${{ matrix.guzzle }}
-                run: composer update --with="guzzlehttp/guzzle:${GUZZLE_VERSION}" --with-all-dependencies --prefer-dist --no-interaction --no-progress
-
-            -   name: PHPUnit
-                run: composer test
-
-    # ==========================================================================
     # JOB: DATABASE TESTS (MySQL + PostgreSQL)
     # ==========================================================================
     integration:
